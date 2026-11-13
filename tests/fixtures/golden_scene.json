@@ -1,0 +1,15 @@
+{
+ "parent_note_id": 1794599541163,
+ "child_note_id": 1794599595386,
+ "manual_note_id": 1794602006069,
+ "parent_sentence": "[TEL](ベル)<br>はい｡<br>[TEL](受付) 患者の星野好美様が<br><b>至急</b> 日野先生と話したいと｡<br>分かりました｡<br>[TEL](好美) 日野先生？<br>申し訳ありません<br>先生は今 診察中ですので➡<br>代わりに伺います<br>医師の川上です｡",
+ "parent_sentence_furigana": "[ TEL](ベル)<br>はい｡<br>[ TEL]( 受付[うけつけ]) 患者[かんじゃ]の 星野[ほしの] 好美[よしみ] 様[さま]が<br> 至急[しきゅう] 日野[ひの] 先生[せんせい]と 話[はな]したいと｡<br> 分[わ]かりました｡<br>[ TEL]( 好美[よしみ]) 日野[ひの] 先生[せんせい]？<br> 申し訳[もうしわけ]ありません<br> 先生[せんせい]は 今[こん] 診察[しんさつ] 中[ちゅう]ですので➡<br> 代[か]わりに 伺[うかが]います<br> 医師[いし]の 川上[かわかみ]です｡",
+ "manual_sentence": "[TEL](ベル)<br>はい｡<br>[TEL](受付) 患者の星野好美様が<br>至急 日野先生と話したいと｡<br>分かりました｡<br>[TEL](好美) 日野先生？<br>申し訳ありません<br>先生は今 <b>診察</b>中ですので➡<br>代わりに伺います<br>医師の川上です｡",
+ "manual_sentence_furigana": "[ TEL](ベル)<br>はい｡<br>[ TEL]( 受付[うけつけ]) 患者[かんじゃ]の 星野[ほしの] 好美[よしみ] 様[さま]が<br> 至急[しきゅう] 日野[ひの] 先生[せんせい]と 話[はな]したいと｡<br> 分[わ]かりました｡<br>[ TEL]( 好美[よしみ]) 日野[ひの] 先生[せんせい]？<br> 申し訳[もうしわけ]ありません<br> 先生[せんせい]は 今[こん] 診察[しんさつ] 中[ちゅう]ですので➡<br> 代[か]わりに 伺[うかが]います<br> 医師[いし]の 川上[かわかみ]です｡",
+ "parent_cloze_body": "至急",
+ "child_sentence": "先生は今 <b>診察</b>中ですので➡",
+ "child_cloze_prefix": "先生は今 ",
+ "child_cloze_body": "診察",
+ "child_cloze_suffix": "中ですので➡",
+ "child_blob_source": "asbplayer<a href=\"https://app.asbplayer.dev/?video=blob%3Ahttps%3A%2F%2Fapp.asbplayer.dev%2F4311fdb2-e00e-47c2-98e0-828cbde53e55&amp;channel=9bf52649-ce96-4c21-8689-d37e3335e3e0&amp;popout=false\">https://app.asbplayer.dev/?video=blob%3Ahttps%3A%2F%2Fapp.asbplayer.dev%2F4311fdb2-e00e-47c2-98e0-828cbde53e55&amp;channel=9bf52649-ce96-4c21-8689-d37e3335e3e0&amp;popout=false</a>診察"
+}

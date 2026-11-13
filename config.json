@@ -1,0 +1,27 @@
+{
+  "config_version": 1,
+  "deck_name": "My Life Decks::Japanese::My New Japanese Deck",
+  "note_type_name": "Japanese Note type (Sentence card by Default)",
+  "window_days": 3,
+  "min_sentence_len": 6,
+  "min_nonspace_chars": 4,
+  "scene_fill_fields": ["Sentence Audio", "Picture", "Sentence (furigana)", "Translation"],
+  "scene_replace_fields": ["Source", "Sentence"],
+  "scene_optin_fields": ["Notes", "context", "Kanji Notes"],
+  "word_fill_fields": [
+    "Definition",
+    "Extended definition",
+    "Pitch Accent",
+    "Frequency",
+    "Word Audio",
+    "furigana",
+    "reading"
+  ],
+  "never_copy_fields": ["cloze-prefix", "cloze-body", "cloze-suffix"],
+  "translation_autocheck": true,
+  "notes_autocheck": false,
+  "replaces_autocheck": true,
+  "optout_tag": "no-autofill",
+  "applied_tag": "auto-filled",
+  "audit_tag": "mb-audit"
+}
