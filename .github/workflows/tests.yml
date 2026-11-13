@@ -1,0 +1,32 @@
+# Mining Backfill test gate — runs on every push and pull request.
+#
+# Policy: the suite is verified HERE, not by running the full suite on a
+# developer machine. Push, then watch:
+#   gh run watch --exit-status
+#
+# The core is deliberate pure Python (no anki/aqt/PyQt, no network, no
+# machine-local state), so a plain setup-python runner is all it needs.
+# Exit code 0 = safe to release.
+
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  suites:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install tools
+        run: python -m pip install --upgrade pip pytest ruff
+      - name: Lint and format check
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Test suite
+        run: python -m pytest

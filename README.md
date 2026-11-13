@@ -121,7 +121,8 @@ an AST test — so the same code runs headless, in tests, and inside Anki.
 
 - [ ] aqt add-on shell: preview dialog rendering real front/back HTML per
   row, apply with TOCTOU re-assertion, backup + inverse-patch restore.
-- [ ] CI workflows mirroring the author's CompreDef repo.
+- [x] CI workflow: `ruff` + the full test suite on every push and pull
+  request (`.github/workflows/tests.yml`).
 - [ ] AnkiWeb add-on release.
 
 ## License
