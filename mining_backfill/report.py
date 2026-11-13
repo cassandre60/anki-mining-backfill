@@ -5,9 +5,9 @@ Pure module: no anki/aqt imports.
 
 from __future__ import annotations
 
-from fieldconfig import sound_files
-from matching import NoteRecord
-from plan import (
+from .fieldconfig import sound_files
+from .matching import NoteRecord
+from .plan import (
     OP_ADD_TAGS,
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
@@ -16,9 +16,9 @@ from plan import (
     Plan,
 )
 
-__all__ = ["render_markdown"]
+__all__ = ["OP_LABELS", "render_markdown"]
 
-_OP_LABEL = {
+OP_LABELS = {
     OP_FILL: "fill",
     OP_REPLACE_SOURCE: "replace blob Source",
     OP_EXPAND_SENTENCE: "expand to scene sentence",
@@ -97,7 +97,7 @@ def render_markdown(plan: Plan, records: dict[int, NoteRecord], run_meta: dict) 
             state = "✓" if w.default_checked else "—"
             badges = ", ".join(w.badges) or "-"
             lines.append(
-                f"| {w.field} | {_OP_LABEL.get(w.op, w.op)}{src} | {val} | {state} | {badges} |"
+                f"| {w.field} | {OP_LABELS.get(w.op, w.op)}{src} | {val} | {state} | {badges} |"
             )
         lines.append("")
 

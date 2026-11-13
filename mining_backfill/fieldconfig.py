@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from normalize import strip_renderable
+from .normalize import strip_renderable
 
 __all__ = [
     "is_empty",

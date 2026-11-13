@@ -7,9 +7,11 @@ workflows where enrichment is interrupted: the card stays without scene
 audio, picture, timestamped source, or the full scene sentence, and fixing
 each one by hand costs minutes per card.
 
-**Status: prototype / audit build.** The matching core and the headless
-audit-package builder are complete and tested; the in-Anki (aqt) preview
-dialog is the next step. See [Roadmap](#roadmap).
+**Status: working add-on, preview-first.** The matching core, the in-Anki
+preview/apply dialog (with undo), and the headless audit-package builder are
+complete and tested. Vocabulary-specific heuristics are tuned for the
+author's deck; matching is conservative by design — it reports what it
+cannot fix rather than guessing. See [Roadmap](#roadmap).
 
 ## Safety guarantees
 
@@ -77,10 +79,45 @@ gloss provenance or 2+ sibling agreement; a singleton kanji expression
 whose reading has a 2+ kana twin (`尾ける`-style Yomitan attribution
 artifacts) is refused sense fills entirely.
 
+## Installing it in Anki
+
+The add-on is the `mining_backfill/` package. Anki discovers any folder in
+`addons21/` that contains `__init__.py`, so a symlink gives a live dev
+install (edits take effect on the next Anki restart):
+
+```
+ln -s "$PWD/mining_backfill" "$HOME/.local/share/Anki2/addons21/mining_backfill"
+```
+
+That folder also needs a `meta.json` (Anki writes one when a package is
+installed; for a manual install, copy any installed add-on's and set
+`name`, `human_version`, `package`). Then, after restarting Anki:
+
+- **Tools → "Mining Backfill: preview & apply…"** — the dialog shows the
+  newest `preview_last_n` notes of the configured deck (default 30). Every
+  proposed write is one row: note, field, the exact old → new value, its
+  source note, its badges. Rows the plan guarded arrive **unchecked**; the
+  rest are checked. Nothing is written until you press Apply.
+- **Tools → "Mining Backfill: undo last run"** — restores exactly what the
+  last apply replaced and removes exactly the tags it added.
+
+Apply is safe by construction:
+
+- **Per-note atomicity.** Every checked row of a note is re-asserted against
+  the collection first; if the card changed since the preview, *no* row of
+  that note is written. A half-applied card is worse than an untouched one.
+- **Re-running is a no-op.** Rows that already hold their target value are
+  recognised as done, not re-written.
+- **Undo log.** Each apply writes `run-<timestamp>.json` under
+  `<profile>/mining_backfill/undo/` — old values, applied values, and the
+  tags involved. Undo restores only notes whose values are still exactly
+  what the run wrote; anything edited since is reported and left alone.
+- **The tag op only adds**, so tags gained since the preview survive.
+
 ## The audit package
 
-The prototype builds an `.apkg` you import into Anki to audit the fixes
-without touching your collection:
+For reviewing a whole run before it touches your collection, the headless
+builder still exports a standalone `.apkg`:
 
 ```
 python3 scripts/build_audit_package.py --profile-dir ~/.local/share/Anki2/User\ 1 --last 20
@@ -106,24 +143,27 @@ After auditing: delete the audit deck and the cloned note type.
 ## Development
 
 ```
-python3 -m pytest -q     # 63 tests, incl. the golden fixture test
-ruff check . && ruff format .
+python3 -m pytest         # 83 tests; the Qt dialog test self-skips without Anki
+ruff check . && ruff format --check .
 ```
 
 The golden test (`tests/test_golden_scene.py`) reproduces a real manual fix
 from the author's collection **byte-for-byte on all five fields** — media,
 source, furigana, and the sentence with the bold retargeted to the card's
-own word. The core modules (`normalize.py`, `fieldconfig.py`,
-`matching.py`, `plan.py`, `report.py`) import no `anki`/`aqt` — enforced by
-an AST test — so the same code runs headless, in tests, and inside Anki.
+own word. The core (`mining_backfill/` minus the three Qt-facing modules)
+imports no `anki`/`aqt` — enforced by an AST test — so the same code runs
+headless, in tests, and inside Anki. `tests/test_addon_load.py` imports the
+package the way Anki does, with a stubbed `aqt`, which is what catches a
+broken entry point before users see "add-on failed to load".
 
 ## Roadmap
 
-- [ ] aqt add-on shell: preview dialog rendering real front/back HTML per
-  row, apply with TOCTOU re-assertion, backup + inverse-patch restore.
+- [x] aqt add-on shell: preview dialog, apply with re-assertion, undo log.
+- [ ] browser integration: run the plan on the selected notes instead of the
+      newest N, and render each row's real front/back HTML in the preview.
+- [ ] AnkiWeb release (yields a numeric package id and self-updates).
 - [x] CI workflow: `ruff` + the full test suite on every push and pull
   request (`.github/workflows/tests.yml`).
-- [ ] AnkiWeb add-on release.
 
 ## License
 

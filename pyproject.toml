@@ -1,6 +1,6 @@
 [project]
 name = "anki-mining-backfill"
-version = "0.1.0-audit1"
+version = "0.2.0"
 description = "Anki add-on: backfills mining cards from their enriched scene siblings"
 requires-python = ">=3.13"
 license = "AGPL-3.0-or-later"
@@ -17,4 +17,4 @@ target-version = "py313"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pyright]
-include = ["normalize.py", "fieldconfig.py", "matching.py", "plan.py", "report.py", "scripts", "tests"]
+include = ["mining_backfill", "scripts", "tests"]

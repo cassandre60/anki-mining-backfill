@@ -13,14 +13,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field, replace
 
-from fieldconfig import (
+from .fieldconfig import (
     FIELD_NEVER_COPY,
     image_files,
     is_blob_source,
     is_empty,
     sound_files,
 )
-from matching import (
+from .matching import (
     DAY_MS,
     MAX_WINDOW_MS,
     NoteRecord,
@@ -32,7 +32,7 @@ from matching import (
     singleton_kanji_guard,
     word_groups,
 )
-from normalize import kana_fold, norm_sentence_match, strip_renderable, word_key
+from .normalize import kana_fold, norm_sentence_match, strip_renderable, word_key
 
 __all__ = ["PlannedWrite", "Plan", "build_plan", "PLAN_VERSION"]
 

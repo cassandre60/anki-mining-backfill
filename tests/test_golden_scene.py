@@ -22,8 +22,14 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from matching import NoteRecord
-from plan import OP_ADD_TAGS, OP_EXPAND_SENTENCE, OP_FILL, OP_REPLACE_SOURCE, build_plan
+from mining_backfill.matching import NoteRecord
+from mining_backfill.plan import (
+    OP_ADD_TAGS,
+    OP_EXPAND_SENTENCE,
+    OP_FILL,
+    OP_REPLACE_SOURCE,
+    build_plan,
+)
 
 FIXTURE = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "golden_scene.json").read_text(encoding="utf-8")

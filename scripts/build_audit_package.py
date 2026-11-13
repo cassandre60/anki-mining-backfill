@@ -29,9 +29,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from matching import NoteRecord  # noqa: E402
-from plan import OP_ADD_TAGS, PLAN_VERSION, build_plan  # noqa: E402
-from report import render_markdown  # noqa: E402
+from mining_backfill.matching import NoteRecord  # noqa: E402
+from mining_backfill.plan import OP_ADD_TAGS, PLAN_VERSION, build_plan  # noqa: E402
+from mining_backfill.report import render_markdown  # noqa: E402
 
 RUN_TS = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
 
@@ -57,7 +57,7 @@ def prepare_work_dir(profile_dir: Path, work_dir: Path) -> Path:
 
 
 def load_config() -> dict:
-    return json.loads((REPO_ROOT / "config.json").read_text(encoding="utf-8"))
+    return json.loads((REPO_ROOT / "mining_backfill" / "config.json").read_text(encoding="utf-8"))
 
 
 def records_from_collection(col, deck_name: str, note_type_name: str) -> list[NoteRecord]:

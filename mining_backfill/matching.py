@@ -24,13 +24,13 @@ import bisect
 import re
 from dataclasses import dataclass
 
-from fieldconfig import (
+from .fieldconfig import (
     eligible_source,
     is_blob_source,
     is_empty,
     looks_yomitan_gloss,
 )
-from normalize import (
+from .normalize import (
     norm_sentence_match,
     word_key,
 )
@@ -270,7 +270,7 @@ def best_word_source(
     if not candidates:
         return None
     # Consensus: how many sources share the candidate's normalized value.
-    from normalize import strip_renderable  # local import keeps cycle-free
+    from .normalize import strip_renderable  # local import keeps cycle-free
 
     norm_values = [strip_renderable(c.value).strip() for c in candidates]
     for c, norm_val in zip(candidates, norm_values, strict=True):

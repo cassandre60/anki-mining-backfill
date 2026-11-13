@@ -3,6 +3,7 @@
   "deck_name": "My Life Decks::Japanese::My New Japanese Deck",
   "note_type_name": "Japanese Note type (Sentence card by Default)",
   "window_days": 3,
+  "preview_last_n": 30,
   "min_sentence_len": 6,
   "min_nonspace_chars": 4,
   "scene_fill_fields": ["Sentence Audio", "Picture", "Sentence (furigana)", "Translation"],

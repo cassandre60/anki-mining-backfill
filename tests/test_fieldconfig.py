@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fieldconfig import (
+from mining_backfill.fieldconfig import (
     has_media_ref,
     image_files,
     is_blob_source,
