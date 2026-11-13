@@ -23,7 +23,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from matching import NoteRecord
-from plan import OP_EXPAND_SENTENCE, OP_FILL, OP_REPLACE_SOURCE, build_plan
+from plan import OP_ADD_TAGS, OP_EXPAND_SENTENCE, OP_FILL, OP_REPLACE_SOURCE, build_plan
 
 FIXTURE = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "golden_scene.json").read_text(encoding="utf-8")
@@ -156,6 +156,15 @@ def test_golden_scene_completion():
     furigana = writes[("Sentence (furigana)", OP_FILL)]
     assert furigana.new_value == FIXTURE["manual_sentence_furigana"]
     assert furigana.default_checked
+
+    # The user's tag rule: audit notes carry the tags of the cards they
+    # use as sources (診察 must end with asbplayer + yomitan), never less,
+    # never extra bookkeeping tags.
+    tags = writes[("tags", OP_ADD_TAGS)]
+    assert tags.old_value == "yomitan"
+    assert tags.new_value == "asbplayer yomitan"
+    assert tags.default_checked
+    assert "tags-union-never-removes" in tags.badges
 
 
 def test_golden_fields_never_touched():

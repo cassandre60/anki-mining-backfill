@@ -7,7 +7,14 @@ from __future__ import annotations
 
 from fieldconfig import sound_files
 from matching import NoteRecord
-from plan import OP_EXPAND_SENTENCE, OP_FILL, OP_REPLACE_SOURCE, Plan
+from plan import (
+    OP_ADD_TAGS,
+    OP_BOLD_CLOZE_WORD,
+    OP_EXPAND_SENTENCE,
+    OP_FILL,
+    OP_REPLACE_SOURCE,
+    Plan,
+)
 
 __all__ = ["render_markdown"]
 
@@ -15,6 +22,8 @@ _OP_LABEL = {
     OP_FILL: "fill",
     OP_REPLACE_SOURCE: "replace blob Source",
     OP_EXPAND_SENTENCE: "expand to scene sentence",
+    OP_BOLD_CLOZE_WORD: "bold markup (text unchanged)",
+    OP_ADD_TAGS: "add tags (never removes)",
 }
 
 
@@ -44,8 +53,14 @@ def render_markdown(plan: Plan, records: dict[int, NoteRecord], run_meta: dict) 
     lines.append(f"- notes with proposed changes: {len(by_note)}")
     lines.append(f"- field writes: {len(plan.writes)} (default-checked: {len(checked)})")
     fills = sum(1 for w in plan.writes if w.op == OP_FILL)
-    replaces = sum(1 for w in plan.writes if w.op != OP_FILL)
+    markup = sum(1 for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD)
+    tag_adds = sum(1 for w in plan.writes if w.op == OP_ADD_TAGS)
+    replaces = sum(1 for w in plan.writes if w.op not in (OP_FILL, OP_BOLD_CLOZE_WORD, OP_ADD_TAGS))
     lines.append(f"- fills: {fills}, replaces: {replaces}")
+    if markup:
+        lines.append(f"- markup-only bold repairs: {markup}")
+    if tag_adds:
+        lines.append(f"- tag additions: {tag_adds}")
     unfixable = [r for r in plan.reasons.values()]
     reason_counts: dict[str, int] = {}
     for r in unfixable:
@@ -74,6 +89,9 @@ def render_markdown(plan: Plan, records: dict[int, NoteRecord], run_meta: dict) 
             val = _plain(w.new_value)
             if w.op == OP_EXPAND_SENTENCE:
                 val = f"{_plain(w.old_value, 60)} → {_plain(w.new_value, 90)}"
+            elif w.op == OP_ADD_TAGS:
+                added = " ".join(sorted(set(w.new_value.split()) - set(w.old_value.split())))
+                val = f"{_plain(w.old_value, 40) or '(no tags)'} + {_plain(added, 40)}"
             if w.field == "Sentence Audio" or w.field == "Word Audio":
                 val = ", ".join(sound_files(w.new_value)) or _plain(w.new_value, 60)
             state = "✓" if w.default_checked else "—"

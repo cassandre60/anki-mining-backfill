@@ -19,7 +19,7 @@ and covered by tests, not just intended:
 1. **Fills only touch empty fields.** A field with any non-whitespace
    content is never written. Markup-only values like `<hr>` count as
    occupied and are never overwritten.
-2. **Only two approved replaces, both information-preserving.**
+2. **Only four approved non-empty writes, each information-preserving.**
    - `Source`: the asbplayer blob URL is replaced with the timestamped
      source — the blob URL is recorded in the run log, so nothing is lost.
    - `Sentence`: the mined fragment is replaced with the full scene text —
@@ -27,6 +27,17 @@ and covered by tests, not just intended:
      `cloze-prefix + cloze-body + cloze-suffix`, and the cloze anchor (the
      tested word) occurs exactly once in the new text. The scene's bold
      markup is moved to your card's word, never left on the sibling's.
+   - Bold markup repair (`bold_cloze_word`): when a card's `Sentence` has
+     no bold term at all (its cloze-* hold dictionary-entry text instead
+     of the subtitle span), the tested word is wrapped in `<b>` — but only
+     when it occurs exactly once, either verbatim or as a reading-derived
+     surface form (鬱病 + うつびょう → うつ病). Markup-only: the rendered
+     text is identical, verified per write. Two occurrences = never
+     guessed, reported as a warning instead.
+   - Tags (`add_tags`): the target keeps its tags and gains every
+     contributing source card's tags — a pure union that never removes;
+     Anki control tags (`marked`, `leech`) and this tool's own tags
+     (`no-autofill`, `auto-filled`) never propagate.
 3. **`Sentence` and `Sentence (furigana)` are atomic.** Both always come
    from the same parent — never mixed ruby from a second note, never stale
    fragment ruby left under a full scene. If the parent has no furigana and
@@ -75,11 +86,16 @@ without touching your collection:
 python3 scripts/build_audit_package.py --profile-dir ~/.local/share/Anki2/User\ 1 --last 20
 ```
 
-- Imports into deck `zzz-Mining-Backfill-Audit` with tag `mb-audit`.
+- Imports into deck `zzz-Mining-Backfill-Audit`. Notes carry their target
+  card's tags plus the tags of the cards they take values from — a union,
+  nothing removed, no audit-bookkeeping tags; the deck is the container.
 - Uses a cloned note type (`... (MB Audit)`) with fresh ids, so the import
   can never merge into your live note type or modify an existing note.
-- Deterministic GUIDs (`uuid5` of run + original note id) keep re-imports
-  idempotent.
+- Deterministic GUIDs (`uuid5` of the original note id) keep re-imports of
+  rebuilt packages idempotent — the same notes update in place.
+- `--note-id <id>` (repeatable) pins extra cards into the scope, for fixes
+  explicitly requested by name — the moving "last N" window would
+  otherwise drop them as new cards get mined.
 - `dist/mining-backfill-report-<run>.md` — per-card preview: every write,
   its source note, badges, and default check state.
 - `dist/mining-backfill-plan-<run>.json` — the audit log: every old and new
@@ -90,7 +106,7 @@ After auditing: delete the audit deck and the cloned note type.
 ## Development
 
 ```
-python3 -m pytest -q     # 54 tests, incl. the golden fixture test
+python3 -m pytest -q     # 63 tests, incl. the golden fixture test
 ruff check . && ruff format .
 ```
 

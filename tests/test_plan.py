@@ -5,7 +5,10 @@ from __future__ import annotations
 from test_golden_scene import CFG, CHILD, CHILD_ID, PARENT, PARENT_ID
 
 from matching import NoteRecord
+from normalize import strip_renderable
 from plan import (
+    OP_ADD_TAGS,
+    OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
     OP_REPLACE_SOURCE,
@@ -42,7 +45,12 @@ def test_replaces_only_approved_ops():
     plan = build_plan([PARENT, CHILD], CFG, scope_note_ids=[CHILD_ID])
     for w in plan.writes:
         if w.old_value:
-            assert w.op in (OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE), w.field
+            assert w.op in (
+                OP_REPLACE_SOURCE,
+                OP_EXPAND_SENTENCE,
+                OP_BOLD_CLOZE_WORD,
+                OP_ADD_TAGS,
+            ), w.field
 
 
 def test_expansion_guard_when_fragment_not_recoverable():
@@ -140,9 +148,14 @@ def test_optout_tag_blocks_target():
 
 
 def test_unfixable_reason_reported():
-    # no audio-bearing parent anywhere near -> honest miss
-    plan = build_plan([CHILD], CFG, scope_note_ids=[CHILD.note_id])
+    # A card that is already complete (bold present, nothing empty) is an
+    # honest miss with a reason and no writes.
+    f = dict(CHILD.fields)
+    f["Sentence"] = "先生は今 <b>診察</b>中ですので➡"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
     assert plan.reasons.get(CHILD.note_id) in ("no-parent-that-fills", "nothing-to-fill")
+    assert not plan.writes
 
 
 def test_translation_fill_and_notes_optin():
@@ -188,3 +201,123 @@ def test_expansion_pairing_never_mixes_parents():
     ]
     assert scene_rows
     assert {w.source_note_id for w in scene_rows} == {PARENT_ID}
+
+
+def test_add_tags_union_from_default_checked_sources():
+    # The user's own example: 診察 (yomitan) fed by 至急 (asbplayer+yomitan)
+    # must end up with both tags — and nothing removed.
+    plan = build_plan([PARENT, CHILD], CFG, scope_note_ids=[CHILD_ID])
+    rows = [w for w in plan.writes if w.note_id == CHILD_ID and w.op == OP_ADD_TAGS]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.old_value == "yomitan"
+    assert row.new_value == "asbplayer yomitan"
+    assert row.default_checked
+    assert "tags-union-never-removes" in row.badges
+    added = set(row.new_value.split()) - set(row.old_value.split())
+    assert added == {"asbplayer"}
+    assert set(row.new_value.split()) >= set(row.old_value.split())
+
+
+def test_add_tags_filters_control_tags():
+    # Anki control tags and this tool's own tags never propagate.
+    p = rec(
+        PARENT.note_id,
+        dict(PARENT.fields),
+        tags=("asbplayer", "yomitan", "marked", "leech", "no-autofill", "auto-filled"),
+    )
+    plan = build_plan([p, CHILD], CFG, scope_note_ids=[CHILD.note_id])
+    rows = [w for w in plan.writes if w.note_id == CHILD.note_id and w.op == OP_ADD_TAGS]
+    assert rows and rows[0].new_value == "asbplayer yomitan"
+
+
+def test_add_tags_skipped_when_target_already_has_all_tags():
+    child = rec(CHILD.note_id, dict(CHILD.fields), tags=("asbplayer", "yomitan"))
+    plan = build_plan([PARENT, child], CFG, scope_note_ids=[CHILD.note_id])
+    assert not [w for w in plan.writes if w.op == OP_ADD_TAGS]
+
+
+def test_add_tags_needs_default_checked_writes():
+    # Sources of UNCHECKED writes contribute nothing: a card the plan does
+    # not act on has not earned tag authority.
+    p = rec(PARENT.note_id, dict(PARENT.fields), tags=("asbplayer", "yomitan"))
+    child = dict(CHILD.fields)
+    child["Sentence Audio"] = " [sound:have.webm] "
+    child["Picture"] = '<img src="have.jpeg">'
+    child["Source"] = "Dr. Rintaro Episode 6.mp4 (20m19s)"  # not a blob
+    child["Sentence (furigana)"] = ""
+    child["cloze-prefix"] = ""  # fragment unrecoverable -> guarded expansion
+    child["cloze-body"] = ""
+    child["cloze-suffix"] = ""
+    c = rec(CHILD.note_id, child, tags=("yomitan",))
+    plan = build_plan([p, c], CFG, scope_note_ids=[CHILD.note_id])
+    rows = [w for w in plan.writes if w.note_id == CHILD.note_id]
+    assert rows and all(not w.default_checked for w in rows)
+    assert not [w for w in plan.writes if w.op == OP_ADD_TAGS]
+
+
+def test_bold_repair_exact_tier():
+    # The cloze body occurs exactly once, unbolded: wrap it.
+    f = dict(CHILD.fields)
+    f["Sentence"] = "先生は今 診察中ですので➡"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(bold) == 1
+    assert bold[0].new_value == "先生は今 <b>診察</b>中ですので➡"
+    assert "bold-added-to-cloze-word" in bold[0].badges
+    assert bold[0].default_checked
+    assert strip_renderable(bold[0].new_value) == strip_renderable(bold[0].old_value)
+
+
+def test_bold_repair_surface_form():
+    # 鬱病-shaped: cloze-* hold dictionary-entry text, the sentence spells
+    # the leading kanji as kana (うつ病, exactly once) -> inferred tier.
+    f = dict(CHILD.fields)
+    f["Expression"] = "鬱病"
+    f["reading"] = "うつびょう"
+    f["cloze-prefix"] = "うつ‐びょう【"
+    f["cloze-body"] = "鬱病"
+    f["cloze-suffix"] = "】〔―ビヤウ〕"
+    f["Sentence"] = "母は うつ病にかかってたんです｡"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(bold) == 1
+    assert bold[0].new_value == "母は <b>うつ病</b>にかかってたんです｡"
+    assert "bold-added-to-surface-form" in bold[0].badges
+    assert strip_renderable(bold[0].new_value) == strip_renderable(bold[0].old_value)
+
+
+def test_bold_repair_ambiguous_not_guessed():
+    # Two occurrences of the tested word: never guess which to bold.
+    f = dict(CHILD.fields)
+    f["Sentence"] = "診察の先生は今 診察中ですので➡"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert any("occurs 2 times" in w for w in plan.warnings)
+
+
+def test_bold_repair_with_br_markup():
+    # Regression: "<b" in sentence matches <br> — the build data is full of
+    # <br>, which silently disabled every repair. Bold-tag detection must
+    # ignore line-break markup.
+    f = dict(CHILD.fields)
+    f["Sentence"] = "母は うつ病に<br>かかってたんです｡"
+    f["Expression"] = "鬱病"
+    f["reading"] = "うつびょう"
+    f["cloze-body"] = "鬱病"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(bold) == 1
+    assert bold[0].new_value == "母は <b>うつ病</b>に<br>かかってたんです｡"
+
+
+def test_bold_repair_skipped_when_expansion_queued():
+    # The golden child's Sentence is queued for a checked scene expansion
+    # that already carries the retargeted bold: no markup repair, no noise.
+    plan = build_plan([PARENT, CHILD], CFG, scope_note_ids=[CHILD_ID])
+    assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert not any("no bold in Sentence" in w for w in plan.warnings)

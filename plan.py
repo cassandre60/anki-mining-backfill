@@ -32,26 +32,34 @@ from matching import (
     singleton_kanji_guard,
     word_groups,
 )
-from normalize import norm_sentence_match, strip_renderable, word_key
+from normalize import kana_fold, norm_sentence_match, strip_renderable, word_key
 
 __all__ = ["PlannedWrite", "Plan", "build_plan", "PLAN_VERSION"]
 
-PLAN_VERSION = 1
+PLAN_VERSION = 2
 
 OP_FILL = "fill"
 OP_REPLACE_SOURCE = "replace_source"
 OP_EXPAND_SENTENCE = "expand_sentence"
-OPS_TOUCHING_NONEMPTY = frozenset({OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE})
+# Markup-only repair: wrap the tested word in <b> (rendered text unchanged).
+OP_BOLD_CLOZE_WORD = "bold_cloze_word"
+# Tag-set union from contributing sources; never removes a tag.
+OP_ADD_TAGS = "add_tags"
+OPS_TOUCHING_NONEMPTY = frozenset(
+    {OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE, OP_BOLD_CLOZE_WORD, OP_ADD_TAGS}
+)
 
 
 @dataclass(frozen=True)
 class PlannedWrite:
     """One field change. ``old_value`` empty <=> OP_FILL in almost all cases.
 
-    The two approved replaces (blob Source, fragment Sentence) are the only
-    ops that may write a non-empty field; both carry explicit badges and
-    both preserve their information (the blob URL is recorded in the audit
-    log; the fragment survives in cloze-*).
+    Four ops may write a non-empty value, each guarded: the two approved
+    replaces (blob Source — the blob URL is recorded in the audit log;
+    fragment Sentence — the fragment survives in cloze-*), the markup-only
+    bold repair (``strip_renderable`` of both values must be equal) and the
+    tags union (``new_value`` is a superset of ``old_value``). All carry
+    badges.
     """
 
     note_id: int
@@ -148,6 +156,128 @@ def _retarget_bold(parent_value: str, parent_body: str, child_body: str) -> tupl
     if unwrapped and wrapped:
         return value, "bold-retargeted-to-cloze-word"
     return value, "parent-bold-removed" if unwrapped else "bold-added-to-cloze-word"
+
+
+_KANJI_HINT_RE = re.compile(r"[㐀-\u4dbf\u4e00-\u9fff]")
+
+
+def _mixed_form_candidates(expression: str, reading: str) -> list[str]:
+    """Mixed-kana spellings of the headword: its leading kanji read as kana.
+
+    Mined sentences often render the headword's leading kanji in kana
+    (鬱病 with reading うつびょう appears as うつ病). Per-kanji readings are
+    unknown offline, so every (reading-prefix, headword-suffix) pair is a
+    candidate; the caller's sentence-occurrence oracle plus the uniqueness
+    requirement filter the wrong ones out. Candidates must contain kanji:
+    pure-kana strings would match unrelated common words.
+    """
+    hw = expression.strip()
+    rd = kana_fold(reading.strip())
+    if len(hw) < 2 or len(rd) < 2 or not _KANJI_HINT_RE.search(hw):
+        return []
+    out: list[str] = []
+    for k in range(1, len(rd)):
+        for m in range(1, len(hw)):
+            cand = rd[:k] + hw[m:]
+            if cand == hw or not _KANJI_HINT_RE.search(cand) or cand in out:
+                continue
+            out.append(cand)
+    return out
+
+
+def _wrap_first_occurrence(sentence: str, word: str) -> str | None:
+    """``word`` wrapped in ``<b>`` at its first occurrence, or None if unsafe.
+
+    Unsafe: the occurrence sits inside an HTML tag (e.g. an attribute
+    value). The caller additionally verifies the wrapping is markup-only.
+    """
+    start = sentence.find(word)
+    if start < 0:
+        return None
+    if sentence.rfind("<", 0, start) > sentence.rfind(">", 0, start):
+        return None  # the occurrence lives inside a tag
+    return f"{sentence[:start]}<b>{word}</b>{sentence[start + len(word) :]}"
+
+
+_BOLD_TAG_RE = re.compile(r"<b[\s>]|<strong")
+
+
+def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | None, str | None]:
+    """Locate the tested word in a bold-less ``Sentence``; markup-only fix.
+
+    The deck convention bolds the mined word inside ``Sentence``; the front
+    template keys on it (accent highlight — and its cloze-fallback rebuilds
+    the front from cloze-* exactly when no bold term exists). Cards whose
+    cloze-* hold dictionary-entry text (mining bug) have no bold; the word
+    may still occur as a different surface form.
+
+    Tier 1: the cloze body occurs exactly once. Tier 2 (only when the body
+    never occurs): a mixed-kana spelling derived from (Expression, reading)
+    occurs exactly once. Ambiguity — more than one occurrence, or several
+    candidates — is never resolved by guessing.
+
+    Returns ``(write, reason, detail)``: the write is markup-only
+    (``strip_renderable`` equality is verified before it is returned);
+    ``reason``/``detail`` explain a miss for the report.
+    """
+    sentence = target.get("Sentence")
+    # <br> must not read as a bold tag: match <b>/<b attrs>/<strong only.
+    if is_empty(sentence) or _BOLD_TAG_RE.search(sentence):
+        return None, None, None
+    body = strip_renderable(target.get("cloze-body")).strip()
+    if not body:
+        return None, None, None  # nothing was mined: the convention cannot apply
+    count = sentence.count(body)
+    if count > 1:
+        return None, "cloze-word-ambiguous", f"cloze word '{body}' occurs {count} times"
+    if count == 1:
+        new_value = _wrap_first_occurrence(sentence, body)
+        if new_value is not None and strip_renderable(new_value) == strip_renderable(sentence):
+            write = PlannedWrite(
+                note_id=target.note_id,
+                field="Sentence",
+                op=OP_BOLD_CLOZE_WORD,
+                old_value=sentence,
+                new_value=new_value,
+                default_checked=True,
+                badges=("bold-added-to-cloze-word",),
+            )
+            return write, None, None
+        return (
+            None,
+            "cloze-word-not-in-sentence",
+            f"cloze word '{body}' has no anchor outside HTML markup",
+        )
+    # The cloze body never occurs (dictionary-entry junk): try the
+    # reading-derived surface forms.
+    hits = [
+        (cand, sentence.count(cand))
+        for cand in _mixed_form_candidates(target.get("Expression"), target.get("reading"))
+        if cand in sentence
+    ]
+    single = [cand for cand, n in hits if n == 1]
+    multi = [(cand, n) for cand, n in hits if n > 1]
+    if len(single) == 1 and not multi:
+        new_value = _wrap_first_occurrence(sentence, single[0])
+        if new_value is not None and strip_renderable(new_value) == strip_renderable(sentence):
+            write = PlannedWrite(
+                note_id=target.note_id,
+                field="Sentence",
+                op=OP_BOLD_CLOZE_WORD,
+                old_value=sentence,
+                new_value=new_value,
+                default_checked=True,
+                badges=("bold-added-to-surface-form",),
+            )
+            return write, None, None
+    if not hits:
+        return (
+            None,
+            "cloze-word-not-in-sentence",
+            f"cloze word '{body}' and its reading-derived forms never occur in it",
+        )
+    listed = ", ".join(f"'{cand}' ×{n}" for cand, n in sorted(hits))
+    return None, "cloze-word-ambiguous", f"surface-form candidates: {listed}"
 
 
 def _scene_writes_for(
@@ -378,6 +508,60 @@ def _word_writes_for(
     return writes
 
 
+_ANKI_CONTROL_TAGS = frozenset({"marked", "leech"})
+
+
+def _reserved_tags(cfg: dict) -> frozenset[str]:
+    """Tags that must never propagate from a source card onto a target."""
+    return frozenset(
+        {
+            *_ANKI_CONTROL_TAGS,
+            cfg.get("optout_tag", "no-autofill"),
+            cfg.get("applied_tag", "auto-filled"),
+        }
+    )
+
+
+def _tags_write_for(
+    target: NoteRecord,
+    target_writes: list[PlannedWrite],
+    records_by_id: dict[int, NoteRecord],
+    cfg: dict,
+) -> PlannedWrite | None:
+    """Union the target's tags with every contributing source's tags.
+
+    Only sources of default-checked writes contribute: a card the plan does
+    not act on has not earned tag authority. Control tags (Anki's
+    marked/leech and this tool's own optout/applied tags) never propagate.
+    The op can only ADD: ``new_value`` is a superset of ``old_value`` —
+    that is the badge's contract.
+    """
+    reserved = _reserved_tags(cfg)
+    new_tags = set(target.tags)
+    sources = sorted(
+        {
+            w.source_note_id
+            for w in target_writes
+            if w.default_checked and w.source_note_id is not None
+        }
+    )
+    for source_id in sources:
+        source = records_by_id.get(source_id)
+        if source is not None:
+            new_tags |= set(source.tags) - reserved
+    if new_tags == set(target.tags):
+        return None
+    return PlannedWrite(
+        note_id=target.note_id,
+        field="tags",
+        op=OP_ADD_TAGS,
+        old_value=" ".join(sorted(target.tags)),
+        new_value=" ".join(sorted(new_tags)),
+        default_checked=True,
+        badges=("tags-union-never-removes",),
+    )
+
+
 def build_plan(
     records: list[NoteRecord],
     cfg: dict,
@@ -424,6 +608,7 @@ def build_plan(
         if optout in target.tags:
             reasons[target.note_id] = "opted-out"
             continue
+        target_writes: list[PlannedWrite] = []
         scene_writes, reason = [], None
         has_scene_gap = any(
             is_empty(target.get(f))
@@ -444,15 +629,38 @@ def build_plan(
                         f"drop fill note:{w.note_id} field:{w.field} missing media {refs}"
                     )
                     continue
-            writes.append(w)
+            target_writes.append(w)
         # Word-level fills apply to every scoped note with word gaps.
         key = word_key(target.get("Expression"), target.get("reading"), target.get("furigana"))
         if key is not None:
             group = groups.get(key, [])
             if len(group) > 1:
-                writes.extend(_word_writes_for(target, group, groups, cfg))
-        if not any(w.note_id == target.note_id for w in writes) and target.note_id not in reasons:
+                target_writes.extend(_word_writes_for(target, group, groups, cfg))
+        # Markup-only bold repair. Never issued when a Sentence expansion is
+        # queued for the same note: the two ops would fight over the field.
+        bold_write, bold_reason, bold_detail = _bold_repair_for(target)
+        queued_expansion = any(
+            w.field == "Sentence" and w.op == OP_EXPAND_SENTENCE for w in target_writes
+        )
+        if bold_write is not None and not queued_expansion:
+            target_writes.append(bold_write)
+        elif bold_reason is not None:
+            suffix = " (Sentence is also queued for scene expansion)" if queued_expansion else ""
+            expr = target.get("Expression") or "(sentence card)"
+            warnings.append(
+                f"note {target.note_id} ({expr}): no bold in Sentence — {bold_detail}{suffix}"
+            )
+            if not target_writes and target.note_id not in reasons:
+                reasons[target.note_id] = bold_reason
+        # Tags: union of the target's tags with every contributing source's.
+        tags_write = _tags_write_for(target, target_writes, by_id, cfg)
+        if tags_write is not None:
+            target_writes.append(tags_write)
+        if not target_writes and target.note_id not in reasons:
             reasons[target.note_id] = "nothing-to-fill"
+        if target_writes:
+            reasons.pop(target.note_id, None)
+        writes.extend(target_writes)
 
     for parent_id, uses in parent_usage.items():
         if uses > 20:

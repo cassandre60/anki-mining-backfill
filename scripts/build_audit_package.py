@@ -30,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from matching import NoteRecord  # noqa: E402
-from plan import PLAN_VERSION, build_plan  # noqa: E402
+from plan import OP_ADD_TAGS, PLAN_VERSION, build_plan  # noqa: E402
 from report import render_markdown  # noqa: E402
 
 RUN_TS = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
@@ -84,14 +84,6 @@ def records_from_collection(col, deck_name: str, note_type_name: str) -> list[No
     return out
 
 
-def _audit_tags(cfg: dict, is_fixed: bool) -> set[str]:
-    """Tags for one audit note: mb-audit on all, mb-audit-fixed on fixed."""
-    tags = {cfg["audit_tag"]}
-    if is_fixed:
-        tags.add(cfg.get("audit_fixed_tag", "mb-audit-fixed"))
-    return tags
-
-
 def clone_note_type(col, mid, new_name: str):
     """Clone the note type with a fresh id (apkg import must never merge)."""
     src = col.models.get(mid)
@@ -103,11 +95,45 @@ def clone_note_type(col, mid, new_name: str):
     return col.models.id_for_name(new_name)
 
 
+def purge_previous_audit_imports(col, deck_name: str, note_type_name: str) -> None:
+    """Drop earlier audit imports from the WORK COPY.
+
+    The source profile may already contain a previous audit import — its
+    deck, its notes (old tags, old guids) and its cloned note type.
+    Exporting those again would ship stale notes inside the new package,
+    so the rebuild starts from a clean slate. The live profile itself is
+    never touched: this runs on the throwaway copy only.
+    """
+    audit_decks = [
+        did for did, name in col.db.all("select id, name from decks") if name == deck_name
+    ]
+    if audit_decks:
+        col.decks.remove(audit_decks)
+    stale_mids = [
+        mid
+        for mid, name in col.db.all("select id, name from notetypes")
+        if name != note_type_name and name.startswith(note_type_name) and "(MB Audit)" in name
+    ]
+    for mid in stale_mids:
+        leftover = col.db.all("select id from notes where mid=?", mid)
+        if leftover:
+            col.remove_notes([row[0] for row in leftover])
+        col.models.remove(mid)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile-dir", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path, default=Path("/tmp/opencode/mb_audit_build"))
     parser.add_argument("--last", type=int, default=20)
+    parser.add_argument(
+        "--note-id",
+        type=int,
+        action="append",
+        default=[],
+        help="explicitly include this note in the audit scope (repeats allowed), "
+        "in addition to --last; used to pin cards whose fix was explicitly requested",
+    )
     parser.add_argument("--out-dir", type=Path, default=REPO_ROOT / "dist")
     parser.add_argument("--deck-name", default="zzz-Mining-Backfill-Audit")
     args = parser.parse_args()
@@ -119,12 +145,17 @@ def main() -> int:
     collection_path = prepare_work_dir(args.profile_dir, args.work_dir)
     col = Collection(str(collection_path))
     try:
+        purge_previous_audit_imports(col, args.deck_name, cfg["note_type_name"])
         deck_name = cfg["deck_name"]
         note_type_name = cfg["note_type_name"]
         records = records_from_collection(col, deck_name, note_type_name)
         records.sort(key=lambda r: r.note_id, reverse=True)
         scope = [r.note_id for r in records[: args.last]]
         records_by_id = {r.note_id: r for r in records}
+        # Explicitly requested cards must survive a moving "last N" window.
+        for extra_id in args.note_id:
+            if extra_id in records_by_id and extra_id not in scope:
+                scope.append(extra_id)
 
         media_dir = args.work_dir / "collection.media"
 
@@ -144,16 +175,24 @@ def main() -> int:
             target = records_by_id[target_id]
             writes = [w for w in plan.writes if w.note_id == target_id and w.default_checked]
             values = dict(target.fields)
+            tags = set(target.tags)
             for w in writes:
+                if w.op == OP_ADD_TAGS:
+                    tags |= set(w.new_value.split())
+                    continue
                 values[w.field] = w.new_value
             note = Note(col, audit_mid)
             if field_order is None:
                 field_order = [f["name"] for f in col.models.get(audit_mid)["flds"]]
             for name in field_order:
                 note[name] = values.get(name, "")
-            note.tags = sorted(target.tags | _audit_tags(cfg, bool(writes)))
-            guid = uuid.uuid5(uuid.NAMESPACE_URL, f"mb-audit:{target_id}:{RUN_TS}").hex
-            note.guid = guid
+            # Tags = the target's own tags plus every contributing source's
+            # (the default-checked add_tags rows). Nothing is removed and no
+            # audit-bookkeeping tags are added — the deck is the container.
+            note.tags = sorted(tags)
+            # Stable guid: re-importing a rebuilt package updates these
+            # notes instead of duplicating them.
+            note.guid = uuid.uuid5(uuid.NAMESPACE_URL, f"mb-audit:{target_id}").hex
             col.add_note(note, deck_id=audit_deck_id)
             created += 1
 
@@ -175,15 +214,16 @@ def main() -> int:
         run_meta = {
             "run": RUN_TS,
             "plan_version": PLAN_VERSION,
-            "scope": f"last {args.last} notes added to {deck_name}",
+            "scope": (
+                f"last {args.last} notes added to {deck_name}"
+                + (f", plus explicitly requested note(s) {args.note_id}" if args.note_id else "")
+            ),
             "note type": note_type_name,
             "audit deck": args.deck_name,
             "audit notes created": created,
             "window_days": cfg.get("window_days"),
-            "audit tags": (
-                f"{cfg['audit_tag']} (all), "
-                f"{cfg.get('audit_fixed_tag', 'mb-audit-fixed')} (fixed notes)"
-            ),
+            "guid scheme": "uuid5(mb-audit:<note id>) — stable across runs",
+            "tags": "target tags + contributing sources' tags (union, never removes)",
         }
         report_md = render_markdown(plan, records_by_id, run_meta)
         report_path = out_dir / f"mining-backfill-report-{RUN_TS}.md"
