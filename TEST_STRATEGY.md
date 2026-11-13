@@ -1,0 +1,100 @@
+# Mining Backfill — Test Strategy
+
+Answers: *how do we mechanically prove `QUALITY.md` stays true?*
+
+```text
+QUALITY.md (WHAT must hold)
+    ↓
+TEST_STRATEGY.md (HOW it is verified)
+    ↓
+tests/ · linters · ad-hoc real-collection runs · CI
+```
+
+## The rings (cheap → expensive)
+
+Every behaviour is verified in exactly one ring — the cheapest ring that can
+observe it. A new check goes in the innermost ring that can see the behaviour
+and moves outward only when it needs more of the real world.
+
+| Ring | What | Where it runs | Cost |
+|---|---|---|---|
+| **Ring 0 — pure units** (`tests/test_normalize.py`, `test_fieldconfig.py`, `test_matching.py`, `test_plan.py`, `test_applier.py`, `test_layer_boundary.py`) | Every pure function against plain values: normalization keys, field semantics, parent ranking, plan guards and badges, the apply/undo decision matrix, and the AST-enforced layer boundary. No Anki, no Qt, no collection, no network. | Local + CI | ms |
+| **Ring 1 — golden acceptance** (`tests/test_golden_scene.py`) | The pipeline must reproduce the author's real manual fix (診察, from scene 至急) **byte-for-byte on all five fields** plus the tag union, from a frozen fixture (`tests/fixtures/golden_scene.json`). This is the anchor: if it moves, behaviour moved. | Local + CI | ms |
+| **Ring 2 — add-on load contract** (`tests/test_addon_load.py`) | Imports the package *the way Anki does* (folder name → package, stubbed `aqt`), asserting the two Tools entries are added once, the banner reports the packaged version, and a missing main window does not raise. This is the ring that catches "add-on failed to load" before a user sees it. | Local + CI | ms |
+| **Ring 3 — real-collection verification** (ad-hoc scripts, not committed as tests) | Apply + undo against a **copy** of the real collection (every checked write lands verbatim, guarded-only notes untouched, undo restores exactly); the audit builder's `--last`/`--note-id` scope and package round-trip; the entry point against the real `aqt` package. | Author's machine, on demand | seconds–minutes |
+| **Ring 4 — CI gate** (`.github/workflows/tests.yml`) | `ruff check` + `ruff format --check` + the whole suite on every push and PR, with **no Anki installed**. Green exit code is the gate. | GitHub Actions | ~15 s |
+
+Ring 3 exists because Rings 0–2 cannot see Anki's own API behaviour. It is
+deliberately not a committed test: it needs a real collection, which CI does
+not have and must never be given.
+
+## Coverage contract (no duplication)
+
+- Every pure function is pinned in exactly ONE ring.
+- The **apply and undo decision matrix** lives in `tests/test_applier.py`
+  against a dict-backed fake `NoteState` reader — including the cases that
+  matter: one stale row skipping a whole note, re-run detection, tags-only-add
+  with a tag gained since preview, `applied_tag` on written notes, undo of
+  edited notes, idempotent undo.
+- The **UI** (`preview_dialog.py`) is not unit-tested; its import is checked
+  in Ring 2 and its behaviour is exercised by Ring 3's apply run. Anything
+  decision-shaped in it is delegated to `applier.py`/`plan.py` precisely so it
+  can be tested there.
+- `collection_io.py` is a thin adapter and is covered by Ring 3; the parts
+  worth pinning (`_media_exists` behaviour, `deck_records` returning `None`
+  for a missing deck) are deliberately fail-visible in its docstrings rather
+  than mocked.
+
+## Self-skipping, not faking
+
+`test_preview_dialog_imports_with_real_anki` needs the real Anki/PyQt6 stack.
+Where that is absent (CI) it **skips** via `pytest.importorskip`; it never
+falls back to a stub, because a stub would not catch a broken Qt name. So the
+expected counts are:
+
+| Environment | Result |
+|---|---|
+| Author's machine (`python3 -m pytest`, Anki present) | **84 passed** |
+| CI / a venv without Anki | **83 passed, 1 skipped** |
+
+Both are green; the difference is exactly one self-skipping import check.
+
+## Fail-to-pass for bug fixes
+
+A test added for a bug must be able to fail on the unfixed code. Two real
+examples from this repo's history:
+
+- `<b` matched `<br`, silently disabling every bold repair →
+  `test_bold_repair_with_br_markup` pins the `<br>` case.
+- An already-applied row was misreported as stale (re-running a plan looked
+  like a conflict) → `test_rerunning_the_same_plan_is_a_noop`.
+
+When the bug is only observable with real Anki/anime data, the observation
+that made it visible is recorded in the test or in this file rather than
+faked with a stub that cannot see it.
+
+## Running things
+
+```bash
+ruff check . && ruff format --check .   # Ring 4 locally, fast
+python3 -m pytest                       # Rings 0–2
+gh run watch --exit-status              # Ring 4, the gate
+```
+
+The suite is hermetic and sub-second, so local runs are cheap and allowed —
+unlike a heavyweight workspace suite, it cannot pin the machine. Real-collection
+work (Ring 3) must always copy the collection first:
+
+```bash
+cp "$HOME/.local/share/Anki2/User 1/collection.anki2"* /tmp/opencode/probe/
+ln -s "$HOME/.local/share/Anki2/User 1/collection.media" /tmp/opencode/probe/collection.media
+```
+
+## Static guards
+
+- `test_layer_boundary.py` — no `anki`/`aqt`/PyQt import outside the three
+  Qt-facing modules, relative intra-package imports only (flat module names
+  would collide across add-ons in Anki's shared `sys.path`).
+- `ruff` — lint (`E,F,I,UP,B,SIM`) plus formatting, line length 100.
+- `test_addon_load.py` also asserts the menu labels contain no Qt mnemonic
+  `&`, a rendering hazard that no runtime test would catch.

@@ -1,0 +1,156 @@
+# Mining Backfill — Architecture
+
+Technical structure. `PRODUCT.md` says what it must do, `QUALITY.md` what
+must stay true, `TEST_STRATEGY.md` how that is proven.
+
+## Shape
+
+```text
+mining_backfill/                 the add-on (Anki imports this folder as a package)
+├── normalize.py     pure   text → matching keys (sentences, words, readings)
+├── fieldconfig.py   pure   field semantics: emptiness, blob detection, media refs
+├── matching.py      pure   NoteRecord → scene parents / word groups
+├── plan.py          pure   records + config → Plan (PlannedWrite rows + reasons)
+├── report.py        pure   Plan → Markdown run report
+├── applier.py       pure   Plan + live values → ApplyDecision (writes / skips)
+├── collection_io.py  Anki  read the collection, execute a decision, run logs
+├── preview_dialog.py  Qt   the dialog: rows, checkboxes, tabs, Apply
+├── __init__.py        Qt  entry point: two Tools actions
+├── config.json            defaults (Anki merges user edits from meta.json)
+└── manifest.json          packaging metadata (package id, version)
+
+scripts/build_audit_package.py   headless: fix-by-copy into an .apkg for review
+tests/                           the suite (conftest puts the repo root on sys.path)
+```
+
+**The dependency rule:** arrows point one way — Qt/Anki adapters depend on the
+pure core, never the reverse. `tests/test_layer_boundary.py` enforces it with
+an AST check, which is what lets the headless builder, the suite and CI run
+with no Anki installed.
+
+## The pipeline
+
+```text
+Anki collection
+   │  collection_io.deck_records()      notes of the configured deck + note type
+   ▼
+NoteRecord list ───────────────────────────────────────────────┐
+   │  matching: scene containment (time-windowed) + word groups│  all records stay
+   ▼                                                          │  eligible as sources
+plan.build_plan(records, cfg, scope_note_ids)                  │
+   │                                                            │
+   ├── scene writes    (fill / replace Source / expand Sentence)│
+   ├── word writes     (fills only)                             │
+   ├── bold repair     (markup-only)                            │
+   ├── tag union       (add_tags)                               │
+   └── reasons + warnings  ← everything it refused to do ───────┘
+   ▼
+Plan ──► preview_dialog (checkboxes, default from plan guards)
+   │        │  user accepts rows
+   │        ▼
+   │   applier.decide(plan, checked, read_state, applied_tag)
+   │        │  re-asserts every row against the live collection; per-note atomic
+   │        ▼
+   │   ApplyDecision { field_writes, tags_writes, skipped }
+   │        ▼
+   └──► collection_io.apply_decision()   writes, one update per note
+            │
+            ▼
+        run-<ts>.json   (old → applied per field, tags added/removed)
+            │
+            ▼  Tools → undo last run
+        applier.decide_undo() ──► same execute path
+```
+
+The same `Plan` feeds the audit builder (`scripts/build_audit_package.py`),
+so the `.apkg` preview and the in-Anki preview cannot disagree.
+
+## Data model
+
+- `NoteRecord` (`matching.py`) — `note_id`, `notetype_id`, `fields`, `tags`.
+  The only currency between layers; built from a collection, the headless
+  `anki` library, or a test fixture.
+- `PlannedWrite` (`plan.py`) — `note_id`, `field`, `op`, `old_value`,
+  `new_value`, `source_note_id`, `default_checked`, `badges`, `group_id`.
+  A plan is a deterministic, sorted list of these plus `reasons`
+  (`note_id → why not`) and `warnings` (free-text diagnostics).
+- `NoteState`, `ApplyDecision` (`applier.py`) — the live values read back at
+  apply time and the resulting writes/skips.
+
+`PLAN_VERSION` (currently **2**) is bumped whenever the plan's meaning changes;
+it is recorded in every audit log so old and new plans are distinguishable.
+
+## The five ops
+
+| op | may write non-empty? | guard |
+|---|---|---|
+| `fill` | no | target field is empty |
+| `replace_source` | yes | old value is an asbplayer blob URL; the URL is kept in the run log |
+| `expand_sentence` | yes | fragment recoverable from `cloze-prefix + body + suffix`; the cloze anchor occurs exactly once in the new sentence; furigana ships in the same row or the row is unchecked |
+| `bold_cloze_word` | yes (markup only) | `strip_renderable(new) == strip_renderable(old)`; the word occurs exactly once |
+| `add_tags` | yes | `new_value` tags ⊇ `old_value` tags; reserved tags excluded |
+
+`OPS_TOUCHING_NONEMPTY` in `plan.py` is the single list of ops allowed to
+overwrite content; a test asserts nothing else ever does.
+
+## Matching
+
+- **Scene.** Candidate = unenriched card (blob `Source` or a missing scene
+  field). Parent = enriched card (has `Sentence Audio`) whose normalized
+  `Sentence` *contains* the candidate's. Searched only within ±`window_days`
+  around the note id, hard-capped by `MAX_WINDOW_MS` — never widened
+  silently. Ranked by exact match, then tightest containing parent, then
+  smallest id gap; identical outcomes collapse into agreement groups
+  (`N-siblings-agree`), divergence is left for the user.
+- **Word.** Grouped by a key derived from `(Expression, reading, furigana)`
+  (`normalize.word_key`). No reading-only matching: 氏/詩/師/死 all read し.
+  Sense fields (`Definition`, `Extended definition`) need Yomitan gloss
+  provenance or 2+ sibling agreement; the singleton-kanji guard refuses
+  sense fills for `尾ける`-style Yomitan attribution artefacts.
+- **Bold repair** (`plan._bold_repair_for`). Tier 1: the `cloze-body` occurs
+  exactly once in `Sentence` → wrap it. Tier 2 (body absent, i.e. `cloze-*`
+  hold dictionary-entry text): try mixed-kana spellings derived from
+  `(Expression, reading)` (`_mixed_form_candidates`, requires at least one
+  kanji) and accept only a candidate occurring exactly once. Anything
+  ambiguous → warning, no write. Never issued when a `Sentence` expansion is
+  queued for the same note (they would fight over the field).
+
+## Apply contract
+
+`applier.py` is pure; it decides, and `collection_io.py` writes.
+
+- **Per-note atomicity.** A row is *stale* if the field no longer holds
+  `old_value` (for tags: the note lost a tag the preview relied on). One
+  stale row skips the note's *whole* row set — the case that motivated this
+  is a card edited between preview and apply, where writing the tags row but
+  not the sentence row would be worse than doing nothing.
+- **Idempotence.** A row whose target value is already present counts as
+  *already applied*; re-running a plan writes nothing and reports
+  `already applied`.
+- **Tags only grow.** The tag write is a union with the live tag set.
+- **Undo.** `build_run_log` records, per note, each `(field, prior, applied)`
+  and the tags before/after. `decide_undo` restores only fields still holding
+  the applied value, removes only the tags the run added, and reports
+  `changed since the run` for anything touched since. Undone logs are
+  renamed `undone-*.json` so the same run cannot be undone twice.
+
+## Configuration
+
+`mining_backfill/config.json` is both the shippable default and Anki's config
+default; user edits live in `meta.json` and are merged over it by
+`mw.addonManager.getConfig`. Keys: `config_version`, `deck_name`,
+`note_type_name`, `window_days`, `preview_last_n`, `min_sentence_len`,
+`min_nonspace_chars`, `scene_fill_fields`, `scene_replace_fields`,
+`scene_optin_fields`, `word_fill_fields`, `never_copy_fields`,
+`translation_autocheck`, `notes_autocheck`, `replaces_autocheck`,
+`optout_tag`, `applied_tag`.
+
+## Why the package layout
+
+Anki puts the shared `addons21/` root on `sys.path` and imports each add-on
+folder as a package. Flat top-level modules named `plan`, `normalize` or
+`report` would collide with any other add-on using the same names, and a
+repo folder name that is not a Python identifier (this repo's own name
+contains hyphens) cannot be imported at all. Hence: one valid-identifier
+package, relative imports inside it, and a symlinked dev install
+(`addons21/mining_backfill → <repo>/mining_backfill`).

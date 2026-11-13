@@ -140,10 +140,23 @@ python3 scripts/build_audit_package.py --profile-dir ~/.local/share/Anki2/User\ 
 
 After auditing: delete the audit deck and the cloned note type.
 
+## Documentation
+
+| Document | Answers |
+|---|---|
+| [`PRODUCT.md`](PRODUCT.md) | what this add-on is for, users, principles, non-goals |
+| [`MVP.md`](MVP.md) | what is actually built today, limitations, acceptance criteria |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | module map, pipeline, ops table, apply contract |
+| [`CODEBASE_GUIDE.md`](CODEBASE_GUIDE.md) | guided tour: reading order, safety ideas, where to add things |
+| [`QUALITY.md`](QUALITY.md) | the invariants that must stay true (Q-*) |
+| [`TEST_STRATEGY.md`](TEST_STRATEGY.md) | the test rings and what each one proves |
+| [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | shipped slices and the backlog |
+| [`AGENTS.md`](AGENTS.md) | operating rules for agents working in this repo |
+
 ## Development
 
 ```
-python3 -m pytest         # 83 tests; the Qt dialog test self-skips without Anki
+python3 -m pytest         # 84 tests with Anki; 83 + 1 self-skipping without
 ruff check . && ruff format --check .
 ```
 
