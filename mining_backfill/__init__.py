@@ -22,7 +22,7 @@ except ImportError:  # headless import of the package (tests, audit builder)
     gui_hooks = None
     mw = None
 
-PREVIEW_LABEL = "Mining Backfill: preview & apply…"
+PREVIEW_LABEL = "Mining Backfill: preview and apply…"
 UNDO_LABEL = "Mining Backfill: undo last run"
 
 _menu_added = False

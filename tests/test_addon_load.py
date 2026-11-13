@@ -55,7 +55,18 @@ def loaded_addon(monkeypatch):
 
 
 def test_entry_point_adds_the_tools_menu_entries(loaded_addon):
-    assert MENU_LABELS == [loaded_addon.PREVIEW_LABEL, loaded_addon.UNDO_LABEL]
+    # Pinned literally: these are the strings the user sees in the menu.
+    assert MENU_LABELS == [
+        "Mining Backfill: preview and apply…",
+        "Mining Backfill: undo last run",
+    ]
+
+
+def test_menu_labels_have_no_qt_mnemonic_ampersand(loaded_addon):
+    # Qt turns a bare "&" into an accelerator underline (and hides it), so a
+    # label like "preview & apply" would render as "preview apply" with a
+    # stray underline on the 'a'.
+    assert all("&" not in label for label in MENU_LABELS)
 
 
 def test_menu_registration_is_idempotent(loaded_addon):
