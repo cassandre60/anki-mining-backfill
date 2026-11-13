@@ -84,6 +84,14 @@ def records_from_collection(col, deck_name: str, note_type_name: str) -> list[No
     return out
 
 
+def _audit_tags(cfg: dict, is_fixed: bool) -> set[str]:
+    """Tags for one audit note: mb-audit on all, mb-audit-fixed on fixed."""
+    tags = {cfg["audit_tag"]}
+    if is_fixed:
+        tags.add(cfg.get("audit_fixed_tag", "mb-audit-fixed"))
+    return tags
+
+
 def clone_note_type(col, mid, new_name: str):
     """Clone the note type with a fresh id (apkg import must never merge)."""
     src = col.models.get(mid)
@@ -143,7 +151,7 @@ def main() -> int:
                 field_order = [f["name"] for f in col.models.get(audit_mid)["flds"]]
             for name in field_order:
                 note[name] = values.get(name, "")
-            note.tags = sorted(target.tags | {cfg["audit_tag"]})
+            note.tags = sorted(target.tags | _audit_tags(cfg, bool(writes)))
             guid = uuid.uuid5(uuid.NAMESPACE_URL, f"mb-audit:{target_id}:{RUN_TS}").hex
             note.guid = guid
             col.add_note(note, deck_id=audit_deck_id)
@@ -172,6 +180,10 @@ def main() -> int:
             "audit deck": args.deck_name,
             "audit notes created": created,
             "window_days": cfg.get("window_days"),
+            "audit tags": (
+                f"{cfg['audit_tag']} (all), "
+                f"{cfg.get('audit_fixed_tag', 'mb-audit-fixed')} (fixed notes)"
+            ),
         }
         report_md = render_markdown(plan, records_by_id, run_meta)
         report_path = out_dir / f"mining-backfill-report-{RUN_TS}.md"

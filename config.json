@@ -23,5 +23,6 @@
   "replaces_autocheck": true,
   "optout_tag": "no-autofill",
   "applied_tag": "auto-filled",
-  "audit_tag": "mb-audit"
+  "audit_tag": "mb-audit",
+  "audit_fixed_tag": "mb-audit-fixed"
 }
