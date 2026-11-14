@@ -19,7 +19,7 @@ from aqt import mw
 
 from .applier import ApplyDecision, NoteState, build_run_log, decide, decide_undo, run_log_records
 from .matching import NoteRecord
-from .plan import Plan, build_plan
+from .plan import Plan, build_plan, scope_from_selection
 
 __all__ = [
     "Preview",
@@ -61,6 +61,9 @@ class Preview:
     plan: Plan | None = None
     records_by_id: dict[int, NoteRecord] | None = None
     scope: tuple[int, ...] = ()
+    scope_label: str = ""
+    excluded: tuple[int, ...] = ()
+    missing: tuple[int, ...] = ()
     error: str | None = None
 
 
@@ -102,8 +105,26 @@ def _media_exists(col, filename: str) -> bool:
         return True  # never drop a fill because the check itself failed
 
 
-def plan_preview(col, cfg: dict, scope: list[int] | None = None) -> Preview:
-    """Build the plan for the newest ``preview_last_n`` notes of the deck."""
+def _record_for_note(note) -> NoteRecord:
+    """One live note as a :class:`NoteRecord` (used for selections outside the deck)."""
+    return NoteRecord(
+        note_id=note.id,
+        notetype_id=note.mid,
+        fields=dict(note.items()),
+        tags=frozenset(note.tags),
+    )
+
+
+def plan_preview(col, cfg: dict, scope_note_ids=None) -> Preview:
+    """Build the plan for a Browser selection, or for the newest notes.
+
+    With ``scope_note_ids`` (the notes selected in the Browser) only those
+    notes are *targets* — but every note of the configured deck stays
+    available as a source, so a selection still finds its scene parent or word
+    sibling. Selected notes from another note type are reported, not silently
+    dropped, and selected notes outside the configured deck are loaded as
+    targets too.
+    """
     deck_name = str(cfg.get("deck_name") or "")
     note_type_name = str(cfg.get("note_type_name") or "")
     records = deck_records(col, deck_name, note_type_name)
@@ -111,19 +132,60 @@ def plan_preview(col, cfg: dict, scope: list[int] | None = None) -> Preview:
         return Preview(error=f"Deck “{deck_name}” or note type “{note_type_name}” not found.")
     if not records:
         return Preview(error=f"No notes in deck “{deck_name}” use note type “{note_type_name}”.")
+    note_type_id = col.models.id_for_name(note_type_name)
+    by_id = {r.note_id: r for r in records}
 
-    records.sort(key=lambda r: r.note_id, reverse=True)
-    if scope is None:
+    excluded: list[int] = []
+    missing: list[int] = []
+    if scope_note_ids is None:
+        records.sort(key=lambda r: r.note_id, reverse=True)
         last_n = int(cfg.get("preview_last_n") or DEFAULT_PREVIEW_LAST_N)
         scope = [r.note_id for r in records[:last_n]]
-    by_id = {r.note_id: r for r in records}
+        scope_label = f"newest {len(scope)} note(s) in “{deck_name}”"
+    else:
+        wanted = list(dict.fromkeys(int(nid) for nid in scope_note_ids))
+        for note_id in wanted:
+            if note_id in by_id:
+                continue
+            try:
+                note = col.get_note(note_id)
+            except Exception:
+                missing.append(note_id)  # deleted since the Browser rendered
+                continue
+            if note.mid != note_type_id:
+                excluded.append(note_id)
+                continue
+            record = _record_for_note(note)
+            records.append(record)
+            by_id[note_id] = record
+        scope, _unknown = scope_from_selection(wanted, by_id)
+        if not scope:
+            return Preview(
+                error=(
+                    f"None of the {len(wanted)} selected note(s) use note type “{note_type_name}”."
+                ),
+                excluded=tuple(excluded),
+                missing=tuple(missing),
+                scope_label=f"selection ({len(wanted)} selected)",
+            )
+        scope_label = f"selection ({len(scope)} note(s))"
+        if missing:
+            scope_label += f" · {len(missing)} selected note(s) no longer exist"
+
     plan = build_plan(
         records,
         cfg,
         scope_note_ids=scope,
         media_exists=lambda name: _media_exists(col, name),
     )
-    return Preview(plan=plan, records_by_id=by_id, scope=tuple(scope))
+    return Preview(
+        plan=plan,
+        records_by_id=by_id,
+        scope=tuple(scope),
+        scope_label=scope_label,
+        excluded=tuple(excluded),
+        missing=tuple(missing),
+    )
 
 
 def read_state(col, note_id: int) -> NoteState:

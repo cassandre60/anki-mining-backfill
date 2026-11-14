@@ -64,10 +64,10 @@ enriched siblings. Two halves:
 
 ```bash
 ruff check . && ruff format --check .     # must be clean
-python3 -m pytest                         # 84 tests with Anki installed
+python3 -m pytest                         # 90 tests with Anki installed
 ```
 
-Then push and watch CI — it is the gate, and it runs without Anki (83 passed,
+Then push and watch CI — it is the gate, and it runs without Anki (89 passed,
 1 skipped):
 
 ```bash
@@ -104,9 +104,16 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   Verified by: `matching.py` window math and the audit build's `added-gap:*`
   badges.
 - [2026-11-14, OpenCode] The mining note type has 20 fields; the deck holds
-  ~17k notes of that type, so deck-wide record loads are fine but the preview
-  deliberately scopes to the newest `preview_last_n` (default 30).
+  ~17k notes of that type, so deck-wide record loads are fine. The Tools menu
+  deliberately scopes to the newest `preview_last_n` (default 30); the Browser
+  context menu scopes to the selection.
   Verified by: `deck_records` query timings in the integration run.
+- [2026-11-14, OpenCode] In this Anki version the Browser selection API is
+  `browser.selected_notes()` (snake_case); `selected_notes_as_cards()` /
+  legacy `selectedNotesAsCards` return cards, not notes. The context-menu hook
+  is `gui_hooks.browser_will_show_context_menu(browser, menu)`.
+  Verified by: `aqt/browser/browser.py` and `_aqt/hooks.py`, and the
+  context-menu wiring test.
 - [2026-11-14, OpenCode] Anki reads an add-on's packaged `config.json` as the
   default config and stores user edits in `meta.json`; `meta.json` is also
   what supplies the displayed name/version. `manifest.json` is for packaging

@@ -93,11 +93,20 @@ That folder also needs a `meta.json` (Anki writes one when a package is
 installed; for a manual install, copy any installed add-on's and set
 `name`, `human_version`, `package`). Then, after restarting Anki:
 
-- **Tools → "Mining Backfill: preview & apply…"** — the dialog shows the
-  newest `preview_last_n` notes of the configured deck (default 30). Every
-  proposed write is one row: note, field, the exact old → new value, its
-  source note, its badges. Rows the plan guarded arrive **unchecked**; the
-  rest are checked. Nothing is written until you press Apply.
+- **Tools → "Mining Backfill: preview and apply…"** — plans the newest
+  `preview_last_n` notes of the configured deck (default 30).
+- **In the Browser: select notes → right-click → "Mining Backfill: preview
+  and apply on selection"** — plans exactly the selected notes. Every note of
+  the configured deck still serves as a *source*, so a selection of ten cards
+  finds its scene parents and word siblings even when those are not selected.
+  Selected notes of another note type are reported and skipped; selections are
+  deduplicated and keep their order.
+
+Either entry opens the same dialog: every proposed write is one row (note,
+field, the exact old → new value, its source note, its badges). Rows the plan
+guarded arrive **unchecked**; the rest are checked. Nothing is written until
+you press Apply.
+
 - **Tools → "Mining Backfill: undo last run"** — restores exactly what the
   last apply replaced and removes exactly the tags it added.
 
@@ -156,7 +165,7 @@ After auditing: delete the audit deck and the cloned note type.
 ## Development
 
 ```
-python3 -m pytest         # 84 tests with Anki; 83 + 1 self-skipping without
+python3 -m pytest         # 90 tests with Anki; 89 + 1 self-skipping without
 ruff check . && ruff format --check .
 ```
 
@@ -172,8 +181,9 @@ broken entry point before users see "add-on failed to load".
 ## Roadmap
 
 - [x] aqt add-on shell: preview dialog, apply with re-assertion, undo log.
-- [ ] browser integration: run the plan on the selected notes instead of the
-      newest N, and render each row's real front/back HTML in the preview.
+- [x] browser integration: run the plan on the selected notes (right-click in
+      the Browse window).
+- [ ] rendered front/back HTML per row in the preview, instead of field values.
 - [ ] AnkiWeb release (yields a numeric package id and self-updates).
 - [x] CI workflow: `ruff` + the full test suite on every push and pull
   request (`.github/workflows/tests.yml`).

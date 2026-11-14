@@ -11,6 +11,7 @@ exactly what is written.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 
 from .fieldconfig import (
@@ -34,7 +35,7 @@ from .matching import (
 )
 from .normalize import kana_fold, norm_sentence_match, strip_renderable, word_key
 
-__all__ = ["PlannedWrite", "Plan", "build_plan", "PLAN_VERSION"]
+__all__ = ["PlannedWrite", "Plan", "build_plan", "PLAN_VERSION", "scope_from_selection"]
 
 PLAN_VERSION = 2
 
@@ -560,6 +561,31 @@ def _tags_write_for(
         default_checked=True,
         badges=("tags-union-never-removes",),
     )
+
+
+def scope_from_selection(
+    selected: Sequence[int], available: Iterable[int]
+) -> tuple[list[int], list[int]]:
+    """Resolve a Browser selection to ``(scope, unknown)``, order preserved.
+
+    Duplicates are dropped and the user's selection order is kept. Ids that
+    are not in ``available`` are reported separately so the caller can explain
+    them (deleted notes, another note type) instead of silently dropping them
+    from the run.
+    """
+    known = set(available)
+    seen: set[int] = set()
+    scope: list[int] = []
+    unknown: list[int] = []
+    for note_id in selected:
+        if note_id in seen:
+            continue
+        seen.add(note_id)
+        if note_id in known:
+            scope.append(note_id)
+        else:
+            unknown.append(note_id)
+    return scope, unknown
 
 
 def build_plan(

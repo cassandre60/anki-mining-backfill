@@ -24,6 +24,7 @@ except ImportError:  # headless import of the package (tests, audit builder)
 
 PREVIEW_LABEL = "Mining Backfill: preview and apply…"
 UNDO_LABEL = "Mining Backfill: undo last run"
+SELECTION_LABEL = "Mining Backfill: preview and apply on selection"
 
 _menu_added = False
 
@@ -37,16 +38,45 @@ def addon_version() -> str:
         return "?"
 
 
-def _on_preview() -> None:
+def _run_preview(scope_note_ids=None) -> None:
     from aqt.utils import showWarning
 
     try:
         from .preview_dialog import open_preview_dialog
 
-        open_preview_dialog()
+        open_preview_dialog(scope_note_ids)
     except Exception:
         print(f"Mining Backfill: preview failed\n{traceback.format_exc()}")
         showWarning("Mining Backfill: preview failed — see the debug console.")
+
+
+def _on_preview() -> None:
+    _run_preview()
+
+
+def _on_selection_preview(note_ids) -> None:
+    _run_preview(list(note_ids))
+
+
+def _on_browser_context_menu(browser, menu) -> None:
+    """Offer the selection action in the Browser's right-click menu.
+
+    Only when something is selected: the Tools entry already covers whole-deck
+    runs, and an action that does nothing is worse than no action. The ids are
+    captured now, so a selection change between opening the menu and clicking
+    cannot silently retarget the run.
+    """
+    try:
+        selected = list(browser.selected_notes())
+    except Exception:
+        return
+    if not selected:
+        return
+    try:
+        action = menu.addAction(SELECTION_LABEL)
+        action.triggered.connect(lambda _checked=False: _on_selection_preview(selected))
+    except Exception:
+        print(f"Mining Backfill: could not add the Browser action\n{traceback.format_exc()}")
 
 
 def _on_undo() -> None:
@@ -111,3 +141,4 @@ if mw is not None:
 # Anki ever loads add-ons earlier in startup.
 if gui_hooks is not None:
     gui_hooks.main_window_did_init.append(_add_menu_entries)
+    gui_hooks.browser_will_show_context_menu.append(_on_browser_context_menu)

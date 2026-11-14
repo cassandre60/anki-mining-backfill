@@ -139,7 +139,7 @@ or the answer is "pass it in".
 | add a new kind of write | `plan.py` (op + guard + badges), `report.py` label, `applier` only if the write type is new, `QUALITY.md` Q-D2 |
 | change what apply refuses | `applier.py` + `tests/test_applier.py` + `QUALITY.md` Q-A* |
 | change the dialog | `preview_dialog.py` (keep decisions out of it) |
-| change scope selection (e.g. Browser selection) | `collection_io.plan_preview` + `__init__.py` menu wiring |
+| change scope selection (Browser selection vs newest N) | `plan.scope_from_selection`, `collection_io.plan_preview`, `__init__` menu/context-menu wiring |
 | change the dry-run package | `scripts/build_audit_package.py` |
 
 ## 8. Glossary

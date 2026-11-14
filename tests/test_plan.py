@@ -15,6 +15,7 @@ from mining_backfill.plan import (
     PLAN_VERSION,
     _retarget_bold,
     build_plan,
+    scope_from_selection,
 )
 
 
@@ -321,3 +322,24 @@ def test_bold_repair_skipped_when_expansion_queued():
     plan = build_plan([PARENT, CHILD], CFG, scope_note_ids=[CHILD_ID])
     assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
     assert not any("no bold in Sentence" in w for w in plan.warnings)
+
+
+def test_scope_from_selection_preserves_order_and_dedupes():
+    # The Browser selection is a list of note ids; its order is the user's.
+    scope, unknown = scope_from_selection([3, 1, 3, 9], {1, 2, 3})
+    assert scope == [3, 1]
+    assert unknown == [9]
+
+
+def test_scope_from_selection_reports_every_unknown_id():
+    scope, unknown = scope_from_selection([9, 8], set())
+    assert scope == []
+    assert unknown == [9, 8]
+
+
+def test_explicit_scope_limits_targets_but_not_sources():
+    # What the Browser selection relies on: only the selected notes are
+    # targets, while every record stays eligible as a parent/word source.
+    plan = build_plan([PARENT, CHILD], CFG, scope_note_ids=[CHILD_ID])
+    assert {w.note_id for w in plan.writes} == {CHILD_ID}
+    assert PARENT_ID not in plan.reasons

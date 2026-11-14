@@ -34,6 +34,13 @@ below, never as silent scope creep inside a coding session.
   config defaults shipped as Anki's config, dev install documented.
 - **T6 — CI and docs.** `tests` workflow (ruff + suite, no Anki needed),
   actions pinned to current majors, and this documentation set.
+- **T7 — Browser integration.** Right-click a selection in the Browse window →
+  *preview and apply on selection*: the selection is the target set, the whole
+  configured deck stays available as sources, foreign note types and stale ids
+  are reported rather than dropped, and duplicates/order are handled in the
+  pure `plan.scope_from_selection`. Verified end to end on a copy of the real
+  collection (10 selected targets, 16 writes, exact undo; a solo child still
+  sourced its parent outside the selection).
 
 ## Slice map
 
@@ -45,13 +52,10 @@ below, never as silent scope creep inside a coding session.
 | T4 | `test_golden_scene.py` tag assertion; apkg tag census |
 | T5 | `tests/test_applier.py`, `test_addon_load.py`, Ring 3 apply + undo |
 | T6 | Green CI on every push |
+| T7 | `test_scope_from_selection_*`, `test_browser_context_menu_*`; Ring 3 selection run |
 
 ## Backlog
 
-- **B1 — Browser integration: run on the selection.** Scope the plan to the
-  notes selected in the Browser (with a "pin these notes" fallback for cards
-  outside the window), instead of only the newest `preview_last_n`. Touches
-  `collection_io.plan_preview` + a `browser_will_show` hook in `__init__.py`.
 - **B2 — Rendered card preview.** Render each row's real front/back HTML
   (Anki's card rendering API) in a side pane, so a reviewer sees the card as
   the template shows it rather than as field values.

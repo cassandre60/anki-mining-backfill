@@ -17,12 +17,31 @@ import pytest
 MENU_LABELS: list[str] = []
 
 
+class _Action:
+    """Minimal QAction stand-in that records its label and connected slot."""
+
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self.callback = None
+        self.triggered = types.SimpleNamespace(connect=self._connect)
+
+    def _connect(self, fn) -> None:
+        self.callback = fn
+
+    def fire(self) -> None:
+        assert self.callback is not None
+        self.callback(False)
+
+
 class _Menu:
+    def __init__(self) -> None:
+        self.actions: list[_Action] = []
+
     def addAction(self, label):
         MENU_LABELS.append(label)
-        return types.SimpleNamespace(
-            label=label, triggered=types.SimpleNamespace(connect=lambda _fn: None)
-        )
+        action = _Action(label)
+        self.actions.append(action)
+        return action
 
     def insertSeparator(self, _action):
         return None
@@ -42,7 +61,9 @@ def loaded_addon(monkeypatch):
 
     aqt = types.ModuleType("aqt")
     aqt.mw = types.SimpleNamespace(form=types.SimpleNamespace(menuTools=_Menu()))
-    aqt.gui_hooks = types.SimpleNamespace(main_window_did_init=[])
+    aqt.gui_hooks = types.SimpleNamespace(
+        main_window_did_init=[], browser_will_show_context_menu=[]
+    )
     utils = types.ModuleType("aqt.utils")
     utils.showInfo = lambda *a, **k: None
     utils.showWarning = lambda *a, **k: None
@@ -88,7 +109,9 @@ def test_entry_point_survives_a_missing_main_window(monkeypatch):
     _purge("mining_backfill")
     aqt = types.ModuleType("aqt")
     aqt.mw = types.SimpleNamespace(form=None)  # main window not built yet
-    aqt.gui_hooks = types.SimpleNamespace(main_window_did_init=[])
+    aqt.gui_hooks = types.SimpleNamespace(
+        main_window_did_init=[], browser_will_show_context_menu=[]
+    )
     utils = types.ModuleType("aqt.utils")
     utils.showInfo = lambda *a, **k: None
     utils.showWarning = lambda *a, **k: None
@@ -97,6 +120,36 @@ def test_entry_point_survives_a_missing_main_window(monkeypatch):
     module = importlib.import_module("mining_backfill")
     assert module._menu_added is False
     _purge("mining_backfill")
+
+
+def test_browser_context_menu_offers_the_selection_action(loaded_addon):
+    hook = sys.modules["aqt"].gui_hooks.browser_will_show_context_menu
+    assert len(hook) == 1
+    menu = _Menu()
+    hook[0](types.SimpleNamespace(selected_notes=lambda: [1, 2, 3]), menu)
+    assert [a.label for a in menu.actions] == ["Mining Backfill: preview and apply on selection"]
+
+
+def test_browser_context_menu_is_silent_without_a_selection(loaded_addon):
+    hook = sys.modules["aqt"].gui_hooks.browser_will_show_context_menu
+    menu = _Menu()
+    hook[0](types.SimpleNamespace(selected_notes=lambda: []), menu)
+    assert menu.actions == []
+    assert MENU_LABELS == [loaded_addon.PREVIEW_LABEL, loaded_addon.UNDO_LABEL]
+
+
+def test_selection_action_runs_on_the_notes_selected_when_the_menu_opened(
+    loaded_addon, monkeypatch
+):
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(loaded_addon, "_run_preview", lambda ids=None: captured.update(ids=ids))
+    hook = sys.modules["aqt"].gui_hooks.browser_will_show_context_menu
+    menu = _Menu()
+    selection = [7, 8]
+    hook[0](types.SimpleNamespace(selected_notes=lambda: selection), menu)
+    selection.clear()  # the user clicked elsewhere before choosing the action
+    menu.actions[-1].fire()
+    assert captured["ids"] == [7, 8]
 
 
 def test_preview_dialog_imports_with_real_anki():

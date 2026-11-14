@@ -65,6 +65,13 @@ Plan ──► preview_dialog (checkboxes, default from plan guards)
 The same `Plan` feeds the audit builder (`scripts/build_audit_package.py`),
 so the `.apkg` preview and the in-Anki preview cannot disagree.
 
+**Two entry points, one seam.** `build_plan` takes `scope_note_ids` — the
+notes to *fix*, while every record stays eligible as a source. The Tools menu
+passes the newest `preview_last_n` notes; the Browser context menu passes the
+selection (`plan.scope_from_selection` dedupes it and reports ids that do not
+resolve), after `collection_io.plan_preview` has loaded any selected note that
+lives outside the configured deck. Nothing else differs.
+
 ## Data model
 
 - `NoteRecord` (`matching.py`) — `note_id`, `notetype_id`, `fields`, `tags`.

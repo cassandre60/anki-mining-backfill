@@ -20,7 +20,7 @@ and moves outward only when it needs more of the real world.
 |---|---|---|---|
 | **Ring 0 — pure units** (`tests/test_normalize.py`, `test_fieldconfig.py`, `test_matching.py`, `test_plan.py`, `test_applier.py`, `test_layer_boundary.py`) | Every pure function against plain values: normalization keys, field semantics, parent ranking, plan guards and badges, the apply/undo decision matrix, and the AST-enforced layer boundary. No Anki, no Qt, no collection, no network. | Local + CI | ms |
 | **Ring 1 — golden acceptance** (`tests/test_golden_scene.py`) | The pipeline must reproduce the author's real manual fix (診察, from scene 至急) **byte-for-byte on all five fields** plus the tag union, from a frozen fixture (`tests/fixtures/golden_scene.json`). This is the anchor: if it moves, behaviour moved. | Local + CI | ms |
-| **Ring 2 — add-on load contract** (`tests/test_addon_load.py`) | Imports the package *the way Anki does* (folder name → package, stubbed `aqt`), asserting the two Tools entries are added once, the banner reports the packaged version, and a missing main window does not raise. This is the ring that catches "add-on failed to load" before a user sees it. | Local + CI | ms |
+| **Ring 2 — add-on load contract** (`tests/test_addon_load.py`) | Imports the package *the way Anki does* (folder name → package, stubbed `aqt`), asserting the two Tools entries are added once, the banner reports the packaged version, a missing main window does not raise, and the Browser context-menu action appears **only** when notes are selected (ids captured when the menu opened). Catches "add-on failed to load" and menu-wiring regressions. | Local + CI | ms |
 | **Ring 3 — real-collection verification** (ad-hoc scripts, not committed as tests) | Apply + undo against a **copy** of the real collection (every checked write lands verbatim, guarded-only notes untouched, undo restores exactly); the audit builder's `--last`/`--note-id` scope and package round-trip; the entry point against the real `aqt` package. | Author's machine, on demand | seconds–minutes |
 | **Ring 4 — CI gate** (`.github/workflows/tests.yml`) | `ruff check` + `ruff format --check` + the whole suite on every push and PR, with **no Anki installed**. Green exit code is the gate. | GitHub Actions | ~15 s |
 
@@ -54,8 +54,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **84 passed** |
-| CI / a venv without Anki | **83 passed, 1 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **90 passed** |
+| CI / a venv without Anki | **89 passed, 1 skipped** |
 
 Both are green; the difference is exactly one self-skipping import check.
 

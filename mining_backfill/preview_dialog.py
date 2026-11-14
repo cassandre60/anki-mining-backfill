@@ -61,11 +61,17 @@ class PreviewDialog(QDialog):
     """The add-on's main window: one row per planned write, checked by default
     exactly as the plan says (guarded rows arrive unchecked)."""
 
-    def __init__(self, col, cfg: dict | None = None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        col,
+        cfg: dict | None = None,
+        scope_note_ids=None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.col = col
         self.cfg = cfg if cfg is not None else load_config()
-        self.preview: Preview = plan_preview(col, self.cfg)
+        self.preview: Preview = plan_preview(col, self.cfg, scope_note_ids)
         self.applied: ApplyDecision | None = None
         self.checks: dict[tuple[int, str], bool] = {}
 
@@ -82,7 +88,7 @@ class PreviewDialog(QDialog):
         assert plan is not None
         checked = sum(1 for w in plan.writes if w.default_checked)
         summary = (
-            f"{len(self.preview.scope)} notes in scope · {len(plan.writes)} proposed writes · "
+            f"{self.preview.scope_label} · {len(plan.writes)} proposed writes · "
             f"{checked} checked by default · {len(plan.reasons)} not fixable · "
             f"{len(plan.warnings)} warning(s)"
         )
@@ -91,6 +97,12 @@ class PreviewDialog(QDialog):
         font.setBold(True)
         header.setFont(font)
         layout.addWidget(header)
+        if self.preview.excluded:
+            excluded = QLabel(
+                f"{len(self.preview.excluded)} selected note(s) use a different note type "
+                "and were skipped."
+            )
+            layout.addWidget(excluded)
 
         tabs = QTabWidget()
         tabs.addTab(self._changes_page(plan.writes), f"Proposed changes ({len(plan.writes)})")
@@ -286,12 +298,16 @@ class PreviewDialog(QDialog):
         self.accept()
 
 
-def open_preview_dialog() -> None:
-    """Menu entry point: open the dialog for the current collection."""
+def open_preview_dialog(scope_note_ids=None) -> None:
+    """Menu entry point: open the dialog for the current collection.
+
+    ``scope_note_ids`` is the Browser selection when called from the context
+    menu; omitted, the dialog plans the newest ``preview_last_n`` notes.
+    """
     from aqt import mw
 
     if mw is None or mw.col is None:
         showCritical("Open a profile first.", parent=mw)
         return
-    dialog = PreviewDialog(mw.col, load_config(), parent=mw)
+    dialog = PreviewDialog(mw.col, load_config(), scope_note_ids, parent=mw)
     dialog.exec()

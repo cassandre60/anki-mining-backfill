@@ -50,7 +50,12 @@ first, with the reason.
   the applier writes: `build_plan` output is the only input to both.
 - **Q-C5 — Opt-out is respected.** A note tagged `optout_tag` is never a
   target; it may still be a *source*, and is badged when used.
-- **Q-C6 — Nothing is written without explicit acceptance.** Rows are
+- **Q-C6 — The Browser selection is the target set, never the source set.**
+  Only selected notes are written; every note of the configured deck remains
+  eligible as a parent/word source. Duplicates are dropped, the user's order
+  is preserved, foreign note types and ids that no longer resolve are
+  reported rather than silently dropped.
+- **Q-C7 — Nothing is written without explicit acceptance.** Rows are
   `default_checked` only when every guard passed; the user still has to press
   Apply.
 
