@@ -39,29 +39,32 @@ def test_the_default_policy_is_lossless():
     assert OP_REPLACE_SOURCE in allowed_ops(replace_source=True)
 
 
-def test_a_scene_group_is_written_all_or_nothing():
-    # An expansion plus its furigana fill share a group: under the lossless
-    # policy the whole group is excluded, so the fragment never gets
-    # full-scene furigana.
+def test_the_text_unit_is_atomic_but_scene_media_is_independent():
+    # A sentence and its ruby go together; the scene's audio/picture do not
+    # depend on the text, so the lossless tier still fills them.
     plan = Plan(
         writes=(
             w(1, "Sentence", OP_EXPAND_SENTENCE, "fragment", "full scene", group="scene-1-9"),
             w(1, "Sentence (furigana)", OP_FILL, "", "ruby", group="scene-1-9"),
+            w(1, "Picture", OP_FILL, "", "<img>", group="scene-1-9"),
+            w(1, "Sentence Audio", OP_FILL, "", "[sound:a.webm]", group="scene-1-9"),
             w(2, "Sentence", OP_FILL, "", "plain fill"),
         )
     )
     lossless = select(plan, allowed_ops())
-    assert [row.note_id for row in lossless.rows] == [2]
-    assert lossless.excluded_notes == 1
+    assert [row.field for row in lossless.rows] == ["Picture", "Sentence Audio", "Sentence"]
+    assert lossless.field_notes == 2
+    assert lossless.excluded_notes == 1  # the text unit of note 1
 
     expanded = select(plan, allowed_ops(expand_sentence=True))
-    assert [row.field for row in expanded.rows] == [
-        "Sentence",
-        "Sentence (furigana)",
-        "Sentence",
-    ]
     assert expanded.notes == 2
     assert expanded.excluded_notes == 0
+    assert {row.field for row in expanded.rows if row.note_id == 1} == {
+        "Sentence",
+        "Sentence (furigana)",
+        "Picture",
+        "Sentence Audio",
+    }
 
 
 def test_one_guarded_row_sends_the_note_to_review_not_to_the_writer():
@@ -137,7 +140,21 @@ def test_review_names_the_divergence_so_the_user_knows_why():
     ]
 
 
-def test_counts_are_per_op_for_the_summary():
+def test_tag_only_notes_are_reported_separately():
+    # A note whose only eligible row is a tag update is not "fixed": the
+    # dialog must not count it among the filled notes.
+    plan = Plan(
+        writes=(
+            w(1, "Sentence", OP_EXPAND_SENTENCE, "fragment", "scene", group="scene-1-9"),
+            w(1, "tags", OP_ADD_TAGS, "yomitan", "asbplayer yomitan"),
+            w(2, "Sentence", OP_FILL, "", "text"),
+        )
+    )
+    selection = select(plan, allowed_ops())
+    assert selection.field_notes == 1
+    assert selection.tag_only_notes == 1
+    assert selection.notes == 2
+    assert {row.field for row in selection.rows if row.note_id == 1} == {"tags"}
     plan = Plan(
         writes=(
             w(1, "Sentence", OP_FILL, "", "a"),

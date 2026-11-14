@@ -58,7 +58,15 @@ SAFE_OPS = frozenset({OP_FILL, OP_BOLD_CLOZE_WORD, OP_ADD_TAGS})
 OPTIONAL_OPS = frozenset({OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE})
 
 #: Reasons that deserve a human look rather than a silent "nothing to do".
-REVIEW_REASONS = frozenset({"cloze-word-ambiguous", "cloze-word-not-in-sentence"})
+REVIEW_REASONS = frozenset(
+    {"cloze-ambiguous", "cloze-word-ambiguous", "cloze-word-not-in-sentence"}
+)
+
+#: The text unit: a sentence and its ruby are atomic (QUALITY Q-D4). Audio,
+#: picture, translation and source do not depend on the sentence text, so
+#: they are independent fills and stay eligible when the sentence rewrite is
+#: not enabled.
+TEXT_FIELDS = frozenset({"Sentence", "Sentence (furigana)"})
 
 _REASON_TEXT = {
     "no-parent-that-fills": "no enriched sibling found",
@@ -87,7 +95,18 @@ class BatchSelection:
 
     @property
     def notes(self) -> int:
+        """Notes with at least one write (tag updates included)."""
         return len({w.note_id for w in self.rows})
+
+    @property
+    def field_notes(self) -> int:
+        """Notes that actually get a field filled or rewritten."""
+        return len({w.note_id for w in self.rows if w.op != OP_ADD_TAGS})
+
+    @property
+    def tag_only_notes(self) -> int:
+        """Notes that would only gain tags — metadata, not a fix."""
+        return self.notes - self.field_notes
 
     def count_by_op(self) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -152,15 +171,24 @@ def select(plan: Plan, ops: frozenset[str]) -> BatchSelection:
                 why = "guarded row needs a human"
             review[note_id] = ReviewNote(note_id, why, labels)
             continue
-        groups: dict[str, list[PlannedWrite]] = {}
-        for write in note_rows:
-            key = write.group_id or f"row:{write.note_id}:{write.field}"
-            groups.setdefault(key, []).append(write)
-        for rows in groups.values():
-            if any(write.op not in ops for write in rows):
+
+        # The text unit (sentence + ruby) is atomic: either both may be
+        # written or neither. Everything else in the same scene contributes
+        # independent fields (audio, picture, translation, source) and is
+        # governed only by its own op tier.
+        text_rows = [write for write in note_rows if write.field in TEXT_FIELDS]
+        other_rows = [write for write in note_rows if write.field not in TEXT_FIELDS]
+
+        if text_rows:
+            if all(write.op in ops for write in text_rows):
+                selected.extend(text_rows)
+            else:
                 excluded_notes.add(note_id)
-                continue
-            selected.extend(rows)
+        for write in other_rows:
+            if write.op in ops:
+                selected.append(write)
+            else:
+                excluded_notes.add(note_id)
 
     for note_id, reason in plan.reasons.items():
         if note_id in review or reason not in REVIEW_REASONS:

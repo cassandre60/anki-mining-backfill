@@ -19,7 +19,11 @@ first, with the reason.
   `strip_renderable(new) == strip_renderable(old)`; verified per write.
 - **Q-D4 — Sentence and Sentence (furigana) are atomic.** Both come from the
   same parent; a furigana fill paired with a guarded expansion ships
-  unchecked (`stale-fragment-furigana-risk`).
+  unchecked (`stale-fragment-furigana-risk`). This *text unit* is also the
+  batch's atomic unit: a batch either rewrites the sentence together with its
+  ruby or leaves both alone. Audio, picture, translation and source do not
+  depend on the sentence text, so they remain independent fills even when the
+  sentence rewrite is not enabled.
 - **Q-D5 — Tags only grow.** The tag write is a union with the live tag set:
   `new ⊇ live ⊇ old`. Reserved tags never propagate: `marked`, `leech`,
   `optout_tag` (`no-autofill`), `applied_tag` (`auto-filled`).

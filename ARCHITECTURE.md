@@ -78,13 +78,12 @@ lives outside the configured deck. Nothing else differs.
 **Batch path.** For a large selection the plan is reduced by `batch.select`
 before anything is decided: a policy of allowed ops (lossless by default;
 Sentence expansion and Source replacement are opt-in), *note* atomicity (any
-guarded row sends the whole note to the review shortlist) and *group*
-atomicity (a scene group is written all or nothing). The dialog shows the
-resulting counts; applying runs `collection_io.apply_batch`, which preflights
-field names, forces an Anki backup, writes the undo log **before** the first
-write, applies in chunks of 100 notes, and verifies every written field and
-tag set afterwards. The single-card dialog uses the same order — preflight,
-log, write, verify — so both paths are recoverable from the moment they start.
+guarded row sends the whole note to the review shortlist) and *text-unit*
+atomicity (the sentence and its ruby are written together or not at all;
+scene audio, picture, translation and source are independent fills). The
+dialog shows the resulting counts — filled notes, tag-only notes, untouched,
+review — and the run itself: preflight, forced Anki backup, undo log **before**
+the first write, chunked apply, post-write verification.
 
 ## Data model
 

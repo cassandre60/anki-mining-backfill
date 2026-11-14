@@ -150,29 +150,44 @@ class BatchDialog(QDialog):
     def _refresh(self) -> None:
         selection = self._selection()
         by_op = selection.count_by_op()
-        fixed = ", ".join(
-            f"{by_op[op]} {label}" for op, label in _OP_SUMMARY.items() if by_op.get(op)
+        field_ops = {op: n for op, n in by_op.items() if op != "add_tags"}
+        field_label = ", ".join(
+            f"{count} {_OP_SUMMARY.get(op, op)}" for op, count in field_ops.items()
         )
-        parts = [f"{selection.notes} note(s) will be fixed" + (f": {fixed}" if fixed else ".")]
+        parts: list[str] = []
+        if selection.field_notes:
+            parts.append(
+                f"{selection.field_notes} note(s) will be filled"
+                + (f": {field_label}" if field_label else "")
+            )
+        if selection.tag_only_notes:
+            parts.append(f"{selection.tag_only_notes} note(s) only gain tags")
         if selection.untouched:
             parts.append(f"{selection.untouched} left exactly as they are")
         if selection.review:
             parts.append(f"{len(selection.review)} need your eyes")
-        self.summary.setText(" · ".join(parts) + ".")
+        self.summary.setText((" · ".join(parts) + ".") if parts else "Nothing to do.")
 
         extras = []
+        current_rows = len(selection.rows)
         if not self.expand_box.isChecked():
             with_expand = select(self.preview.plan, allowed_ops(True, self.source_box.isChecked()))
-            if with_expand.notes > selection.notes:
-                extras.append(
-                    f"expanding Sentence would fix {with_expand.notes - selection.notes} more"
-                )
+            added = len(with_expand.rows) - current_rows
+            if added > 0:
+                extra = f"expanding Sentence adds {added} more write(s)"
+                more_notes = with_expand.field_notes - selection.field_notes
+                if more_notes > 0:
+                    extra += f" and fills {more_notes} more note(s)"
+                extras.append(extra)
         if not self.source_box.isChecked():
             with_source = select(self.preview.plan, allowed_ops(self.expand_box.isChecked(), True))
-            if with_source.notes > selection.notes:
-                extras.append(
-                    f"replacing blob Source would fix {with_source.notes - selection.notes} more"
-                )
+            added = len(with_source.rows) - current_rows
+            if added > 0:
+                extra = f"replacing blob Source adds {added} more write(s)"
+                more_notes = with_source.field_notes - selection.field_notes
+                if more_notes > 0:
+                    extra += f" and fills {more_notes} more note(s)"
+                extras.append(extra)
         self.hint.setText(("Available: " + "; ".join(extras) + ".") if extras else "")
 
         if selection.review:
