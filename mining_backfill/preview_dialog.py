@@ -20,12 +20,13 @@ from aqt.qt import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QTimer,
     QVBoxLayout,
     QWidget,
 )
 from aqt.utils import showCritical, showInfo
 
-from .applier import ApplyDecision
+from .applier import ApplyDecision, run_after_editor_saved
 from .collection_io import (
     Preview,
     apply_decision,
@@ -66,13 +67,15 @@ class PreviewDialog(QDialog):
         col,
         cfg: dict | None = None,
         scope_note_ids=None,
+        browser=None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.col = col
         self.cfg = cfg if cfg is not None else load_config()
+        self.browser = browser
         self.preview: Preview = plan_preview(col, self.cfg, scope_note_ids)
-        self.applied: ApplyDecision | None = None
+        self.pending: tuple[ApplyDecision, dict] | None = None
         self.checks: dict[tuple[int, str], bool] = {}
 
         self.setWindowTitle("Mining Backfill — preview")
@@ -272,42 +275,70 @@ class PreviewDialog(QDialog):
         if not decision.row_count() and not decision.skipped:
             showInfo("Nothing to apply: no row is selected.", parent=self)
             return
-        modified = apply_decision(self.col, decision)
-        log_path = None
-        if decision.row_count():
-            meta = {
+        # Nothing is written here: this slot runs inside the dialog's nested
+        # event loop, and Anki's editor may still be saving. The decision is
+        # handed to open_preview_dialog(), which writes after this dialog has
+        # closed and the editor has flushed (see applier.run_after_editor_saved).
+        self.pending = (
+            decision,
+            {
                 "run": plan.version,
                 "deck": self.cfg.get("deck_name"),
                 "scope": list(self.preview.scope),
                 "rows": decision.row_count(),
-            }
-            log_path = write_run_log(decision, meta)
-        self.applied = decision
-        lines = [f"Applied {decision.row_count()} write(s) to {modified} note(s)."]
-        if decision.skipped:
-            by_reason: dict[str, int] = {}
-            for skipped in decision.skipped:
-                by_reason[skipped.reason] = by_reason.get(skipped.reason, 0) + 1
-            detail = ", ".join(f"{count} {reason}" for reason, count in sorted(by_reason.items()))
-            lines.append(f"Skipped {len(decision.skipped)} note(s): {detail}.")
-        if log_path is not None:
-            lines.append(
-                f"Undo available: Tools → “Mining Backfill: undo last run”.\nLog: {log_path.name}"
-            )
-        showInfo("\n".join(lines), parent=self)
+            },
+        )
         self.accept()
 
 
-def open_preview_dialog(scope_note_ids=None) -> None:
-    """Menu entry point: open the dialog for the current collection.
+def _finish_apply(col, decision: ApplyDecision, meta: dict, parent) -> None:
+    """Perform the writes and report the outcome (runs outside the dialog)."""
+    modified = apply_decision(col, decision)
+    log_path = write_run_log(decision, meta) if decision.row_count() else None
+    lines = [f"Applied {decision.row_count()} write(s) to {modified} note(s)."]
+    if decision.skipped:
+        by_reason: dict[str, int] = {}
+        for skipped in decision.skipped:
+            by_reason[skipped.reason] = by_reason.get(skipped.reason, 0) + 1
+        detail = ", ".join(f"{count} {reason}" for reason, count in sorted(by_reason.items()))
+        lines.append(f"Skipped {len(decision.skipped)} note(s): {detail}.")
+    if log_path is not None:
+        lines.append(
+            f"Undo available: Tools → “Mining Backfill: undo last run”.\nLog: {log_path.name}"
+        )
+    showInfo("\n".join(lines), parent=parent)
+
+
+def apply_pending(col, pending, browser=None, parent=None) -> None:
+    """Write the accepted rows once the host is quiescent.
+
+    The editor flush comes first so a pending Browser save cannot land on top
+    of the values this run writes. The 1.5 s safety net only fires if Anki
+    loses the save callback (torn-down editor); the write is once-only either
+    way.
+    """
+    decision, meta = pending
+    run_after_editor_saved(
+        browser,
+        lambda: _finish_apply(col, decision, meta, parent),
+        schedule=lambda once: QTimer.singleShot(1500, once),
+    )
+
+
+def open_preview_dialog(scope_note_ids=None, browser=None) -> None:
+    """Menu entry point: preview, then apply once the dialog has closed.
 
     ``scope_note_ids`` is the Browser selection when called from the context
     menu; omitted, the dialog plans the newest ``preview_last_n`` notes.
+    ``browser`` (when known) is used to flush its editor before writing, so a
+    pending editor save cannot overwrite this run.
     """
     from aqt import mw
 
     if mw is None or mw.col is None:
         showCritical("Open a profile first.", parent=mw)
         return
-    dialog = PreviewDialog(mw.col, load_config(), scope_note_ids, parent=mw)
+    dialog = PreviewDialog(mw.col, load_config(), scope_note_ids, browser=browser, parent=mw)
     dialog.exec()
+    if dialog.pending is not None:
+        apply_pending(mw.col, dialog.pending, browser=browser, parent=mw)

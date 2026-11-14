@@ -142,14 +142,22 @@ def test_selection_action_runs_on_the_notes_selected_when_the_menu_opened(
     loaded_addon, monkeypatch
 ):
     captured: dict[str, object] = {}
-    monkeypatch.setattr(loaded_addon, "_run_preview", lambda ids=None: captured.update(ids=ids))
+
+    def fake_run_preview(ids=None, browser=None):
+        captured.update(ids=ids, browser=browser)
+
+    monkeypatch.setattr(loaded_addon, "_run_preview", fake_run_preview)
     hook = sys.modules["aqt"].gui_hooks.browser_will_show_context_menu
     menu = _Menu()
     selection = [7, 8]
-    hook[0](types.SimpleNamespace(selected_notes=lambda: selection), menu)
+    browser = types.SimpleNamespace(selected_notes=lambda: selection)
+    hook[0](browser, menu)
     selection.clear()  # the user clicked elsewhere before choosing the action
     menu.actions[-1].fire()
     assert captured["ids"] == [7, 8]
+    # The browser instance travels with the run so its editor can be flushed
+    # before the writes land.
+    assert captured["browser"] is browser
 
 
 def test_preview_dialog_imports_with_real_anki():

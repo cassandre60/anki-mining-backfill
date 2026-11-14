@@ -38,13 +38,13 @@ def addon_version() -> str:
         return "?"
 
 
-def _run_preview(scope_note_ids=None) -> None:
+def _run_preview(scope_note_ids=None, browser=None) -> None:
     from aqt.utils import showWarning
 
     try:
         from .preview_dialog import open_preview_dialog
 
-        open_preview_dialog(scope_note_ids)
+        open_preview_dialog(scope_note_ids, browser=browser)
     except Exception:
         print(f"Mining Backfill: preview failed\n{traceback.format_exc()}")
         showWarning("Mining Backfill: preview failed — see the debug console.")
@@ -54,8 +54,8 @@ def _on_preview() -> None:
     _run_preview()
 
 
-def _on_selection_preview(note_ids) -> None:
-    _run_preview(list(note_ids))
+def _on_selection_preview(note_ids, browser=None) -> None:
+    _run_preview(list(note_ids), browser=browser)
 
 
 def _on_browser_context_menu(browser, menu) -> None:
@@ -74,7 +74,7 @@ def _on_browser_context_menu(browser, menu) -> None:
         return
     try:
         action = menu.addAction(SELECTION_LABEL)
-        action.triggered.connect(lambda _checked=False: _on_selection_preview(selected))
+        action.triggered.connect(lambda _checked=False: _on_selection_preview(selected, browser))
     except Exception:
         print(f"Mining Backfill: could not add the Browser action\n{traceback.format_exc()}")
 

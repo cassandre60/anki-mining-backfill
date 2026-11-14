@@ -122,6 +122,10 @@ Apply is safe by construction:
   tags involved. Undo restores only notes whose values are still exactly
   what the run wrote; anything edited since is reported and left alone.
 - **The tag op only adds**, so tags gained since the preview survive.
+- **Nothing is written inside the dialog's event loop.** Apply closes the
+  dialog, then writes once the Browser's editor has saved any pending edits —
+  so an in-flight editor save cannot overwrite the run, and the write does not
+  interleave with Anki's window teardown.
 
 ## The audit package
 
@@ -165,7 +169,7 @@ After auditing: delete the audit deck and the cloned note type.
 ## Development
 
 ```
-python3 -m pytest         # 90 tests with Anki; 89 + 1 self-skipping without
+python3 -m pytest         # 95 tests with Anki; 94 + 1 self-skipping without
 ruff check . && ruff format --check .
 ```
 

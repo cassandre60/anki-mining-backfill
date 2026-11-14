@@ -21,7 +21,7 @@ and moves outward only when it needs more of the real world.
 | **Ring 0 — pure units** (`tests/test_normalize.py`, `test_fieldconfig.py`, `test_matching.py`, `test_plan.py`, `test_applier.py`, `test_layer_boundary.py`) | Every pure function against plain values: normalization keys, field semantics, parent ranking, plan guards and badges, the apply/undo decision matrix, and the AST-enforced layer boundary. No Anki, no Qt, no collection, no network. | Local + CI | ms |
 | **Ring 1 — golden acceptance** (`tests/test_golden_scene.py`) | The pipeline must reproduce the author's real manual fix (診察, from scene 至急) **byte-for-byte on all five fields** plus the tag union, from a frozen fixture (`tests/fixtures/golden_scene.json`). This is the anchor: if it moves, behaviour moved. | Local + CI | ms |
 | **Ring 2 — add-on load contract** (`tests/test_addon_load.py`) | Imports the package *the way Anki does* (folder name → package, stubbed `aqt`), asserting the two Tools entries are added once, the banner reports the packaged version, a missing main window does not raise, and the Browser context-menu action appears **only** when notes are selected (ids captured when the menu opened). Catches "add-on failed to load" and menu-wiring regressions. | Local + CI | ms |
-| **Ring 3 — real-collection verification** (ad-hoc scripts, not committed as tests) | Apply + undo against a **copy** of the real collection (every checked write lands verbatim, guarded-only notes untouched, undo restores exactly); the audit builder's `--last`/`--note-id` scope and package round-trip; the entry point against the real `aqt` package. | Author's machine, on demand | seconds–minutes |
+| **Ring 3 — real-collection verification** (ad-hoc scripts, not committed as tests) | Apply + undo against a **copy** of the real collection (every checked write lands verbatim, guarded-only notes untouched, undo restores exactly); the audit builder's `--last`/`--note-id` scope and package round-trip; the entry point against the real `aqt` package. A live-GUI pass is manual: apply from the Browser selection, then close the Browser and quit Anki, watching the debug console — Anki's legacy-editor teardown has its own known crash (see `AGENTS.md`), and no headless harness here reproduces the Browser's save/close path reliably. | Author's machine, on demand | seconds–minutes |
 | **Ring 4 — CI gate** (`.github/workflows/tests.yml`) | `ruff check` + `ruff format --check` + the whole suite on every push and PR, with **no Anki installed**. Green exit code is the gate. | GitHub Actions | ~15 s |
 
 Ring 3 exists because Rings 0–2 cannot see Anki's own API behaviour. It is
@@ -36,6 +36,10 @@ not have and must never be given.
   matter: one stale row skipping a whole note, re-run detection, tags-only-add
   with a tag gained since preview, `applied_tag` on written notes, undo of
   edited notes, idempotent undo.
+- **Write timing** is pinned in the same file with fake editors: writes wait
+  for `call_after_note_saved`, a doubled editor callback writes once, a lost
+  callback is covered by the scheduler safety net, and a raising or missing
+  editor still lets the run through.
 - The **UI** (`preview_dialog.py`) is not unit-tested; its import is checked
   in Ring 2 and its behaviour is exercised by Ring 3's apply run. Anything
   decision-shaped in it is delegated to `applier.py`/`plan.py` precisely so it
@@ -54,8 +58,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **90 passed** |
-| CI / a venv without Anki | **89 passed, 1 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **95 passed** |
+| CI / a venv without Anki | **94 passed, 1 skipped** |
 
 Both are green; the difference is exactly one self-skipping import check.
 

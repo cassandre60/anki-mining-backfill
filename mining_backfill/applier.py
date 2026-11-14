@@ -20,6 +20,7 @@ Rules enforced here:
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -37,6 +38,7 @@ __all__ = [
     "decide",
     "decide_undo",
     "run_log_records",
+    "run_after_editor_saved",
 ]
 
 #: Op label for writes that put a previous value back during an undo.
@@ -115,6 +117,54 @@ def _is_stale(write: PlannedWrite, state: NoteState) -> bool:
         # preview assumed; tags gained since then are kept, not removed.
         return not set(write.old_value.split()) <= set(state.tags)
     return state.fields.get(write.field, "") != write.old_value
+
+
+def run_after_editor_saved(
+    browser, run: Callable[[], None], schedule: Callable[[Callable[[], None]], None] | None = None
+) -> None:
+    """Run ``run`` only after the host's note editor has saved pending changes.
+
+    Anki's Browser editor saves asynchronously: ``editor.call_after_note_saved``
+    queues a save and invokes the callback afterwards. Writing the collection
+    while such a save is in flight lets a stale editor save overwrite what we
+    just wrote, and it interleaves our writes with Anki's own save/close
+    machinery — the known legacy-editor teardown crash
+    (``editor_legacy.cleanup`` → ``set_note(None)`` → ``widget.hide()`` on an
+    already-deleted widget, reported from Anki's own frames).
+
+    Duck-typed and headless: any object exposing ``call_after_note_saved`` is
+    treated as an editor. If there is no editor, the method is missing, or the
+    flush raises, ``run`` happens immediately — the user pressed Apply, so a
+    best-effort write beats a silent no-op.
+
+    Anki delivers the save callback through an async webview eval, so a torn
+    down editor can drop it. ``schedule`` (e.g. ``QTimer.singleShot``) lets the
+    caller arm a safety net: ``run`` executes at most once, whichever path
+    arrives first.
+    """
+    finished = False
+
+    def once() -> None:
+        nonlocal finished
+        if finished:
+            return
+        finished = True
+        run()
+
+    editor = getattr(browser, "editor", None) if browser is not None else None
+    flush = getattr(editor, "call_after_note_saved", None)
+    if callable(flush):
+        try:
+            flush(once)
+        except Exception as exc:
+            print(f"Mining Backfill: could not flush the editor first: {exc}")
+            once()
+            return
+        if schedule is not None:
+            with contextlib.suppress(Exception):
+                schedule(once)
+        return
+    once()
 
 
 def decide(

@@ -140,6 +140,11 @@ overwrite content; a test asserts nothing else ever does.
   the applied value, removes only the tags the run added, and reports
   `changed since the run` for anything touched since. Undone logs are
   renamed `undone-*.json` so the same run cannot be undone twice.
+- **Timing.** The dialog never writes: Apply records the decision and closes,
+  then `run_after_editor_saved` flushes an open Browser editor and writes
+  afterwards (with an idempotent safety net if the editor's async save
+  callback is lost). Writes therefore never run inside a nested event loop,
+  and a pending editor save cannot land on top of them.
 
 ## Configuration
 

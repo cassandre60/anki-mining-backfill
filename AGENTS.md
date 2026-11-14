@@ -64,10 +64,10 @@ enriched siblings. Two halves:
 
 ```bash
 ruff check . && ruff format --check .     # must be clean
-python3 -m pytest                         # 90 tests with Anki installed
+python3 -m pytest                         # 95 tests with Anki installed
 ```
 
-Then push and watch CI — it is the gate, and it runs without Anki (89 passed,
+Then push and watch CI — it is the gate, and it runs without Anki (94 passed,
 1 skipped):
 
 ```bash
@@ -144,6 +144,18 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   package is therefore `mining_backfill`, and the repo may be called anything.
   Verified by: `aqt/addons.py` `allAddons`/`loadAddons` and the symlinked dev
   install loading successfully.
+- [2026-11-14, OpenCode] Anki 26.09.4 can crash on Browser close with
+  `RuntimeError: wrapped C/C++ object of type QWidget has been deleted` in
+  `editor_legacy.cleanup → set_note(None) → widget.hide()`. The frames are all
+  Anki's own: `Browser.closeWithCallback` is queued through
+  `call_after_note_saved`, and if the window is torn down before the queued
+  callback fires, cleanup runs against a deleted widget. Add-ons cannot fix
+  Anki's teardown, but writing notes from inside a modal dialog while the
+  Browser editor has a save in flight puts us in that window — so writes now
+  happen after the dialog closes and after the editor flushes
+  (`applier.run_after_editor_saved`, QUALITY Q-A5).
+  Verified by: the pasted traceback (no Mining Backfill frame) and
+  `tests/test_applier.py` timing tests.
 - [2026-11-14, OpenCode] Qt treats a bare `&` in a menu label as a mnemonic,
   so `preview & apply` renders as `preview apply` with a stray underline.
   Verified by: pinning the literal menu strings in `test_addon_load.py`.

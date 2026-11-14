@@ -72,6 +72,14 @@ first, with the reason.
   idempotent.
 - **Q-A4 — One collection update per note**, so Anki's own undo entry stays
   meaningful.
+- **Q-A5 — Writes happen only when the host is quiescent.** The accepted rows
+  are written *after* the preview dialog has closed (never inside its nested
+  event loop) and, when a Browser is open, only after that Browser's editor
+  has saved pending edits (`applier.run_after_editor_saved`). A lost editor
+  callback is covered by an idempotent safety net, so an apply is never
+  silently dropped and never written twice. This is what keeps a pending
+  editor save from landing on top of the run — and away from Anki's own
+  legacy-editor teardown race.
 
 ## System
 

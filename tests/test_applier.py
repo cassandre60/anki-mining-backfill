@@ -6,11 +6,14 @@ they are pinned here with a dict-backed fake collection — no Anki needed.
 
 from __future__ import annotations
 
+import types
+
 from mining_backfill.applier import (
     NoteState,
     build_run_log,
     decide,
     decide_undo,
+    run_after_editor_saved,
     run_log_records,
 )
 from mining_backfill.plan import (
@@ -191,3 +194,74 @@ def test_run_log_round_trips_through_json():
     assert records[0]["tags_applied"] == ["asbplayer", "yomitan"]
     assert records[0]["tags_prior"] == ["yomitan"]
     assert run_log_records({}) == []
+
+
+# --- write timing (the host's editor must save before we write) ---------
+
+
+class _FakeEditor:
+    """Stand-in for a Browser editor; records the callback instead of saving."""
+
+    def __init__(self, raise_on_call: bool = False) -> None:
+        self.callback = None
+        self.calls = 0
+        self.raise_on_call = raise_on_call
+
+    def call_after_note_saved(self, callback) -> None:
+        self.calls += 1
+        if self.raise_on_call:
+            raise RuntimeError("editor is gone")
+        self.callback = callback
+
+
+def test_writes_wait_for_the_editor_to_save():
+    events: list[str] = []
+    editor = _FakeEditor()
+    run_after_editor_saved(types.SimpleNamespace(editor=editor), lambda: events.append("write"))
+    assert events == []  # nothing is written while a save is still pending
+    editor.callback()
+    assert events == ["write"]
+
+
+def test_a_doubled_editor_callback_still_writes_once():
+    events: list[str] = []
+    editor = _FakeEditor()
+    run_after_editor_saved(types.SimpleNamespace(editor=editor), lambda: events.append("write"))
+    editor.callback()
+    editor.callback()  # some editors invoke their callback more than once
+    assert events == ["write"]
+
+
+def test_writes_run_immediately_without_an_editor():
+    events: list[str] = []
+    for browser in (
+        None,
+        types.SimpleNamespace(),
+        types.SimpleNamespace(editor=object()),
+    ):
+        run_after_editor_saved(browser, lambda: events.append("write"))
+    assert events == ["write", "write", "write"]
+
+
+def test_writes_still_run_when_the_editor_flush_raises():
+    events: list[str] = []
+    editor = _FakeEditor(raise_on_call=True)
+    run_after_editor_saved(types.SimpleNamespace(editor=editor), lambda: events.append("write"))
+    # The user pressed Apply: a broken editor must not swallow the run.
+    assert events == ["write"]
+
+
+def test_a_lost_editor_callback_cannot_swallow_the_run():
+    events: list[str] = []
+    scheduled: list = []
+    editor = _FakeEditor()
+    run_after_editor_saved(
+        types.SimpleNamespace(editor=editor),
+        lambda: events.append("write"),
+        schedule=scheduled.append,
+    )
+    assert events == []  # still waiting for the editor to save
+    scheduled[0]()  # safety net fires: Anki lost the save callback
+    assert events == ["write"]
+    editor.callback()  # a late save callback must not write a second time
+    assert events == ["write"]
