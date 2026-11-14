@@ -13,9 +13,12 @@ mining_backfill/                 the add-on (Anki imports this folder as a packa
 ├── plan.py          pure   records + config → Plan (PlannedWrite rows + reasons)
 ├── report.py        pure   Plan → Markdown run report
 ├── applier.py       pure   Plan + live values → ApplyDecision (writes / skips)
+│                           + write timing, chunking, verification, undo
+├── batch.py         pure   batch policy: tiers, group/note atomicity, review
 ├── collection_io.py  Anki  read the collection, execute a decision, run logs
-├── preview_dialog.py  Qt   the dialog: rows, checkboxes, tabs, Apply
-├── __init__.py        Qt  entry point: two Tools actions
+├── preview_dialog.py  Qt   per-row dialog: rows, checkboxes, tabs, Apply
+├── batch_dialog.py    Qt   counts-only dialog: tiers, review shortlist, dry run
+├── __init__.py        Qt   entry point: Tools actions + Browser context menu
 ├── config.json            defaults (Anki merges user edits from meta.json)
 └── manifest.json          packaging metadata (package id, version)
 
@@ -71,6 +74,17 @@ passes the newest `preview_last_n` notes; the Browser context menu passes the
 selection (`plan.scope_from_selection` dedupes it and reports ids that do not
 resolve), after `collection_io.plan_preview` has loaded any selected note that
 lives outside the configured deck. Nothing else differs.
+
+**Batch path.** For a large selection the plan is reduced by `batch.select`
+before anything is decided: a policy of allowed ops (lossless by default;
+Sentence expansion and Source replacement are opt-in), *note* atomicity (any
+guarded row sends the whole note to the review shortlist) and *group*
+atomicity (a scene group is written all or nothing). The dialog shows the
+resulting counts; applying runs `collection_io.apply_batch`, which preflights
+field names, forces an Anki backup, writes the undo log **before** the first
+write, applies in chunks of 100 notes, and verifies every written field and
+tag set afterwards. The single-card dialog uses the same order — preflight,
+log, write, verify — so both paths are recoverable from the moment they start.
 
 ## Data model
 

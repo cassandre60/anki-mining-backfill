@@ -37,8 +37,10 @@ __all__ = [
     "build_run_log",
     "decide",
     "decide_undo",
+    "decision_subset",
     "run_log_records",
     "run_after_editor_saved",
+    "verify_writes",
 ]
 
 #: Op label for writes that put a previous value back during an undo.
@@ -105,9 +107,24 @@ def _row_label(write: PlannedWrite) -> str:
     return f"{write.field}:{write.op}"
 
 
+def _tag_key(tags: Iterable[str]) -> frozenset[str]:
+    """Tags compare case-insensitively, like Anki's own tag matching."""
+    return frozenset(tag.lower() for tag in tags)
+
+
+def _merge_tags(base: Iterable[str], extra: Iterable[str]) -> set[str]:
+    """Union of tags keeping the first spelling seen for each (case-folded) tag."""
+    merged: dict[str, str] = {}
+    for tag in base:
+        merged.setdefault(tag.lower(), tag)
+    for tag in extra:
+        merged.setdefault(tag.lower(), tag)
+    return set(merged.values())
+
+
 def _already_applied(write: PlannedWrite, state: NoteState) -> bool:
     if write.op == OP_ADD_TAGS:
-        return set(write.new_value.split()) <= set(state.tags)
+        return _tag_key(write.new_value.split()) <= _tag_key(state.tags)
     return state.fields.get(write.field, "") == write.new_value
 
 
@@ -115,7 +132,7 @@ def _is_stale(write: PlannedWrite, state: NoteState) -> bool:
     if write.op == OP_ADD_TAGS:
         # Adding is safe as long as the note still carries the tags the
         # preview assumed; tags gained since then are kept, not removed.
-        return not set(write.old_value.split()) <= set(state.tags)
+        return not _tag_key(write.old_value.split()) <= _tag_key(state.tags)
     return state.fields.get(write.field, "") != write.old_value
 
 
@@ -228,10 +245,10 @@ def decide(
         final_tags = set(state.tags)
         for write in pending:
             if write.op == OP_ADD_TAGS:
-                final_tags |= set(write.new_value.split())
+                final_tags = _merge_tags(final_tags, write.new_value.split())
         if applied_tag:
-            final_tags.add(applied_tag)
-        if final_tags != set(state.tags):
+            final_tags = _merge_tags(final_tags, [applied_tag])
+        if _tag_key(final_tags) != _tag_key(state.tags):
             decision.tags_writes.append(
                 TagsWrite(
                     note_id=note_id,
@@ -241,6 +258,42 @@ def decide(
                 )
             )
     return decision
+
+
+def decision_subset(decision: ApplyDecision, note_ids: Iterable[int]) -> ApplyDecision:
+    """The part of a decision that touches ``note_ids`` (for chunked writes)."""
+    wanted = set(note_ids)
+    return ApplyDecision(
+        field_writes=[w for w in decision.field_writes if w.note_id in wanted],
+        tags_writes=[w for w in decision.tags_writes if w.note_id in wanted],
+        skipped=[s for s in decision.skipped if s.note_id in wanted],
+    )
+
+
+def verify_writes(decision: ApplyDecision, read_state: StateReader) -> list[str]:
+    """Re-read the collection and report any write that did not land verbatim.
+
+    A bulk run needs proof, not faith: the caller applies, then asks the
+    collection what it actually holds. Empty list means every field and tag
+    set matches the decision exactly.
+    """
+    problems: list[str] = []
+    by_note: dict[int, list[FieldWrite]] = {}
+    for write in decision.field_writes:
+        by_note.setdefault(write.note_id, []).append(write)
+    tags_by_note = {write.note_id: write for write in decision.tags_writes}
+    for note_id in sorted(set(by_note) | set(tags_by_note)):
+        state = read_state(note_id)
+        for write in by_note.get(note_id, []):
+            actual = state.fields.get(write.field, "")
+            if actual != write.new_value:
+                problems.append(f"note {note_id} field {write.field}: value did not land")
+        tags_write = tags_by_note.get(note_id)
+        if tags_write is not None and _tag_key(state.tags) != _tag_key(tags_write.new_tags):
+            problems.append(
+                f"note {note_id} tags: {sorted(state.tags)} != {sorted(tags_write.new_tags)}"
+            )
+    return problems
 
 
 def build_run_log(decision: ApplyDecision, meta: Mapping[str, object]) -> dict:
@@ -300,15 +353,17 @@ def decide_undo(records: Iterable[Mapping[str, object]], read_state: StateReader
                 continue
             restores.append(FieldWrite(note_id, field_name, OP_RESTORE, applied, prior))
 
-        to_remove = set(record.get("tags_applied", [])) - set(record.get("tags_prior", []))
-        remaining_tags = set(state.tags) - to_remove
+        to_remove = _tag_key(record.get("tags_applied", [])) - _tag_key(
+            record.get("tags_prior", [])
+        )
+        remaining_tags = {tag for tag in state.tags if tag.lower() not in to_remove}
 
         if stale:
             decision.skipped.append(SkippedNote(note_id, "changed since the run", tuple(stale)))
             continue
 
         decision.field_writes.extend(restores)
-        if remaining_tags != set(state.tags):
+        if _tag_key(remaining_tags) != _tag_key(state.tags):
             decision.tags_writes.append(
                 TagsWrite(
                     note_id=note_id,

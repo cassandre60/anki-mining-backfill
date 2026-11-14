@@ -18,7 +18,7 @@ and moves outward only when it needs more of the real world.
 
 | Ring | What | Where it runs | Cost |
 |---|---|---|---|
-| **Ring 0 — pure units** (`tests/test_normalize.py`, `test_fieldconfig.py`, `test_matching.py`, `test_plan.py`, `test_applier.py`, `test_layer_boundary.py`) | Every pure function against plain values: normalization keys, field semantics, parent ranking, plan guards and badges, the apply/undo decision matrix, and the AST-enforced layer boundary. No Anki, no Qt, no collection, no network. | Local + CI | ms |
+| **Ring 0 — pure units** (`tests/test_normalize.py`, `test_fieldconfig.py`, `test_matching.py`, `test_plan.py`, `test_applier.py`, `test_batch.py`, `test_invariants.py`, `test_layer_boundary.py`) | Every pure function against plain values: normalization keys, field semantics, parent ranking, plan guards and badges, the apply/undo decision matrix, the batch policy (tiers, group and note atomicity, review shortlist), **property-based invariants** over generated plans (every write's precondition holds, apply→undo restores exactly, re-running is a no-op, an edited field aborts its note), and the AST-enforced layer boundary. No Anki, no Qt, no collection, no network. | Local + CI | ms–2 s |
 | **Ring 1 — golden acceptance** (`tests/test_golden_scene.py`) | The pipeline must reproduce the author's real manual fix (診察, from scene 至急) **byte-for-byte on all five fields** plus the tag union, from a frozen fixture (`tests/fixtures/golden_scene.json`). This is the anchor: if it moves, behaviour moved. | Local + CI | ms |
 | **Ring 2 — add-on load contract** (`tests/test_addon_load.py`) | Imports the package *the way Anki does* (folder name → package, stubbed `aqt`), asserting the two Tools entries are added once, the banner reports the packaged version, a missing main window does not raise, and the Browser context-menu action appears **only** when notes are selected (ids captured when the menu opened). Catches "add-on failed to load" and menu-wiring regressions. | Local + CI | ms |
 | **Ring 3 — real-collection verification** (ad-hoc scripts, not committed as tests) | Apply + undo against a **copy** of the real collection (every checked write lands verbatim, guarded-only notes untouched, undo restores exactly); the audit builder's `--last`/`--note-id` scope and package round-trip; the entry point against the real `aqt` package. A live-GUI pass is manual: apply from the Browser selection, then close the Browser and quit Anki, watching the debug console — Anki's legacy-editor teardown has its own known crash (see `AGENTS.md`), and no headless harness here reproduces the Browser's save/close path reliably. | Author's machine, on demand | seconds–minutes |
@@ -40,6 +40,18 @@ not have and must never be given.
   for `call_after_note_saved`, a doubled editor callback writes once, a lost
   callback is covered by the scheduler safety net, and a raising or missing
   editor still lets the run through.
+- **Batch policy** lives in `tests/test_batch.py`: the default tier is
+  lossless, a scene group is all-or-nothing, a note with any guarded row goes
+  to review whole, complete notes count as untouched, and optional replaces
+  are counted separately.
+- **Engine invariants** live in `tests/test_invariants.py` and are generated
+  with Hypothesis: every write's precondition holds at decision time,
+  applying then undoing restores the exact prior state, re-running a plan
+  after apply writes nothing, and editing one field aborts that note.
+- **Scale proof** (Ring 3): 1000 selected notes on a copy of the real
+  collection — plan 2.2 s, apply 1.5 s with a backup, verification clean, the
+  793 untouched notes byte-identical, re-run a no-op, undo restoring all 1000
+  exactly.
 - The **UI** (`preview_dialog.py`) is not unit-tested; its import is checked
   in Ring 2 and its behaviour is exercised by Ring 3's apply run. Anything
   decision-shaped in it is delegated to `applier.py`/`plan.py` precisely so it
@@ -58,8 +70,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **95 passed** |
-| CI / a venv without Anki | **94 passed, 1 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **107 passed** |
+| CI / a venv without Anki | **105 passed, 2 skipped** |
 
 Both are green; the difference is exactly one self-skipping import check.
 

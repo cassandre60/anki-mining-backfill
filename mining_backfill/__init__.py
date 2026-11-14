@@ -25,6 +25,7 @@ except ImportError:  # headless import of the package (tests, audit builder)
 PREVIEW_LABEL = "Mining Backfill: preview and apply…"
 UNDO_LABEL = "Mining Backfill: undo last run"
 SELECTION_LABEL = "Mining Backfill: preview and apply on selection"
+BATCH_LABEL = "Mining Backfill: batch-fix selection…"
 
 _menu_added = False
 
@@ -58,6 +59,18 @@ def _on_selection_preview(note_ids, browser=None) -> None:
     _run_preview(list(note_ids), browser=browser)
 
 
+def _on_batch_selection(note_ids, browser=None) -> None:
+    from aqt.utils import showWarning
+
+    try:
+        from .batch_dialog import open_batch_dialog
+
+        open_batch_dialog(list(note_ids), browser=browser)
+    except Exception:
+        print(f"Mining Backfill: batch failed\n{traceback.format_exc()}")
+        showWarning("Mining Backfill: batch failed — see the debug console.")
+
+
 def _on_browser_context_menu(browser, menu) -> None:
     """Offer the selection action in the Browser's right-click menu.
 
@@ -75,6 +88,10 @@ def _on_browser_context_menu(browser, menu) -> None:
     try:
         action = menu.addAction(SELECTION_LABEL)
         action.triggered.connect(lambda _checked=False: _on_selection_preview(selected, browser))
+        batch_action = menu.addAction(BATCH_LABEL)
+        batch_action.triggered.connect(
+            lambda _checked=False: _on_batch_selection(selected, browser)
+        )
     except Exception:
         print(f"Mining Backfill: could not add the Browser action\n{traceback.format_exc()}")
 

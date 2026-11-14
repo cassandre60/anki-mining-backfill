@@ -41,6 +41,17 @@ below, never as silent scope creep inside a coding session.
   pure `plan.scope_from_selection`. Verified end to end on a copy of the real
   collection (10 selected targets, 16 writes, exact undo; a solo child still
   sourced its parent outside the selection).
+- **T8 — Batch mode for hundreds/thousands of notes.** A counts-only dialog
+  with a lossless-by-default policy (`batch.py`), opt-in Sentence/Source
+  tiers, note- and group-atomic selection, and a review shortlist instead of
+  a thousand checkboxes. The run itself: Anki backup first (abort on failure),
+  undo log written before the first write, chunked apply, post-write
+  verification, and a dry-run report. Hardening shipped with it: distinct
+  note rows (a note with several cards appeared twice), case-insensitive tag
+  handling, unique undo-log names, field preflight, per-note write failures
+  reported instead of aborting, and a log-first single-run path. Verified on
+  1000 real notes: 2.2 s plan, 1.5 s apply, verification clean, 793 untouched
+  notes byte-identical, re-run a no-op, undo exact.
 
 ## Slice map
 
@@ -53,6 +64,7 @@ below, never as silent scope creep inside a coding session.
 | T5 | `tests/test_applier.py`, `test_addon_load.py`, Ring 3 apply + undo |
 | T6 | Green CI on every push |
 | T7 | `test_scope_from_selection_*`, `test_browser_context_menu_*`; Ring 3 selection run |
+| T8 | `test_batch.py`, `test_invariants.py` (Hypothesis); Ring 3 1000-note run |
 
 ## Backlog
 

@@ -64,8 +64,8 @@ def records_from_collection(col, deck_name: str, note_type_name: str) -> list[No
     did = col.decks.id(deck_name)
     mid = col.models.id_for_name(note_type_name)
     rows = col.db.execute(
-        "select n.id, n.mid, n.flds, n.tags from cards c join notes n on n.id=c.nid "
-        "where c.did=? and n.mid=?",
+        "select distinct n.id, n.mid, n.flds, n.tags from cards c "
+        "join notes n on n.id=c.nid where c.did=? and n.mid=?",
         did,
         mid,
     )

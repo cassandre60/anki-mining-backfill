@@ -11,13 +11,22 @@ read, and :func:`apply_decision` only after the user accepted rows.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 from aqt import mw
 
-from .applier import ApplyDecision, NoteState, build_run_log, decide, decide_undo, run_log_records
+from .applier import (
+    ApplyDecision,
+    NoteState,
+    build_run_log,
+    decide,
+    decide_undo,
+    decision_subset,
+    run_log_records,
+    verify_writes,
+)
 from .matching import NoteRecord
 from .plan import Plan, build_plan, scope_from_selection
 
@@ -78,8 +87,8 @@ def deck_records(col, deck_name: str, note_type_name: str) -> list[NoteRecord] |
     if deck_id is None or note_type_id is None:
         return None
     rows = col.db.execute(
-        "select n.id, n.mid, n.flds, n.tags from cards c join notes n on n.id=c.nid "
-        "where c.did=? and n.mid=?",
+        "select distinct n.id, n.mid, n.flds, n.tags from cards c "
+        "join notes n on n.id=c.nid where c.did=? and n.mid=?",
         deck_id,
         note_type_id,
     )
@@ -206,29 +215,45 @@ def build_decision(col, plan: Plan, checked, cfg: dict) -> ApplyDecision:
     )
 
 
+def build_batch_decision(col, plan: Plan, rows, cfg: dict) -> ApplyDecision:
+    """Re-assert a batch selection: one ``(note_id, field)`` key per row."""
+    return build_decision(col, plan, [(w.note_id, w.field) for w in rows], cfg)
+
+
 def apply_decision(col, decision: ApplyDecision) -> int:
     """Perform the writes. Returns the number of notes modified.
 
     One ``update_note`` per note, so Anki's own undo entry stays meaningful.
+    A note that vanished or refused the write is skipped with a printed
+    warning instead of aborting the rest of the run — verification then
+    reports whatever did not land, and the log still allows an exact undo.
     """
     fields_by_note: dict[int, list] = {}
     for write in decision.field_writes:
         fields_by_note.setdefault(write.note_id, []).append(write)
+    modified = 0
     for note_id, writes in fields_by_note.items():
-        note = col.get_note(note_id)
-        for write in writes:
-            note[write.field] = write.new_value
-        col.update_note(note)
+        try:
+            note = col.get_note(note_id)
+            for write in writes:
+                note[write.field] = write.new_value
+            col.update_note(note)
+            modified += 1
+        except Exception as exc:
+            print(f"Mining Backfill: could not write note {note_id}: {exc}")
     for tags_write in decision.tags_writes:
-        note = col.get_note(tags_write.note_id)
-        for tag in set(tags_write.new_tags) - set(tags_write.old_tags):
-            note.add_tag(tag)
-        for tag in set(tags_write.old_tags) - set(tags_write.new_tags):
-            note.remove_tag(tag)
-        col.update_note(note)
-    return len(
-        {w.note_id for w in decision.field_writes} | {t.note_id for t in decision.tags_writes}
-    )
+        try:
+            note = col.get_note(tags_write.note_id)
+            for tag in set(tags_write.new_tags) - set(tags_write.old_tags):
+                note.add_tag(tag)
+            for tag in set(tags_write.old_tags) - set(tags_write.new_tags):
+                note.remove_tag(tag)
+            col.update_note(note)
+            if tags_write.note_id not in fields_by_note:
+                modified += 1
+        except Exception as exc:
+            print(f"Mining Backfill: could not tag note {tags_write.note_id}: {exc}")
+    return modified
 
 
 def undo_folder() -> Path:
@@ -240,7 +265,9 @@ def undo_folder() -> Path:
 def write_run_log(decision: ApplyDecision, meta: dict) -> Path:
     """Persist the run's exact inverse next to the profile."""
     log = build_run_log(decision, meta)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Microseconds: two runs inside the same second must not overwrite each
+    # other's undo log.
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     path = undo_folder() / f"run-{stamp}.json"
     path.write_text(json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
@@ -264,3 +291,106 @@ def restore_from_log(col, log: dict) -> ApplyDecision:
         run_log_records(log),
         read_state=lambda note_id: read_state(col, note_id),
     )
+
+
+# --- batch runs -------------------------------------------------------
+
+#: Notes written per backend pass. Keeps a bulk run responsive and means an
+#: interruption leaves a partially applied, fully logged run instead of a
+#: single half-finished transaction.
+BATCH_CHUNK_NOTES = 100
+
+
+@dataclass
+class BatchResult:
+    writes: int = 0
+    modified: int = 0
+    log_path: Path | None = None
+    backup_created: bool | None = None
+    problems: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.problems
+
+
+def _take_backup(col) -> tuple[bool | None, str | None]:
+    """Anki's own backup, forced, before a bulk run touches anything."""
+    try:
+        created = col.create_backup(
+            backup_folder=mw.pm.backupFolder(),
+            force=True,
+            wait_for_completion=True,
+        )
+        return bool(created), None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def preflight_fields(col, decision: ApplyDecision) -> list[str]:
+    """Refuse a run whose field names do not exist on the target note type.
+
+    The configured field list can drift from the collection (renamed note
+    type, edited config). Writing an unknown field would raise halfway
+    through a bulk run, so this is checked up front, before anything is
+    touched.
+    """
+    problems: list[str] = []
+    expected: dict[int, set[str]] = {}
+    for note_id in decision.touched_notes:
+        try:
+            note = col.get_note(note_id)
+        except Exception:
+            continue  # vanished notes are reported by verification instead
+        expected[note_id] = set(note.keys())
+    for write in decision.field_writes:
+        names = expected.get(write.note_id)
+        if names is not None and write.field not in names:
+            problems.append(f"note {write.note_id}: field “{write.field}” is not on its note type")
+    return problems
+
+
+def apply_batch(col, decision: ApplyDecision, meta: dict) -> BatchResult:
+    """Write a bulk decision: preflight, backup, log first, chunk, verify.
+
+    The run log is written *before* the first write, so an interrupted or
+    crashed run is still exactly reversible — undo only restores fields that
+    still hold the value this run wrote. A failed backup aborts the run: no
+    write happens without the safety net the user was promised.
+    """
+    result = BatchResult(writes=decision.row_count())
+    if not decision.row_count():
+        return result
+    field_problems = preflight_fields(col, decision)
+    if field_problems:
+        result.problems.extend(field_problems)
+        result.problems.append("nothing was written")
+        return result
+    created, error = _take_backup(col)
+    result.backup_created = created
+    if error is not None:
+        result.problems.append(f"backup failed, nothing was written: {error}")
+        return result
+    result.log_path = write_run_log(decision, meta)
+    notes = decision.touched_notes
+    for start in range(0, len(notes), BATCH_CHUNK_NOTES):
+        chunk = notes[start : start + BATCH_CHUNK_NOTES]
+        result.modified += apply_decision(col, decision_subset(decision, chunk))
+    result.problems.extend(verify_writes(decision, lambda nid: read_state(col, nid)))
+    return result
+
+
+def dry_run_folder() -> Path:
+    path = Path(mw.pm.profileFolder()) / UNDO_FOLDER / "dry-runs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def write_dry_run(plan: Plan, records_by_id: dict[int, NoteRecord], meta: dict) -> Path:
+    """Write the Markdown report for a batch the user did not apply."""
+    from .report import render_markdown
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = dry_run_folder() / f"batch-{stamp}.md"
+    path.write_text(render_markdown(plan, records_by_id, meta), encoding="utf-8")
+    return path

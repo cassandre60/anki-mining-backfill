@@ -110,6 +110,18 @@ you press Apply.
 - **Tools → "Mining Backfill: undo last run"** — restores exactly what the
   last apply replaced and removes exactly the tags it added.
 
+- **In the Browser: select notes → right-click → "Mining Backfill: batch-fix
+  selection…"** — the bulk mode, for hundreds or thousands of notes. It shows
+  **counts, not rows**: how many notes will be fixed and with what, how many
+  are already complete and will not be touched, and which few need a human.
+  Default is lossless: empty-field fills, bold markup, tag additions. Two
+  opt-in tiers add the information-preserving replaces ("also expand
+  Sentence", "also replace blob Source") with a live count of how many extra
+  notes each would fix. Every batch run takes an **Anki backup** first,
+  writes its **undo log before the first write**, applies in chunks, and then
+  **re-reads every written value to verify it landed**. "Write dry-run report"
+  produces the full Markdown report without touching the collection.
+
 Apply is safe by construction:
 
 - **Per-note atomicity.** Every checked row of a note is re-asserted against
@@ -169,7 +181,7 @@ After auditing: delete the audit deck and the cloned note type.
 ## Development
 
 ```
-python3 -m pytest         # 95 tests with Anki; 94 + 1 self-skipping without
+python3 -m pytest         # 107 tests with Anki; 105 + 2 self-skipping without
 ruff check . && ruff format --check .
 ```
 

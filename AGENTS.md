@@ -64,11 +64,11 @@ enriched siblings. Two halves:
 
 ```bash
 ruff check . && ruff format --check .     # must be clean
-python3 -m pytest                         # 95 tests with Anki installed
+python3 -m pytest                         # 107 tests with Anki installed
 ```
 
-Then push and watch CI — it is the gate, and it runs without Anki (94 passed,
-1 skipped):
+Then push and watch CI — it is the gate, and it runs without Anki (105 passed,
+2 skipped):
 
 ```bash
 gh run watch --exit-status
@@ -125,6 +125,18 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   bold term exists. A card whose `cloze-*` hold dictionary text therefore
   renders the dictionary entry on the front until the repair lands.
   Verified by: reading the author's note-type templates and the 鬱病 card.
+- [2026-11-14, OpenCode] `cards ⋈ notes` yields one row per *card*, so a note
+  with several cards appeared twice in the record list (duplicate plan rows,
+  duplicate writes). Record queries use `select distinct n.id, …`.
+  Verified by: duplicate probe on 17,631 notes (`count(*) - count(distinct n.id)`
+  = 0 after the fix).
+- [2026-11-14, OpenCode] Anki tag matching is case-insensitive
+  (`Note.has_tag` → `col.tags.in_list`), so tag unions, staleness checks and
+  verification compare tags lower-cased while writing the spelling seen first.
+  Verified by: `applier._tag_key` / `_merge_tags` unit tests.
+- [2026-11-14, OpenCode] CI needs `hypothesis` (the property tests) in addition
+  to pytest and ruff; the add-on itself needs neither.
+  Verified by: `.github/workflows/tests.yml` install step + green run.
 
 ## Lessons Learned
 

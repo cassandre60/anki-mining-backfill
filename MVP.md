@@ -23,6 +23,7 @@ the collection never touched by anything the dialog did not show.
 | Apply with per-note re-assertion and no-op re-runs | `applier.decide` | `tests/test_applier.py` (13 tests) |
 | Undo of the last run | `applier.decide_undo`, `__init__._on_undo` | real-collection run |
 | Browser selection as the target scope | `plan.scope_from_selection`, `collection_io.plan_preview`, `__init__._on_browser_context_menu` | `test_scope_from_selection_*`, `test_browser_context_menu_*`, selection run on a real copy |
+| Batch mode: lossless-by-default policy, group/note atomicity, backup, log-before-write, chunked apply, post-write verification, dry run | `batch.py`, `collection_io.apply_batch`, `batch_dialog.py` | `tests/test_batch.py`, `tests/test_invariants.py`, 1000-note run on a real copy |
 | Audit `.apkg` builder (dry runs) | `scripts/build_audit_package.py` | rebuilt package verified to the note |
 | CI gate (ruff + suite) | `.github/workflows/tests.yml` | green on every push |
 
@@ -57,7 +58,7 @@ the collection never touched by anything the dialog did not show.
 ## Acceptance criteria (every release)
 
 - `ruff check .` and `ruff format --check .` clean; `python3 -m pytest` green
-  (95 tests with Anki installed).
+  (107 tests with Anki installed).
 - CI (`tests` workflow) green on the released commit.
 - The golden fixture test still reproduces the author's manual fix
   byte-for-byte on all five fields.

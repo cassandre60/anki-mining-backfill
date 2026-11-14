@@ -80,6 +80,21 @@ first, with the reason.
   silently dropped and never written twice. This is what keeps a pending
   editor save from landing on top of the run — and away from Anki's own
   legacy-editor teardown race.
+- **Q-A6 — A bulk run is recoverable before it starts.** Every batch takes an
+  Anki backup first and **aborts without writing if the backup fails**; it
+  writes its undo log **before the first write**, applies in chunks, and then
+  re-reads every written field and tag set to verify the values landed
+  (`collection_io.apply_batch`, `applier.verify_writes`). A run that crashes
+  mid-way is therefore still exactly reversible, and a partial write is
+  reported rather than silently accepted.
+- **Q-A7 — The configured fields must exist on the note type.** Field names
+  are checked against the live note type before any write
+  (`collection_io.preflight_fields`); drift aborts the run instead of raising
+  halfway through. Notes deleted mid-run are skipped and reported by
+  verification, never allowed to abort the rest.
+- **Q-A8 — Tags compare case-insensitively**, exactly like Anki's own tag
+  matching, so a case difference can neither duplicate a tag nor produce a
+  false verification problem.
 
 ## System
 

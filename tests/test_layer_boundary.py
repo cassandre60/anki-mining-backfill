@@ -14,7 +14,7 @@ PACKAGE = "mining_backfill"
 
 # The only modules allowed to import anki/aqt/PyQt: the menu entry point,
 # the collection adapter, and the preview dialog.
-AQT_FACING = ("__init__.py", "collection_io.py", "preview_dialog.py")
+AQT_FACING = ("__init__.py", "collection_io.py", "preview_dialog.py", "batch_dialog.py")
 
 FORBIDDEN = ("anki", "aqt", "PyQt5", "PyQt6")
 

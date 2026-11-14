@@ -26,13 +26,15 @@ from aqt.qt import (
 )
 from aqt.utils import showCritical, showInfo
 
-from .applier import ApplyDecision, run_after_editor_saved
+from .applier import ApplyDecision, run_after_editor_saved, verify_writes
 from .collection_io import (
     Preview,
     apply_decision,
     build_decision,
     load_config,
     plan_preview,
+    preflight_fields,
+    read_state,
     write_run_log,
 )
 from .plan import PlannedWrite
@@ -292,9 +294,19 @@ class PreviewDialog(QDialog):
 
 
 def _finish_apply(col, decision: ApplyDecision, meta: dict, parent) -> None:
-    """Perform the writes and report the outcome (runs outside the dialog)."""
-    modified = apply_decision(col, decision)
+    """Preflight, log, write, verify — in that order (runs outside the dialog)."""
+    field_problems = preflight_fields(col, decision)
+    if field_problems:
+        showInfo(
+            "Nothing was written — the configured fields do not match this note type:\n\n"
+            + "\n".join(field_problems),
+            parent=parent,
+        )
+        return
+    # Log first: even a crash mid-run stays exactly reversible.
     log_path = write_run_log(decision, meta) if decision.row_count() else None
+    modified = apply_decision(col, decision)
+    problems = verify_writes(decision, lambda nid: read_state(col, nid))
     lines = [f"Applied {decision.row_count()} write(s) to {modified} note(s)."]
     if decision.skipped:
         by_reason: dict[str, int] = {}
@@ -306,6 +318,11 @@ def _finish_apply(col, decision: ApplyDecision, meta: dict, parent) -> None:
         lines.append(
             f"Undo available: Tools → “Mining Backfill: undo last run”.\nLog: {log_path.name}"
         )
+    if problems:
+        lines.append("VERIFY PROBLEMS — undo and report these:")
+        lines.extend(f"  {problem}" for problem in problems)
+    else:
+        lines.append("Verified: every written value matches the plan.")
     showInfo("\n".join(lines), parent=parent)
 
 

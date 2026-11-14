@@ -17,6 +17,10 @@ import pytest
 MENU_LABELS: list[str] = []
 
 
+def _action(menu, label: str) -> _Action:
+    return next(action for action in menu.actions if action.label == label)
+
+
 class _Action:
     """Minimal QAction stand-in that records its label and connected slot."""
 
@@ -122,12 +126,31 @@ def test_entry_point_survives_a_missing_main_window(monkeypatch):
     _purge("mining_backfill")
 
 
-def test_browser_context_menu_offers_the_selection_action(loaded_addon):
+def test_browser_context_menu_offers_the_selection_actions(loaded_addon):
     hook = sys.modules["aqt"].gui_hooks.browser_will_show_context_menu
     assert len(hook) == 1
     menu = _Menu()
     hook[0](types.SimpleNamespace(selected_notes=lambda: [1, 2, 3]), menu)
-    assert [a.label for a in menu.actions] == ["Mining Backfill: preview and apply on selection"]
+    assert [a.label for a in menu.actions] == [
+        "Mining Backfill: preview and apply on selection",
+        "Mining Backfill: batch-fix selection…",
+    ]
+
+
+def test_batch_action_runs_the_batch_dialog(loaded_addon, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_batch(ids=None, browser=None):
+        captured.update(ids=ids, browser=browser)
+
+    monkeypatch.setattr(loaded_addon, "_on_batch_selection", fake_batch)
+    hook = sys.modules["aqt"].gui_hooks.browser_will_show_context_menu
+    menu = _Menu()
+    browser = types.SimpleNamespace(selected_notes=lambda: [4, 5])
+    hook[0](browser, menu)
+    _action(menu, loaded_addon.BATCH_LABEL).fire()
+    assert captured["ids"] == [4, 5]
+    assert captured["browser"] is browser
 
 
 def test_browser_context_menu_is_silent_without_a_selection(loaded_addon):
@@ -153,7 +176,7 @@ def test_selection_action_runs_on_the_notes_selected_when_the_menu_opened(
     browser = types.SimpleNamespace(selected_notes=lambda: selection)
     hook[0](browser, menu)
     selection.clear()  # the user clicked elsewhere before choosing the action
-    menu.actions[-1].fire()
+    _action(menu, loaded_addon.SELECTION_LABEL).fire()
     assert captured["ids"] == [7, 8]
     # The browser instance travels with the run so its editor can be flushed
     # before the writes land.
@@ -169,3 +192,12 @@ def test_preview_dialog_imports_with_real_anki():
     assert isinstance(dialog.PreviewDialog, type)
     assert callable(dialog.open_preview_dialog)
     _purge("mining_backfill.preview_dialog")
+
+
+def test_batch_dialog_imports_with_real_anki():
+    pytest.importorskip("aqt", reason="needs a real Anki/PyQt6 install")
+    importlib.import_module("aqt.qt")
+    dialog = importlib.import_module("mining_backfill.batch_dialog")
+    assert isinstance(dialog.BatchDialog, type)
+    assert callable(dialog.open_batch_dialog)
+    _purge("mining_backfill.batch_dialog")
