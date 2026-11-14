@@ -142,11 +142,15 @@ def select(plan: Plan, ops: frozenset[str]) -> BatchSelection:
     for note_id, note_rows in rows_by_note.items():
         guarded = [write for write in note_rows if not write.default_checked]
         if guarded:
-            review[note_id] = ReviewNote(
-                note_id,
-                "guarded row needs a human",
-                tuple(f"{write.field}:{write.op}" for write in guarded),
-            )
+            labels = tuple(f"{write.field}:{write.op}" for write in guarded)
+            badges = {badge for write in guarded for badge in write.badges}
+            if "divergent-parents" in badges:
+                why = "scene sources disagree — left alone"
+            elif "far-from-source" in badges:
+                why = "scene source far away in time — left alone"
+            else:
+                why = "guarded row needs a human"
+            review[note_id] = ReviewNote(note_id, why, labels)
             continue
         groups: dict[str, list[PlannedWrite]] = {}
         for write in note_rows:

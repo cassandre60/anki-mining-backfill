@@ -64,10 +64,10 @@ enriched siblings. Two halves:
 
 ```bash
 ruff check . && ruff format --check .     # must be clean
-python3 -m pytest                         # 107 tests with Anki installed
+python3 -m pytest                         # 111 tests with Anki installed
 ```
 
-Then push and watch CI — it is the gate, and it runs without Anki (105 passed,
+Then push and watch CI — it is the gate, and it runs without Anki (109 passed,
 2 skipped):
 
 ```bash
@@ -137,6 +137,19 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
 - [2026-11-14, OpenCode] CI needs `hypothesis` (the property tests) in addition
   to pytest and ruff; the add-on itself needs neither.
   Verified by: `.github/workflows/tests.yml` install step + green run.
+- [2026-11-14, OpenCode] The old scene planner always picked the largest
+  agreement group and marked its rows checked, even when several parents would
+  write *different* payloads — the wrong-source failure the author fears at
+  scale. On a 1,000-note selection the divergence guard demoted 18 notes (48
+  rows) from auto-fix to review; the far-from-session guard demoted none in
+  that selection (sessions cluster within hours).
+  Verified by: Ring 3 run on a copy + `test_divergent_scene_sources_*`.
+- [2026-11-14, OpenCode] Japanese Support (installed add-on id 3918629684)
+  exposes `bulkreading.regenerateReadings(nids)` and
+  `reading.regenerateReading(note, src_field)` — the entry points a
+  source-first furigana pipeline would call. Verify again before depending on
+  them; the add-on may change.
+  Verified by: reading the installed add-on's source.
 
 ## Lessons Learned
 

@@ -44,6 +44,9 @@ not have and must never be given.
   lossless, a scene group is all-or-nothing, a note with any guarded row goes
   to review whole, complete notes count as untouched, and optional replaces
   are counted separately.
+- **Source confidence** is pinned in `tests/test_plan.py`: disagreeing parents
+  are never auto-checked, a far containment match ships unchecked, and a
+  byte-identical sentence stays trusted at any distance.
 - **Engine invariants** live in `tests/test_invariants.py` and are generated
   with Hypothesis: every write's precondition holds at decision time,
   applying then undoing restores the exact prior state, re-running a plan
@@ -70,8 +73,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **107 passed** |
-| CI / a venv without Anki | **105 passed, 2 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **111 passed** |
+| CI / a venv without Anki | **109 passed, 2 skipped** |
 
 Both are green; the difference is exactly one self-skipping import check.
 

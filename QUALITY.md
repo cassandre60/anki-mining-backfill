@@ -55,7 +55,15 @@ first, with the reason.
   eligible as a parent/word source. Duplicates are dropped, the user's order
   is preserved, foreign note types and ids that no longer resolve are
   reported rather than silently dropped.
-- **Q-C7 — Nothing is written without explicit acceptance.** Rows are
+- **Q-C7 — A scene source is only trusted when it is unambiguous and close.**
+  If several parents would write *different* payloads, no parent is auto-chosen:
+  the rows ship unchecked with a `divergent-parents` badge and a warning. A
+  containment match further away than `scene_auto_gap_hours` (default 6) from
+  the child ships unchecked with `far-from-source`; a byte-identical sentence
+  is self-verifying and is trusted regardless of distance. Batch runs send
+  every such note to review instead of writing it. Wrong-source data would be
+  wrong in a way no later check could detect, so it is never guessed.
+- **Q-C8 — Nothing is written without explicit acceptance.** Rows are
   `default_checked` only when every guard passed; the user still has to press
   Apply.
 

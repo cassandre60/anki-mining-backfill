@@ -134,6 +134,14 @@ Apply is safe by construction:
   tags involved. Undo restores only notes whose values are still exactly
   what the run wrote; anything edited since is reported and left alone.
 - **The tag op only adds**, so tags gained since the preview survive.
+- **A scene source is only trusted when it is unambiguous and close.** If two
+  cards would give the same child different values, neither is chosen: the
+  rows arrive unchecked with `divergent-parents`. A match further than
+  `scene_auto_gap_hours` (default 6 h) from the child arrives unchecked with
+  `far-from-source`, unless the sentences are byte-identical (self-verifying).
+  In a 1,000-note selection this moved 18 notes from "will fix" to "review" —
+  exactly the wrong-source cases the batch dialog exists to keep out of an
+  automatic run.
 - **Nothing is written inside the dialog's event loop.** Apply closes the
   dialog, then writes once the Browser's editor has saved any pending edits —
   so an in-flight editor save cannot overwrite the run, and the write does not
@@ -176,12 +184,13 @@ After auditing: delete the audit deck and the cloned note type.
 | [`QUALITY.md`](QUALITY.md) | the invariants that must stay true (Q-*) |
 | [`TEST_STRATEGY.md`](TEST_STRATEGY.md) | the test rings and what each one proves |
 | [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | shipped slices and the backlog |
+| [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) | the author's ideas, incl. the source-first pipeline (not committed scope) |
 | [`AGENTS.md`](AGENTS.md) | operating rules for agents working in this repo |
 
 ## Development
 
 ```
-python3 -m pytest         # 107 tests with Anki; 105 + 2 self-skipping without
+python3 -m pytest         # 111 tests with Anki; 109 + 2 self-skipping without
 ruff check . && ruff format --check .
 ```
 
@@ -200,6 +209,9 @@ broken entry point before users see "add-on failed to load".
 - [x] browser integration: run the plan on the selected notes (right-click in
       the Browse window).
 - [ ] rendered front/back HTML per row in the preview, instead of field values.
+- [ ] source-first pipeline: normalise a source card (arrows, spacing, `<br>`),
+      regenerate its furigana, then fix the children — see
+      [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md).
 - [ ] AnkiWeb release (yields a numeric package id and self-updates).
 - [x] CI workflow: `ruff` + the full test suite on every push and pull
   request (`.github/workflows/tests.yml`).

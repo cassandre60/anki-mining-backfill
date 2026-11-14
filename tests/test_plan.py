@@ -343,3 +343,95 @@ def test_explicit_scope_limits_targets_but_not_sources():
     plan = build_plan([PARENT, CHILD], CFG, scope_note_ids=[CHILD_ID])
     assert {w.note_id for w in plan.writes} == {CHILD_ID}
     assert PARENT_ID not in plan.reasons
+
+
+# --- source confidence (wrong-source protection) ---------------------
+
+
+def scene(
+    nid,
+    sentence,
+    *,
+    expr="至急",
+    reading="しきゅう",
+    body="至急",
+    audio=" [sound:asbp.webm] ",
+    picture='<img src="asbp.jpeg">',
+    translation="",
+    source="Show Episode 1.mp4 (1m00s)",
+    furigana="",
+):
+    return rec(
+        nid,
+        {
+            "Expression": expr,
+            "reading": reading,
+            "Sentence": sentence,
+            "Sentence Audio": audio,
+            "Picture": picture,
+            "Translation": translation,
+            "Source": source,
+            "Sentence (furigana)": furigana,
+            "cloze-prefix": "先生は今 ",
+            "cloze-body": body,
+            "cloze-suffix": "中ですので",
+        },
+        tags=("asbplayer",),
+    )
+
+
+CHILD_SCENE = dict(
+    expr="診察",
+    reading="しんさつ",
+    body="診察",
+    audio="",
+    picture="",
+    source="blob:https://asbplayer/xyz",
+)
+
+
+def test_divergent_scene_sources_are_never_auto_checked():
+    # Two unrelated parents both contain the fragment but would write
+    # different payloads: picking either silently risks an unrelated card.
+    child = scene(10_000_000, "先生は今 診察中ですので", **CHILD_SCENE)
+    first = scene(
+        10_000_000 + 60_000,
+        "先生は今 診察中ですので 次の患者さんが",
+        picture='<img src="a.jpeg">',
+        audio=" [sound:a.webm] ",
+    )
+    second = scene(
+        10_000_000 + 120_000,
+        "先生は今 診察中ですので お待ちください",
+        picture='<img src="b.jpeg">',
+        audio=" [sound:b.webm] ",
+    )
+    plan = build_plan([child, first, second], CFG, scope_note_ids=[child.note_id])
+    rows = [w for w in plan.writes if w.note_id == child.note_id]
+    assert rows
+    assert not any(w.default_checked for w in rows), [w.badges for w in rows]
+    assert any("divergent-parents" in w.badges for w in rows)
+    assert any("scene sources disagree" in warning for warning in plan.warnings)
+
+
+def test_a_far_scene_source_is_left_unchecked():
+    # Within the ±3-day search window, but far outside a mining session: the
+    # match is suggested, never trusted automatically.
+    child = scene(0, "先生は今 診察中ですので", **CHILD_SCENE)
+    far = scene(30 * 3_600_000, "先生は今 診察中ですので 次の患者さん")
+    plan = build_plan([child, far], CFG, scope_note_ids=[child.note_id])
+    rows = [w for w in plan.writes if w.note_id == child.note_id]
+    assert rows
+    assert not any(w.default_checked for w in rows)
+    assert any("far-from-source" in w.badges for w in rows)
+
+
+def test_an_identical_sentence_is_trusted_even_when_far():
+    # A byte-identical sentence verifies the source by itself.
+    sentence = "先生は今 診察中ですので"
+    child = scene(0, sentence, **CHILD_SCENE)
+    twin = scene(30 * 3_600_000, sentence)
+    plan = build_plan([child, twin], CFG, scope_note_ids=[child.note_id])
+    rows = [w for w in plan.writes if w.note_id == child.note_id]
+    assert rows
+    assert all(w.default_checked for w in rows), [(w.field, w.badges) for w in rows]

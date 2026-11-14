@@ -41,6 +41,14 @@ below, never as silent scope creep inside a coding session.
   pure `plan.scope_from_selection`. Verified end to end on a copy of the real
   collection (10 selected targets, 16 writes, exact undo; a solo child still
   sourced its parent outside the selection).
+- **T9 — Source confidence (wrong-source protection).** A scene source is
+  trusted only when it is unambiguous and close: divergent parent payloads
+  ship unchecked (`divergent-parents`), containment matches beyond
+  `scene_auto_gap_hours` ship unchecked (`far-from-source`), and a
+  byte-identical sentence stays trusted regardless of distance. Batch sends
+  every such note to review. On a 1,000-note selection this demoted 18 notes
+  (48 rows) that would otherwise have been written from an arbitrarily chosen
+  parent.
 - **T8 — Batch mode for hundreds/thousands of notes.** A counts-only dialog
   with a lossless-by-default policy (`batch.py`), opt-in Sentence/Source
   tiers, note- and group-atomic selection, and a review shortlist instead of
@@ -65,9 +73,18 @@ below, never as silent scope creep inside a coding session.
 | T6 | Green CI on every push |
 | T7 | `test_scope_from_selection_*`, `test_browser_context_menu_*`; Ring 3 selection run |
 | T8 | `test_batch.py`, `test_invariants.py` (Hypothesis); Ring 3 1000-note run |
+| T9 | `test_divergent_scene_sources_*`, `test_a_far_scene_source_*`, `test_an_identical_sentence_*`; Ring 3 demotion count |
 
 ## Backlog
 
+- **B6 — Source-first pipeline** (author's idea, text in
+  [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md)): normalise a source card before
+  its children — strip continuation arrows, collapse `<br>`/padding spaces so
+  the sentence coheres with the audio, regenerate its furigana through the
+  installed Japanese Support add-on, and only then plan the children. Requires
+  a new opt-in policy tier (it rewrites a non-empty source field) and a
+  "source changed since this card was filled" check for already-filled
+  children.
 - **B2 — Rendered card preview.** Render each row's real front/back HTML
   (Anki's card rendering API) in a side pane, so a reviewer sees the card as
   the template shows it rather than as field values.

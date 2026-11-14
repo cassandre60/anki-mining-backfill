@@ -14,7 +14,7 @@ from mining_backfill.plan import (
 )
 
 
-def w(note_id, field, op, old="", new="value", checked=True, group=None):
+def w(note_id, field, op, old="", new="value", checked=True, group=None, badges=()):
     return PlannedWrite(
         note_id=note_id,
         field=field,
@@ -22,6 +22,7 @@ def w(note_id, field, op, old="", new="value", checked=True, group=None):
         old_value=old,
         new_value=new,
         default_checked=checked,
+        badges=badges,
         group_id=group,
     )
 
@@ -113,6 +114,26 @@ def test_complete_notes_count_as_untouched_and_ambiguous_bold_as_review():
     assert selection.untouched == 3  # complete, opted out, nothing found
     assert [(item.note_id, item.reason) for item in selection.review] == [
         (3, "bold ambiguous — left alone")
+    ]
+
+
+def test_review_names_the_divergence_so_the_user_knows_why():
+    plan = Plan(
+        writes=(
+            w(
+                1,
+                "Picture",
+                OP_FILL,
+                checked=False,
+                group="scene-1-9",
+                badges=("divergent-parents",),
+            ),
+        )
+    )
+    selection = select(plan, allowed_ops())
+    assert selection.rows == ()
+    assert [(item.note_id, item.reason) for item in selection.review] == [
+        (1, "scene sources disagree — left alone")
     ]
 
 

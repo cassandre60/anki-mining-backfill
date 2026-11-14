@@ -305,9 +305,23 @@ def _scene_writes_for(
     writes: list[PlannedWrite] = []
     group_id = f"scene-{candidate.note_id}-{parent.note_id}"
     gap_hours = gap_ms / 3_600_000
+    # Confidence of the chosen source. A unique, close source is trusted; a
+    # source that other parents disagree with, or one far outside the mining
+    # session, stays visible but ships unchecked — the child's fields would be
+    # wrong in a way no later check could notice. Sentence-identical parents
+    # are self-verifying, so distance does not matter for them.
+    divergent = len(groups) > 1
+    exact = best_members[0].exact_equal
+    auto_gap_hours = float(cfg.get("scene_auto_gap_hours") or 6)
+    far = gap_ms > auto_gap_hours * 3_600_000
+    trusted = not divergent and (exact or not far)
     context_badges = [f"source-note:{parent.note_id}", f"added-gap:{gap_hours:.1f}h"]
     if agree > 1:
         context_badges.append(f"{agree}-siblings-agree")
+    if divergent:
+        context_badges.append("divergent-parents")
+    elif far and not exact:
+        context_badges.append("far-from-source")
     if not best_members[0].boundary_ok:
         context_badges.append("interior-span")
     parent_len = len(norm_sentence_match(parent.get("Sentence")))
@@ -326,14 +340,14 @@ def _scene_writes_for(
                     old_value=candidate.get("Source"),
                     new_value=value,
                     source_note_id=parent.note_id,
-                    default_checked=bool(cfg.get("replaces_autocheck", True)),
+                    default_checked=bool(cfg.get("replaces_autocheck", True)) and trusted,
                     badges=tuple(["replaces-blob-url", *context_badges]),
                     window_ms=gap_ms,
                     group_id=group_id,
                 )
             )
             continue
-        default_checked = True
+        default_checked = trusted
         if fname in ("Notes", "context", "Kanji Notes"):
             default_checked = False
         writes.append(
@@ -362,7 +376,7 @@ def _scene_writes_for(
         if _fragment_recoverable(candidate, cand_norm) and _unique_anchor(
             parent_sentence, candidate.get("cloze-body")
         ):
-            checked = bool(cfg.get("replaces_autocheck", True))
+            checked = bool(cfg.get("replaces_autocheck", True)) and trusted
             badges = ["expands-sentence", "fragment-kept-in-cloze", *context_badges]
             new_sentence, bold_badge = _retarget_bold(
                 parent_sentence, parent.get("cloze-body"), candidate.get("cloze-body")
@@ -657,6 +671,20 @@ def build_plan(
                     continue
             target_writes.append(w)
         # Word-level fills apply to every scoped note with word gaps.
+        scene_flags = {
+            badge
+            for w in target_writes
+            for badge in w.badges
+            if badge in ("divergent-parents", "far-from-source")
+        }
+        if scene_flags:
+            expr = target.get("Expression") or "(sentence card)"
+            why = (
+                "scene sources disagree"
+                if "divergent-parents" in scene_flags
+                else "scene source is far away in time"
+            )
+            warnings.append(f"note {target.note_id} ({expr}): {why} — rows left unchecked")
         key = word_key(target.get("Expression"), target.get("reading"), target.get("furigana"))
         if key is not None:
             group = groups.get(key, [])
