@@ -165,6 +165,28 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   source-first furigana pipeline would call. Verify again before depending on
   them; the add-on may change.
   Verified by: reading the installed add-on's source.
+- [2026-11-15, OpenCode] The add-on/repo rename to Mining Fixer is complete
+  (GitHub `cassandre60/anki-mining-fixer`, package `mining_fixer`). Undo logs
+  written before the rename stay undoable: `collection_io.LEGACY_UNDO_FOLDER`
+  reads `<profile>/mining_backfill/undo/` but never writes there; the two
+  existing logs (run-20261114-*) live there.
+  Verified by: `tests/test_applier.py` lookup tests + the logs on disk.
+- [2026-11-15, OpenCode] A raw read-only SQL census against the live
+  collection needs `con.create_collation("unicase", …)`, and the `decks`
+  table stores tree names with `\x1f` separators, so `::`-style name
+  equality fails — match deck names in Python instead. Do not write;
+  open with `file:…?mode=ro`.
+  Verified by: the 2026-11-15 census run.
+- [2026-11-15, OpenCode] Sentence-noise census (one read-only query, 17,589
+  notes of the configured deck): `<br>` in 72.1%, arrows `➡`/`→` in 0.4%,
+  padding runs in 0.3% — the repair dimension is a `<br>`-collapse problem.
+  Recorded in `BULK_FIX.md` (open questions).
+  Verified by: the census script's printed aggregates.
+- [2026-11-15, OpenCode] The collection has a second, empty deck-tree path
+  `Mansour Mohamed Mehdi Life Decks::Japanese::My New Japanese Deck`;
+  `config.json` points at the populated `My Life Decks…` one. No action
+  taken — data observation only.
+  Verified by: the `decks` table listing (0 vs 17,589 notes).
 
 ## Lessons Learned
 
