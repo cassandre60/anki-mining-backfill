@@ -39,7 +39,9 @@ imperfect — and asbplayer/Yomitan sources usually are:
    picture, a full scene sentence and a timestamped Source).
 2. Normalise the source's Sentence:
      - remove continuation arrow markers (➡ / →), configurable
-     - collapse the `<br>`s and padding spaces into one readable line
+     - keep the `<br>`s and spacing exactly as mined (owner decision
+       2026-11-15: line breaks are the sentence's pause structure; the
+       audio-aligned direction in BULK_FIX.md replaces heuristic joining)
      - (optional) drop speaker/stage tags such as [TEL] (受付)
 3. Rebuild the source's Sentence (furigana) from the normalised text.
      Japanese Support (the installed `Japanese Support` add-on, id
@@ -103,9 +105,10 @@ imperfect — and asbplayer/Yomitan sources usually are:
 
 ### Experiments to run before designing it
 
-1. Collect 20 source cards from the real collection; count arrows, `<br>`s,
-   padding spaces and missing furigana per card — is normalisation a 50% or a
-   5% problem?
+1. Collect 20 source cards from the real collection; count arrows and
+   missing furigana per card — is normalisation a 50% or a 5% problem?
+   (Answered for the whole deck by the 2026-11-15 census, BULK_FIX.md:
+   arrows 0.4%; `<br>` 72.1% but kept as mined by owner decision.)
 2. Run Japanese Support's `regenerateReadings` on those 20 cards manually and
    eyeball the ruby; does it beat what Yomitan already stored?
 3. Check whether any existing child cards were already filled from those

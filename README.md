@@ -37,12 +37,14 @@ and covered by tests, not just intended:
      text is identical, verified per write. Two occurrences = never
      guessed, reported as a warning instead.
    - Sentence noise repair (`repair_sentence`): an opt-in rewrite of the
-     card's own `Sentence` that removes subtitle noise — `<br>`-joined
-     lines (tight for CJK neighbours, one space around Latin text), line-tail
-     continuation arrows (`➡`), padding runs. Mid-line glyphs like the math
+     card's own `Sentence` that removes the subtitle's line-tail
+     continuation arrows (`➡`). Line breaks (`<br>`) and spacing are kept
+     exactly as mined — they are the sentence's pause structure (owner
+     decision 2026-11-15; the recorded future direction is deriving breaks
+     from the audio, see `BULK_FIX.md`). Mid-line glyphs like the math
      arrow in `f:X→Y` are never touched, a card whose `Sentence` is already
-     queued for expansion or bold is skipped, and joining must not change
-     how often the tested word occurs. Off by default
+     queued for expansion or bold is skipped, and the repair must not
+     change how often the tested word occurs. Off by default
      (`sentence_repair_rules` / `batch_repair_sentence`).
    - Tags (`add_tags`): the target keeps its tags and gains every
      contributing source card's tags — a pure union that never removes;
@@ -130,10 +132,10 @@ you press Apply.
   the config (`batch_expand_sentence`, `batch_replace_source`).
   The **subtitle-noise repair** is an additional opt-in tier: set
   `"batch_repair_sentence": true` and choose the rules with
-  `"sentence_repair_rules"` (`strip-arrows`, `collapse-br`,
-  `normalize-padding` — `[]` disables it everywhere). The `<br>`-joined
-  subtitle dumps that dominate mined decks (72% of this deck's `Sentence`
-  fields) become one flowing line. It replaces content that is already
+  `"sentence_repair_rules"` (`strip-arrows` — `[]` disables it everywhere).
+  It strips the continuation arrows subtitle exports leave at line ends
+  (0.4% of this deck's `Sentence` fields); line breaks (`<br>`) and
+  spacing stay exactly as mined. It replaces content that is already
   there, so it stays off until you turn it on.
   **Preview report** saves a one-page human-readable summary (word, note, what
   changes, what was left alone) without touching your collection. A real run
@@ -233,9 +235,9 @@ broken entry point before users see "add-on failed to load".
 - [x] browser integration: run the plan on the selected notes (right-click in
       the Browse window).
 - [ ] rendered front/back HTML per row in the preview, instead of field values.
-- [ ] source-first pipeline: normalise a source card (arrows, spacing, `<br>`),
-      regenerate its furigana, then fix the children — see
-      [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md).
+- [ ] source-first pipeline: strip a source card's line-tail arrows (line
+      breaks stay as mined), regenerate its furigana, then fix the
+      children — see [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md).
 - [ ] AnkiWeb release (yields a numeric package id and self-updates).
 - [x] CI workflow: `ruff` + the full test suite on every push and pull
   request (`.github/workflows/tests.yml`).

@@ -39,8 +39,9 @@ not have and must never be given.
   the current and the pre-rename `mining_backfill` folder, none when the
   newest log is unreadable).
 - **The repair pipeline** (bulk-fix dimension 2) is pinned in
-  `tests/test_normalize.py` (rule fixtures from real deck values,
-  idempotence, mid-line arrows kept), `tests/test_plan.py` (checked write
+  `tests/test_normalize.py` (real deck values, tail arrows stripped while
+  line breaks, spacing and bold markup stay untouched, idempotence,
+  mid-line arrows kept), `tests/test_plan.py` (checked write
   with rule badges, off without rules, exclusivity with expansion/bold,
   tested-word occurrence guard, unknown-rule warning) and
   `tests/test_batch.py` (the opt-in `batch_repair_sentence` tier).

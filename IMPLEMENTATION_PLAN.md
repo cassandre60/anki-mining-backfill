@@ -54,14 +54,15 @@ below, never as silent scope creep inside a coding session.
   window shows counts and a preview report instead of a decision queue, and
   the dialog states exactly what it will do before the run.
 - **T11 — Subtitle-noise repair (bulk-fix dimension 2, B7 slice 1).**
-  `normalize.repair_sentence` (config-driven fixed pipeline:
-  `strip-arrows` at line tails only, `collapse-br` with CJK/Latin boundary
-  rules, `normalize-padding`) behind the opt-in `repair_sentence` op
-  (`PLAN_VERSION` 3): skipped when expansion or bold already owns the
-  `Sentence`, dropped when joining would change the tested word's
-  occurrence count, idempotent, off by default (`sentence_repair_rules: []`,
-  `batch_repair_sentence: false`). Pinned against real deck values; the
-  Ring 3 old → new diff on a collection copy is still pending.
+  `normalize.repair_sentence` (`strip-arrows` at line tails only — the
+  owner decision of 2026-11-15 keeps `<br>` line breaks and spacing as
+  mined; the audio-aligned-breaks direction is recorded in BULK_FIX.md)
+  behind the opt-in `repair_sentence` op (`PLAN_VERSION` 3): skipped when
+  expansion or bold already owns the `Sentence`, dropped when it would
+  change the tested word's occurrence count, idempotent, off by default
+  (`sentence_repair_rules: []`, `batch_repair_sentence: false`). Pinned
+  against real deck values; the Ring 3 old → new diff on a collection copy
+  is still pending.
 - **T8 — Batch mode for hundreds/thousands of notes.** A counts-only dialog
   with a lossless-by-default policy (`batch.py`), opt-in Sentence/Source
   tiers, note- and group-atomic selection, and a review shortlist instead of
@@ -103,9 +104,9 @@ below, never as silent scope creep inside a coding session.
   sequencing are still open.
 - **B6 — Source-first pipeline** (author's idea, text in
   [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md)): normalise a source card before
-  its children — strip continuation arrows, collapse `<br>`/padding spaces so
-  the sentence coheres with the audio, regenerate its furigana through the
-  installed Japanese Support add-on, and only then plan the children. Requires
+  its children — strip continuation arrows (line breaks stay as mined; see
+  BULK_FIX.md), regenerate its furigana through the installed Japanese
+  Support add-on, and only then plan the children. Requires
   a new opt-in policy tier (it rewrites a non-empty source field) and a
   "source changed since this card was filled" check for already-filled
   children.

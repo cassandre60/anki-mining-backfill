@@ -51,8 +51,8 @@ OP_REPLACE_SOURCE = "replace_source"
 OP_EXPAND_SENTENCE = "expand_sentence"
 # Markup-only repair: wrap the tested word in <b> (rendered text unchanged).
 OP_BOLD_CLOZE_WORD = "bold_cloze_word"
-# Subtitle-noise repair: <br>-joined lines, line-tail arrows, padding runs
-# (bulk-fix dimension 2; see QUALITY Q-D10 and normalize.repair_sentence).
+# Subtitle-noise repair: line-tail continuation arrows (bulk-fix dimension
+# 2; see QUALITY Q-D10 and normalize.repair_sentence).
 OP_REPAIR_SENTENCE = "repair_sentence"
 # Tag-set union from contributing sources; never removes a tag.
 OP_ADD_TAGS = "add_tags"
@@ -303,14 +303,13 @@ def _sentence_repair_write(
 ) -> tuple[PlannedWrite | None, str | None, str | None]:
     """Rewrite subtitle noise in the target's own ``Sentence``.
 
-    Bulk-fix dimension 2: ``<br>``-joined subtitle lines, line-tail
-    continuation arrows and padding runs are the noise; bold markup, sound
-    tags, images, brackets and every spoken character pass through
-    untouched (:func:`normalize.repair_sentence`).
+    Bulk-fix dimension 2: line-tail continuation arrows are the noise;
+    bold markup, sound tags, images, brackets and every spoken character
+    pass through untouched (:func:`normalize.repair_sentence`).
 
     Guards (QUALITY Q-D10):
     - the tested word (``cloze-body``) must occur exactly as often after the
-      repair as before — joining lines must not create or destroy an anchor;
+      repair as before — the repair must not create or destroy an anchor;
     - the caller must not already queue another ``Sentence`` write for this
       note — expansion and bold own the field first.
 
@@ -329,7 +328,7 @@ def _sentence_repair_write(
             return (
                 None,
                 "repair-anchor-risk",
-                f"joining lines would change how often '{body}' occurs in Sentence",
+                f"the repair would change how often '{body}' occurs in Sentence",
             )
     return (
         PlannedWrite(

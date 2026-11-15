@@ -441,7 +441,7 @@ def test_an_identical_sentence_is_trusted_even_when_far():
 
 # --- subtitle-noise repair (bulk-fix dimension 2, QUALITY Q-D10) ------------
 
-REPAIR_CFG = {**CFG, "sentence_repair_rules": ["strip-arrows", "collapse-br", "normalize-padding"]}
+REPAIR_CFG = {**CFG, "sentence_repair_rules": ["strip-arrows"]}
 
 
 def test_a_configured_repair_emits_a_checked_write_with_rule_badges():
@@ -460,10 +460,10 @@ def test_a_configured_repair_emits_a_checked_write_with_rule_badges():
     write = plan.writes[0]
     assert write.op == OP_REPAIR_SENTENCE
     assert write.field == "Sentence"
-    assert write.new_value == "あしたの朝刊の見出しはこうニャ！"
+    assert write.new_value == "あしたの朝刊の見出しは<br>こうニャ！"
     assert write.old_value == "あしたの朝刊の見出しは<br>こうニャ！➡"
     assert write.default_checked is True
-    assert write.badges == ("strip-arrows", "collapse-br")
+    assert write.badges == ("strip-arrows",)
 
 
 def test_repair_is_off_without_rules():
@@ -506,9 +506,10 @@ def test_repair_skips_a_note_whose_expansion_is_queued():
 
 def test_repair_skips_a_note_whose_bold_repair_is_queued():
     # Bold repair owns the field first; the noise repair must not fight it.
+    # (The tail arrow would be repairable — that is the point of the test.)
     target = scene(
         1,
-        "今のままじゃ<br>あいつらに顔向けできねえよ",
+        "今のままじゃ<br>あいつらに顔向けできねえよ➡",
         expr="顔向け",
         reading="かおむけ",
         body="顔向け",
@@ -521,16 +522,18 @@ def test_repair_skips_a_note_whose_bold_repair_is_queued():
 
 
 def test_repair_is_dropped_when_the_tested_word_occurrence_would_change():
-    # "drinkwater" occurs once in the rendered pre-repair text but not in
-    # the joined one (a Latin boundary keeps a space): no repair.
+    # Under arrows-only rules the repair can change the tested word's
+    # occurrence count only when that word is itself an arrow glyph
+    # (synthetic by necessity — real arrows are never the mined word). The
+    # guard stays as defense-in-depth for future rules (Q-D10).
     target = rec(
         1,
         {
-            "Expression": "x",
+            "Expression": "",
             "reading": "",
             "furigana": "",
-            "Sentence": "drink<br>water",
-            "cloze-body": "drinkwater",
+            "Sentence": "見出し<b>➡</b>➡",
+            "cloze-body": "➡",
         },
     )
     plan = build_plan([target], REPAIR_CFG, scope_note_ids=[1])
@@ -541,11 +544,17 @@ def test_repair_is_dropped_when_the_tested_word_occurrence_would_change():
 def test_unknown_repair_rules_warn_and_the_rest_still_runs():
     target = rec(
         1,
-        {"Expression": "", "reading": "", "furigana": "", "cloze-body": "", "Sentence": "前<br>後"},
+        {
+            "Expression": "",
+            "reading": "",
+            "furigana": "",
+            "cloze-body": "",
+            "Sentence": "前➡<br>後",
+        },
     )
-    cfg = {**CFG, "sentence_repair_rules": ["collapse-br", "nonsense"]}
+    cfg = {**CFG, "sentence_repair_rules": ["strip-arrows", "nonsense"]}
     plan = build_plan([target], cfg, scope_note_ids=[1])
     assert any("unknown sentence_repair_rules ignored: nonsense" in w for w in plan.warnings)
     assert [w.op for w in plan.writes if w.op == OP_REPAIR_SENTENCE] == [OP_REPAIR_SENTENCE]
     write = next(w for w in plan.writes if w.op == OP_REPAIR_SENTENCE)
-    assert write.new_value == "前後"
+    assert write.new_value == "前<br>後"

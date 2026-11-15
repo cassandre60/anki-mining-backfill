@@ -124,9 +124,9 @@ def test_repair_rows_are_labelled_for_a_human():
                 field="Sentence",
                 op=OP_REPAIR_SENTENCE,
                 old_value="あしたの朝刊の見出しは<br>こうニャ！➡",
-                new_value="あしたの朝刊の見出しはこうニャ！",
+                new_value="あしたの朝刊の見出しは<br>こうニャ！",
                 default_checked=True,
-                badges=("strip-arrows", "collapse-br"),
+                badges=("strip-arrows",),
             ),
         )
     )
