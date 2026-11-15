@@ -39,6 +39,7 @@ from .plan import (
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
+    OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     Plan,
     PlannedWrite,
@@ -59,7 +60,7 @@ __all__ = [
 SAFE_OPS = frozenset({OP_FILL, OP_BOLD_CLOZE_WORD, OP_ADD_TAGS})
 
 #: Information-preserving replaces, each opt-in for a batch run.
-OPTIONAL_OPS = frozenset({OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE})
+OPTIONAL_OPS = frozenset({OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE, OP_REPAIR_SENTENCE})
 
 #: The text unit: a sentence and its ruby are atomic (QUALITY Q-D4). Audio,
 #: picture, translation and source do not depend on the sentence text, so
@@ -137,29 +138,39 @@ class BatchSelection:
         return counts
 
 
-def allowed_ops(expand_sentence: bool = False, replace_source: bool = False) -> frozenset[str]:
+def allowed_ops(
+    expand_sentence: bool = False,
+    replace_source: bool = False,
+    repair_sentence: bool = False,
+) -> frozenset[str]:
     """The op set for the chosen batch options (the default is lossless)."""
     ops = set(SAFE_OPS)
     if expand_sentence:
         ops.add(OP_EXPAND_SENTENCE)
     if replace_source:
         ops.add(OP_REPLACE_SOURCE)
+    if repair_sentence:
+        ops.add(OP_REPAIR_SENTENCE)
     return frozenset(ops)
 
 
 def default_ops(cfg: dict | None = None) -> frozenset[str]:
     """What a bulk run does out of the box.
 
-    Both replaces are *information-preserving*: the mined fragment survives in
-    ``cloze-*`` and the blob URL is kept in the run log, so the undo restores
-    them. A bulk fixer that refused to complete sentences would be useless, so
-    they are on by default and configurable without a UI
-    (``batch_expand_sentence`` / ``batch_replace_source``).
+    ``expand_sentence`` and ``replace_source`` are *information-preserving*
+    replaces: the mined fragment survives in ``cloze-*`` and the blob URL is
+    kept in the run log, so the undo restores them. A bulk fixer that
+    refused to complete sentences would be useless, so they are on by
+    default and configurable without a UI (``batch_expand_sentence`` /
+    ``batch_replace_source``). The subtitle-noise repair rewrites non-empty
+    text with no oracle beyond its own rule list, so it stays OFF by
+    default (``batch_repair_sentence``) until proven on a real collection.
     """
     cfg = cfg or {}
     return allowed_ops(
         expand_sentence=bool(cfg.get("batch_expand_sentence", True)),
         replace_source=bool(cfg.get("batch_replace_source", True)),
+        repair_sentence=bool(cfg.get("batch_repair_sentence", False)),
     )
 
 

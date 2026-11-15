@@ -11,6 +11,7 @@ from mining_fixer.plan import (
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
+    OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     PLAN_VERSION,
     _retarget_bold,
@@ -50,6 +51,7 @@ def test_replaces_only_approved_ops():
                 OP_REPLACE_SOURCE,
                 OP_EXPAND_SENTENCE,
                 OP_BOLD_CLOZE_WORD,
+                OP_REPAIR_SENTENCE,
                 OP_ADD_TAGS,
             ), w.field
 
@@ -435,3 +437,115 @@ def test_an_identical_sentence_is_trusted_even_when_far():
     rows = [w for w in plan.writes if w.note_id == child.note_id]
     assert rows
     assert all(w.default_checked for w in rows), [(w.field, w.badges) for w in rows]
+
+
+# --- subtitle-noise repair (bulk-fix dimension 2, QUALITY Q-D10) ------------
+
+REPAIR_CFG = {**CFG, "sentence_repair_rules": ["strip-arrows", "collapse-br", "normalize-padding"]}
+
+
+def test_a_configured_repair_emits_a_checked_write_with_rule_badges():
+    target = rec(
+        1,
+        {
+            "Expression": "見出し",
+            "reading": "みだし",
+            "furigana": "",
+            "cloze-body": "",
+            "Sentence": "あしたの朝刊の見出しは<br>こうニャ！➡",
+        },
+    )
+    plan = build_plan([target], REPAIR_CFG, scope_note_ids=[1])
+    assert len(plan.writes) == 1
+    write = plan.writes[0]
+    assert write.op == OP_REPAIR_SENTENCE
+    assert write.field == "Sentence"
+    assert write.new_value == "あしたの朝刊の見出しはこうニャ！"
+    assert write.old_value == "あしたの朝刊の見出しは<br>こうニャ！➡"
+    assert write.default_checked is True
+    assert write.badges == ("strip-arrows", "collapse-br")
+
+
+def test_repair_is_off_without_rules():
+    target = rec(
+        1,
+        {"Expression": "", "reading": "", "furigana": "", "cloze-body": "", "Sentence": "前<br>後"},
+    )
+    plan = build_plan([target], CFG, scope_note_ids=[1])
+    assert not any(w.op == OP_REPAIR_SENTENCE for w in plan.writes)
+
+
+def test_repair_skips_a_note_whose_expansion_is_queued():
+    # The fragment "見<br>出しはこうニャ！➡" would be repaired — but the scene
+    # expansion already owns the field, so the noise repair stays out.
+    parent = scene(9, "あしたの朝刊の見出しはこうニャ！")
+    child = rec(
+        1,
+        {
+            **scene(
+                1,
+                "見<br>出しはこうニャ！➡",
+                expr="見出し",
+                reading="みだし",
+                body="見出し",
+                audio="",
+                picture="",
+                source="asbplayer://blob",
+            ).fields,
+            "cloze-prefix": "",
+            "cloze-body": "見出し",
+            "cloze-suffix": "はこうニャ！",
+        },
+    )
+    plan = build_plan([parent, child], REPAIR_CFG, scope_note_ids=[child.note_id])
+    assert any(w.op == OP_EXPAND_SENTENCE and w.field == "Sentence" for w in plan.writes), [
+        (w.op, w.field) for w in plan.writes
+    ]
+    assert not any(w.op == OP_REPAIR_SENTENCE for w in plan.writes)
+
+
+def test_repair_skips_a_note_whose_bold_repair_is_queued():
+    # Bold repair owns the field first; the noise repair must not fight it.
+    target = scene(
+        1,
+        "今のままじゃ<br>あいつらに顔向けできねえよ",
+        expr="顔向け",
+        reading="かおむけ",
+        body="顔向け",
+        audio="",
+        picture="",
+    )
+    plan = build_plan([target], REPAIR_CFG, scope_note_ids=[target.note_id])
+    sentence_writes = [w for w in plan.writes if w.field == "Sentence"]
+    assert [w.op for w in sentence_writes] == [OP_BOLD_CLOZE_WORD]
+
+
+def test_repair_is_dropped_when_the_tested_word_occurrence_would_change():
+    # "drinkwater" occurs once in the rendered pre-repair text but not in
+    # the joined one (a Latin boundary keeps a space): no repair.
+    target = rec(
+        1,
+        {
+            "Expression": "x",
+            "reading": "",
+            "furigana": "",
+            "Sentence": "drink<br>water",
+            "cloze-body": "drinkwater",
+        },
+    )
+    plan = build_plan([target], REPAIR_CFG, scope_note_ids=[1])
+    assert not any(w.op == OP_REPAIR_SENTENCE for w in plan.writes)
+    assert any("sentence repair skipped" in warning for warning in plan.warnings)
+
+
+def test_unknown_repair_rules_warn_and_the_rest_still_runs():
+    target = rec(
+        1,
+        {"Expression": "", "reading": "", "furigana": "", "cloze-body": "", "Sentence": "前<br>後"},
+    )
+    cfg = {**CFG, "sentence_repair_rules": ["collapse-br", "nonsense"]}
+    plan = build_plan([target], cfg, scope_note_ids=[1])
+    assert any("unknown sentence_repair_rules ignored: nonsense" in w for w in plan.warnings)
+    assert [w.op for w in plan.writes if w.op == OP_REPAIR_SENTENCE] == [OP_REPAIR_SENTENCE]
+    write = next(w for w in plan.writes if w.op == OP_REPAIR_SENTENCE)
+    assert write.new_value == "前後"

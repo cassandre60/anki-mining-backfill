@@ -22,13 +22,16 @@ from __future__ import annotations
 import html
 import re
 import unicodedata
+from collections.abc import Iterable
 
 __all__ = [
+    "REPAIR_RULES",
     "norm_sentence",
     "norm_sentence_match",
     "norm_word_text",
     "norm_reading",
     "reading_from_furigana",
+    "repair_sentence",
     "word_key",
     "strip_renderable",
     "kana_fold",
@@ -205,3 +208,115 @@ def word_key(expression: str, reading: str, furigana: str = "") -> tuple[str, st
         read = reading_from_furigana(furigana) or ""
         read = kana_fold(read)
     return (expr, read)
+
+
+# --- sentence repair (bulk-fix dimension 2: subtitle noise) -----------------
+#
+# The configured deck's Sentence fields are subtitle dumps: several subtitle
+# events joined with <br>, a continuation arrow (➡ / → / ⇒) marking "the line
+# continues", and beat spaces inside lines. The census of 2026-11-15 put <br>
+# in 72.1% of the deck's 17,589 notes, arrows in 0.4%, padding runs in 0.3%.
+# Repair rewrites ONLY that noise; bold markup, sound tags, images, brackets
+# and every spoken character pass through untouched.
+
+REPAIR_RULES = ("collapse-br", "strip-arrows", "normalize-padding")
+
+_BR_TAG_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+# A continuation arrow only ever marks "the line continues", so it is
+# stripped only at a line tail — immediately before a <br>, a newline or the
+# end of the value. The same glyphs in mid-line positions are real notation
+# (関数f:X→Y) and are never touched.
+_ARROW_TAIL_RE = re.compile(
+    "[\u2192\u21d2\u27a1]+\ufe0f?(?=[ \t]*(?:<br\\s*/?>|\n|$))", re.IGNORECASE
+)
+_WS_RUN_RE = re.compile(r"[ \t\u3000]{2,}")
+_LINE_TAIL_WS_RE = re.compile(r"[ \t\u3000]+$")
+
+
+def _edge_char(text: str, take_last: bool) -> str:
+    """The rendered character at a line edge, brackets masked.
+
+    Bracket payloads (``[TEL]``, ``(受付)``) do not decide the join — the
+    same convention as :func:`_collapse_whitespace`.
+    """
+    probe = _BRACKET_MASK_RE.sub("", text)
+    plain = strip_renderable(probe).strip()
+    return (plain[-1:] if take_last else plain[:1]) or ""
+
+
+def _join_separator(left: str, right: str) -> str:
+    """How two subtitle lines join when their ``<br>`` is collapsed.
+
+    CJK neighbours join tight (Japanese writes no inter-word spaces); a
+    Latin letter or digit on either side keeps one space so ``xεX`` and
+    ``任意の`` never fuse.
+    """
+    if _LATIN_RE.search(_edge_char(left, True)) or _LATIN_RE.search(_edge_char(right, False)):
+        return " "
+    return ""
+
+
+def _collapse_br(text: str) -> str:
+    parts = _BR_TAG_RE.split(text)
+    if len(parts) == 1:
+        return text
+    out = parts[0]
+    for left, right in zip(parts, parts[1:], strict=False):
+        out += _join_separator(left, right) + right
+    return out
+
+
+def _run_replacement(match: re.Match) -> str:
+    # A run that contains the ideographic beat space keeps one of those; a
+    # plain-space run collapses to one space.
+    return "\u3000" if "\u3000" in match.group(0) else " "
+
+
+def _normalize_padding(text: str) -> str:
+    lines = text.split("\n")
+    lines = [_LINE_TAIL_WS_RE.sub("", line) for line in lines]
+    lines = [_WS_RUN_RE.sub(_run_replacement, line) for line in lines]
+    return "\n".join(lines)
+
+
+def repair_sentence(text: str, rules: Iterable[str]) -> tuple[str, tuple[str, ...]]:
+    """Repair subtitle noise in a ``Sentence`` value (pure).
+
+    Config-driven rule list; the pipeline order is fixed regardless of the
+    list's order (determinism):
+
+    - ``strip-arrows`` — remove continuation arrows only at line tails;
+    - ``collapse-br`` — join the lines a ``<br>`` separates (one space when
+      the rendered text on either side of the boundary is Latin/digit, tight
+      for CJK);
+    - ``normalize-padding`` — trim line-trailing whitespace and collapse
+      horizontal-space runs to a single space (an ideographic beat space
+      survives as one ``\u3000``).
+
+    Unknown rule names are ignored here and warned about by the planner.
+    Returns ``(new_text, applied_rules)``; ``applied_rules`` is empty when
+    nothing changed. The transformation is idempotent.
+    """
+    if not (text or "").strip():
+        return text, ()
+    wanted = tuple(rules)
+    applied: list[str] = []
+    s = text
+    if "strip-arrows" in wanted:
+        stripped = _ARROW_TAIL_RE.sub("", s)
+        if stripped != s:
+            applied.append("strip-arrows")
+            s = stripped
+    if "collapse-br" in wanted:
+        joined = _collapse_br(s)
+        if joined != s:
+            applied.append("collapse-br")
+            s = joined
+    if "normalize-padding" in wanted:
+        padded = _normalize_padding(s)
+        if padded != s:
+            applied.append("normalize-padding")
+            s = padded
+    if not applied:
+        return text, ()
+    return s, tuple(applied)

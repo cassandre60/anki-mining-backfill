@@ -38,6 +38,12 @@ not have and must never be given.
   edited notes, idempotent undo, and the undo-log lookup (newest log across
   the current and the pre-rename `mining_backfill` folder, none when the
   newest log is unreadable).
+- **The repair pipeline** (bulk-fix dimension 2) is pinned in
+  `tests/test_normalize.py` (rule fixtures from real deck values,
+  idempotence, mid-line arrows kept), `tests/test_plan.py` (checked write
+  with rule badges, off without rules, exclusivity with expansion/bold,
+  tested-word occurrence guard, unknown-rule warning) and
+  `tests/test_batch.py` (the opt-in `batch_repair_sentence` tier).
 - **Write timing** is pinned in the same file with fake editors: writes wait
   for `call_after_note_saved`, a doubled editor callback writes once, a lost
   callback is covered by the scheduler safety net, and a raising or missing
@@ -76,8 +82,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **120 passed** |
-| CI / a venv without Anki | **118 passed, 2 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **139 passed** |
+| CI / a venv without Anki | **137 passed, 2 skipped** |
 
 Both are green; the difference is exactly two self-skipping import checks
 (the dialog modules need a real `aqt`).

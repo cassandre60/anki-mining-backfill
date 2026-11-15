@@ -10,6 +10,7 @@ from mining_fixer.plan import (
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
+    OP_REPAIR_SENTENCE,
     Plan,
     PlannedWrite,
 )
@@ -113,3 +114,27 @@ def test_bold_repairs_are_labelled_for_a_human():
     )
     assert "bold on the tested word" in text
     assert "bold_cloze_word" not in text
+
+
+def test_repair_rows_are_labelled_for_a_human():
+    plan = Plan(
+        writes=(
+            PlannedWrite(
+                note_id=7,
+                field="Sentence",
+                op=OP_REPAIR_SENTENCE,
+                old_value="あしたの朝刊の見出しは<br>こうニャ！➡",
+                new_value="あしたの朝刊の見出しはこうニャ！",
+                default_checked=True,
+                badges=("strip-arrows", "collapse-br"),
+            ),
+        )
+    )
+    text = render_batch_summary(
+        plan,
+        {7: note(7, "見出し", "みだし")},
+        select(plan, default_ops({"batch_repair_sentence": True})),
+        {"scope": 1},
+    )
+    assert "sentence noise repair" in text
+    assert "repair_sentence" not in text

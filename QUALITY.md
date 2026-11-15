@@ -10,9 +10,10 @@ first, with the reason.
 - **Q-D1 — Fills only touch empty fields.** A field with any non-whitespace
   content is never written by a `fill`; markup-only values like `<hr>` count
   as occupied.
-- **Q-D2 — Four approved non-empty writes, each information-preserving.**
+- **Q-D2 — Five approved non-empty writes, each information-preserving.**
   `replace_source` (blob URL is logged), `expand_sentence` (fragment survives
   in `cloze-*`), `bold_cloze_word` (rendered text unchanged),
+  `repair_sentence` (only configured noise classes change, Q-D10),
   `add_tags` (superset only). `OPS_TOUCHING_NONEMPTY` is the single source of
   truth and a test asserts no other op writes a non-empty value.
 - **Q-D3 — Bold is markup-only.** A bold write is emitted only when
@@ -37,6 +38,20 @@ first, with the reason.
 - **Q-D9 — Media is verified on disk** before a media fill is offered; a
   missing file drops the row with a warning instead of writing a dead
   reference.
+- **Q-D10 — Sentence repair touches only configured noise.** The
+  `repair_sentence` op rewrites a note's own `Sentence` and nothing else,
+  and only through the enabled rules of a fixed pipeline — `strip-arrows`
+  (continuation arrows at line tails; mid-line glyphs such as `f:X→Y` are
+  real notation and stay), `collapse-br` (subtitle lines join tight for CJK
+  neighbours, with one space when either side renders Latin/digit),
+  `normalize-padding` (line-trailing whitespace and 2+ space runs; an
+  ideographic beat space survives as one `\u3000`). Unknown rule names are
+  warned about and ignored. A repair write is never issued when another
+  `Sentence` write (expansion or bold) is queued for the same note, and it
+  is dropped when joining lines would change how often the tested word
+  (`cloze-body`) occurs. The transformation is idempotent, and the
+  dimension ships off by default (`sentence_repair_rules: []`,
+  `batch_repair_sentence: false`) until proven on a real collection.
 
 ## Correctness of decisions
 
@@ -86,7 +101,9 @@ first, with the reason.
     cards instead of merely filling blanks; `batch_expand_sentence` and
     `batch_replace_source` turn each off. Both keep their information: the
     mined fragment survives in `cloze-*`, the blob URL is written to the run
-    log before the write.
+    log before the write. The subtitle-noise repair is an additional opt-in
+    tier (`batch_repair_sentence`, default false); rows of a disabled tier
+    make the note count as excluded by policy.
 
 ## Apply behaviour
 

@@ -8,6 +8,7 @@ from mining_fixer.normalize import (
     norm_sentence,
     norm_sentence_match,
     reading_from_furigana,
+    repair_sentence,
     word_key,
 )
 
@@ -89,3 +90,94 @@ def test_word_key():
     assert word_key("診察", "しんさつ") == ("診察", "しんさつ")
     assert word_key("診察", "", "診察[しんさつ]") == ("診察", "しんさつ")
     assert word_key("", "しんさつ") is None
+
+
+# --- repair_sentence (bulk-fix dimension 2) ---------------------------------
+#
+# Fixtures are real Sentence values from the configured deck (census
+# 2026-11-15): multi-line subtitle dumps joined with <br>, line-tail arrows,
+# ideographic beat spaces, bold markup in the middle of it all.
+
+ALL_RULES = ("strip-arrows", "collapse-br", "normalize-padding")
+
+# Real Sentence values from the configured deck (census 2026-11-15).
+_SUBTITLE_BLOCK = (
+    "俺は弱くて 誰も助けらんなかった<br>それどころか 伏黒を殺し<b>かけた</b>"
+    "<br>今のままじゃ<br>あいつらに顔向けできねえよ"
+)
+_SUBTITLE_BLOCK_JOINED = (
+    "俺は弱くて 誰も助けらんなかったそれどころか 伏黒を殺し<b>かけた</b>"
+    "今のままじゃあいつらに顔向けできねえよ"
+)
+
+
+def test_repair_joins_subtitle_lines_and_keeps_bold():
+    new, applied = repair_sentence(_SUBTITLE_BLOCK, ALL_RULES)
+    assert applied == ("collapse-br",)
+    assert new == _SUBTITLE_BLOCK_JOINED
+
+
+def test_repair_strips_line_tail_arrows():
+    text = "あしたの朝刊の見出しは<br>こうニャ！➡"
+    new, applied = repair_sentence(text, ALL_RULES)
+    assert applied == ("strip-arrows", "collapse-br")
+    assert new == "あしたの朝刊の見出しはこうニャ！"
+
+
+def test_repair_keeps_midline_arrows():
+    # f:X→Y is mathematical notation, not a continuation marker.
+    text = "任意の<br>xεXに対してただひとつのyεYが対応しているとき，関数f:X→Yが定まったといい，"
+    new, applied = repair_sentence(text, ALL_RULES)
+    assert applied == ("collapse-br",)
+    assert "f:X→Y" in new
+    assert new == "任意の xεXに対してただひとつのyεYが対応しているとき，関数f:X→Yが定まったといい，"
+
+
+def test_repair_latin_boundary_joins_with_a_space():
+    new, _ = repair_sentence("諸君らが愛してくれた<br>X日本", ALL_RULES)
+    assert new == "諸君らが愛してくれた X日本"
+
+
+def test_repair_br_variants_and_vs16_arrow():
+    new, _ = repair_sentence("一つ目<br/>二つ目<BR />三つ目", ("collapse-br",))
+    assert new == "一つ目二つ目三つ目"
+    new, _ = repair_sentence("一つ目➡️<br>二つ目", ALL_RULES)  # arrow + VS16
+    assert new == "一つ目二つ目"
+
+
+def test_repair_normalizes_padding():
+    new, applied = repair_sentence("先頭\u3000\u3000あっ  そうだ\u3000 \u3000そう\u3000", ALL_RULES)
+    assert applied == ("normalize-padding",)
+    assert new == "先頭\u3000あっ そうだ\u3000そう"
+
+
+def test_repair_is_idempotent():
+    texts = [
+        _SUBTITLE_BLOCK,
+        "あしたの朝刊の見出しは<br>こうニャ！➡",
+        "「絶」\u3000念オーラを完全に絶つ技<br>自身の気配を消したり<br><b>疲労回復</b>に効果がある",
+    ]
+    for text in texts:
+        once, _ = repair_sentence(text, ALL_RULES)
+        twice, applied_twice = repair_sentence(once, ALL_RULES)
+        assert twice == once, text
+        assert applied_twice == (), text
+
+
+def test_repair_noop_on_clean_or_empty_text():
+    assert repair_sentence("きれいな文。", ALL_RULES) == ("きれいな文。", ())
+    assert repair_sentence("", ALL_RULES) == ("", ())
+    # Whitespace-only values are left exactly as they are (is_empty gate).
+    assert repair_sentence("   ", ALL_RULES) == ("   ", ())
+
+
+def test_repair_rules_enable_individually():
+    text = "前➡<br>後"
+    assert repair_sentence(text, ("strip-arrows",)) == ("前<br>後", ("strip-arrows",))
+    assert repair_sentence("前<br>後", ("collapse-br",)) == ("前後", ("collapse-br",))
+    # Only the enabled rules run: arrows survive when the rule is absent.
+    assert repair_sentence("前➡<br>後", ("collapse-br",)) == ("前➡後", ("collapse-br",))
+
+
+def test_repair_unknown_rules_are_ignored():
+    assert repair_sentence("前<br>後", ("collapse-br", "nonsense")) == ("前後", ("collapse-br",))

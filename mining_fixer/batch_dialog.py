@@ -38,6 +38,7 @@ _OP_SUMMARY = {
     "add_tags": "tag additions",
     "expand_sentence": "sentence rewrites",
     "replace_source": "source replacements",
+    "repair_sentence": "noise repairs",
 }
 
 

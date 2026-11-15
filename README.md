@@ -21,7 +21,7 @@ and covered by tests, not just intended:
 1. **Fills only touch empty fields.** A field with any non-whitespace
    content is never written. Markup-only values like `<hr>` count as
    occupied and are never overwritten.
-2. **Only four approved non-empty writes, each information-preserving.**
+2. **Only five approved non-empty writes, each information-preserving.**
    - `Source`: the asbplayer blob URL is replaced with the timestamped
      source — the blob URL is recorded in the run log, so nothing is lost.
    - `Sentence`: the mined fragment is replaced with the full scene text —
@@ -36,6 +36,14 @@ and covered by tests, not just intended:
      surface form (鬱病 + うつびょう → うつ病). Markup-only: the rendered
      text is identical, verified per write. Two occurrences = never
      guessed, reported as a warning instead.
+   - Sentence noise repair (`repair_sentence`): an opt-in rewrite of the
+     card's own `Sentence` that removes subtitle noise — `<br>`-joined
+     lines (tight for CJK neighbours, one space around Latin text), line-tail
+     continuation arrows (`➡`), padding runs. Mid-line glyphs like the math
+     arrow in `f:X→Y` are never touched, a card whose `Sentence` is already
+     queued for expansion or bold is skipped, and joining must not change
+     how often the tested word occurs. Off by default
+     (`sentence_repair_rules` / `batch_repair_sentence`).
    - Tags (`add_tags`): the target keeps its tags and gains every
      contributing source card's tags — a pure union that never removes;
      Anki control tags (`marked`, `leech`) and this tool's own tags
@@ -119,8 +127,14 @@ you press Apply.
   empty fields, scene sentence completion (the mined fragment stays in
   `cloze-*`), blob `Source` → timestamped source (the URL stays in the run
   log), bold markup, and tag unions. The two replaces can be switched off in
-  the config (`batch_expand_sentence`, `batch_replace_source`) — they are the
-  only writes that replace content that is already there.
+  the config (`batch_expand_sentence`, `batch_replace_source`).
+  The **subtitle-noise repair** is an additional opt-in tier: set
+  `"batch_repair_sentence": true` and choose the rules with
+  `"sentence_repair_rules"` (`strip-arrows`, `collapse-br`,
+  `normalize-padding` — `[]` disables it everywhere). The `<br>`-joined
+  subtitle dumps that dominate mined decks (72% of this deck's `Sentence`
+  fields) become one flowing line. It replaces content that is already
+  there, so it stays off until you turn it on.
   **Preview report** saves a one-page human-readable summary (word, note, what
   changes, what was left alone) without touching your collection. A real run
   takes an **Anki backup** first, writes its **undo log before the first

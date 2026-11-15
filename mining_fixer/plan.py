@@ -33,21 +33,37 @@ from .matching import (
     singleton_kanji_guard,
     word_groups,
 )
-from .normalize import kana_fold, norm_sentence_match, strip_renderable, word_key
+from .normalize import (
+    REPAIR_RULES,
+    kana_fold,
+    norm_sentence_match,
+    repair_sentence,
+    strip_renderable,
+    word_key,
+)
 
 __all__ = ["PlannedWrite", "Plan", "build_plan", "PLAN_VERSION", "scope_from_selection"]
 
-PLAN_VERSION = 2
+PLAN_VERSION = 3
 
 OP_FILL = "fill"
 OP_REPLACE_SOURCE = "replace_source"
 OP_EXPAND_SENTENCE = "expand_sentence"
 # Markup-only repair: wrap the tested word in <b> (rendered text unchanged).
 OP_BOLD_CLOZE_WORD = "bold_cloze_word"
+# Subtitle-noise repair: <br>-joined lines, line-tail arrows, padding runs
+# (bulk-fix dimension 2; see QUALITY Q-D10 and normalize.repair_sentence).
+OP_REPAIR_SENTENCE = "repair_sentence"
 # Tag-set union from contributing sources; never removes a tag.
 OP_ADD_TAGS = "add_tags"
 OPS_TOUCHING_NONEMPTY = frozenset(
-    {OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE, OP_BOLD_CLOZE_WORD, OP_ADD_TAGS}
+    {
+        OP_REPLACE_SOURCE,
+        OP_EXPAND_SENTENCE,
+        OP_BOLD_CLOZE_WORD,
+        OP_REPAIR_SENTENCE,
+        OP_ADD_TAGS,
+    }
 )
 
 
@@ -55,12 +71,13 @@ OPS_TOUCHING_NONEMPTY = frozenset(
 class PlannedWrite:
     """One field change. ``old_value`` empty <=> OP_FILL in almost all cases.
 
-    Four ops may write a non-empty value, each guarded: the two approved
+    Five ops may write a non-empty value, each guarded: the two approved
     replaces (blob Source — the blob URL is recorded in the audit log;
     fragment Sentence — the fragment survives in cloze-*), the markup-only
-    bold repair (``strip_renderable`` of both values must be equal) and the
-    tags union (``new_value`` is a superset of ``old_value``). All carry
-    badges.
+    bold repair (``strip_renderable`` of both values must be equal), the
+    subtitle-noise repair (only the configured noise classes change,
+    QUALITY Q-D10) and the tags union (``new_value`` is a superset of
+    ``old_value``). All carry badges.
     """
 
     note_id: int
@@ -279,6 +296,54 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
         )
     listed = ", ".join(f"'{cand}' ×{n}" for cand, n in sorted(hits))
     return None, "cloze-word-ambiguous", f"surface-form candidates: {listed}"
+
+
+def _sentence_repair_write(
+    target: NoteRecord, rules: tuple[str, ...]
+) -> tuple[PlannedWrite | None, str | None, str | None]:
+    """Rewrite subtitle noise in the target's own ``Sentence``.
+
+    Bulk-fix dimension 2: ``<br>``-joined subtitle lines, line-tail
+    continuation arrows and padding runs are the noise; bold markup, sound
+    tags, images, brackets and every spoken character pass through
+    untouched (:func:`normalize.repair_sentence`).
+
+    Guards (QUALITY Q-D10):
+    - the tested word (``cloze-body``) must occur exactly as often after the
+      repair as before — joining lines must not create or destroy an anchor;
+    - the caller must not already queue another ``Sentence`` write for this
+      note — expansion and bold own the field first.
+
+    Returns ``(write, reason, detail)``.
+    """
+    sentence = target.get("Sentence")
+    if is_empty(sentence):
+        return None, None, None
+    new_value, applied = repair_sentence(sentence, rules)
+    if new_value == sentence:
+        return None, None, None
+    body = strip_renderable(target.get("cloze-body")).strip()
+    if body:
+        old_plain = strip_renderable(sentence)
+        if old_plain.count(body) != strip_renderable(new_value).count(body):
+            return (
+                None,
+                "repair-anchor-risk",
+                f"joining lines would change how often '{body}' occurs in Sentence",
+            )
+    return (
+        PlannedWrite(
+            note_id=target.note_id,
+            field="Sentence",
+            op=OP_REPAIR_SENTENCE,
+            old_value=sentence,
+            new_value=new_value,
+            default_checked=True,
+            badges=applied,
+        ),
+        None,
+        None,
+    )
 
 
 def _scene_writes_for(
@@ -641,6 +706,12 @@ def build_plan(
     warnings: list[str] = []
     optout = cfg.get("optout_tag", "no-autofill")
 
+    raw_repair_rules = tuple(cfg.get("sentence_repair_rules", ()))
+    unknown_rules = [rule for rule in raw_repair_rules if rule not in REPAIR_RULES]
+    if unknown_rules:
+        warnings.append(f"unknown sentence_repair_rules ignored: {', '.join(unknown_rules)}")
+    repair_rules = tuple(rule for rule in raw_repair_rules if rule in REPAIR_RULES)
+
     groups = word_groups(records)
     parent_usage: dict[int, int] = {}
 
@@ -706,6 +777,20 @@ def build_plan(
             )
             if not target_writes and target.note_id not in reasons:
                 reasons[target.note_id] = bold_reason
+        # Subtitle-noise repair (dimension 2). Only when no other Sentence
+        # write is queued for this note: expansion and bold own the field
+        # first, and two writes to one field would fight at apply time.
+        if repair_rules and not any(w.field == "Sentence" for w in target_writes):
+            repair_write, repair_reason, repair_detail = _sentence_repair_write(
+                target, repair_rules
+            )
+            if repair_write is not None:
+                target_writes.append(repair_write)
+            elif repair_reason is not None:
+                expr = target.get("Expression") or "(sentence card)"
+                warnings.append(
+                    f"note {target.note_id} ({expr}): sentence repair skipped — {repair_detail}"
+                )
         # Tags: union of the target's tags with every contributing source's.
         tags_write = _tags_write_for(target, target_writes, by_id, cfg)
         if tags_write is not None:

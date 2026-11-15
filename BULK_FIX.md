@@ -36,14 +36,17 @@ stays off by default until it is proven on a real collection**.
 | # | Dimension | Status | What it fixes | Evidence / guards |
 |---|---|---|---|---|
 | 1 | Source–child fixes (scene propagation) | **shipped** | `Sentence`, `Sentence (furigana)`, scene audio, picture, `Translation`, timestamped `Source` onto children | source-confidence (`divergent-parents`, `far-from-source`), text-safety (`fragment-not-recoverable`, `cloze-anchor-not-unique`, `stale-fragment-furigana-risk`) |
-| 2 | Sentence repair | **future** | remove continuation arrows (`➡` / `→`), collapse `<br>` and subtitle padding so the text coheres with the audio | config-driven rule list; `cloze-*` fragment anchor must still be found; old → new diff in the report |
+| 2 | Sentence repair | **shipped, off by default** | remove continuation arrows (`➡` / `→`), collapse `<br>` and subtitle padding so the text coheres with the audio | config-driven rule list; `cloze-*` fragment anchor must still be found; old → new diff in the report |
 | 3 | Furigana generation | **future** | rebuild `Sentence (furigana)` from the repaired sentence | runs *after* repair; `bulkreading.regenerateReadings(nids)` / `reading.regenerateReading(note, src_field)` — Japanese Support (installed, id 3918629684); never a home-grown generator |
 | 4 | Expression repair | **future** | fix inflections; repair an expression written partly in kana when the kanji form exists | needs a per-expression oracle; ambiguity reported, never guessed |
 | 5 | Indentation / formatting | **future** | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
 
 Dimension 1 is what `batch.py` + `collection_io.apply_batch` ship today.
-Dimensions 2–5 are on the backlog (B6 the source-first pipeline, B7 this
-vision); none
+Dimension 2 has code (`normalize.repair_sentence`, the `repair_sentence`
+op) and ships **off by default** (`sentence_repair_rules: []`,
+`batch_repair_sentence: false`) until its Ring 3 run on a copy; the
+remaining dimensions are on the backlog (B6 the source-first pipeline, B7
+this vision); none
 has code yet, and none will ship enabled by default.
 
 ## Ordering (the DAG)

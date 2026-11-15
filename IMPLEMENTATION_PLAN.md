@@ -49,6 +49,19 @@ below, never as silent scope creep inside a coding session.
   every such note to review. On a 1,000-note selection this demoted 18 notes
   (48 rows) that would otherwise have been written from an arbitrarily chosen
   parent.
+- **T10 — Bulk runs are the default experience.** A batch run ships with
+  both information-preserving replaces enabled (`batch.py` defaults), the
+  window shows counts and a preview report instead of a decision queue, and
+  the dialog states exactly what it will do before the run.
+- **T11 — Subtitle-noise repair (bulk-fix dimension 2, B7 slice 1).**
+  `normalize.repair_sentence` (config-driven fixed pipeline:
+  `strip-arrows` at line tails only, `collapse-br` with CJK/Latin boundary
+  rules, `normalize-padding`) behind the opt-in `repair_sentence` op
+  (`PLAN_VERSION` 3): skipped when expansion or bold already owns the
+  `Sentence`, dropped when joining would change the tested word's
+  occurrence count, idempotent, off by default (`sentence_repair_rules: []`,
+  `batch_repair_sentence: false`). Pinned against real deck values; the
+  Ring 3 old → new diff on a collection copy is still pending.
 - **T8 — Batch mode for hundreds/thousands of notes.** A counts-only dialog
   with a lossless-by-default policy (`batch.py`), opt-in Sentence/Source
   tiers, note- and group-atomic selection, and a review shortlist instead of
@@ -75,6 +88,7 @@ below, never as silent scope creep inside a coding session.
 | T8 | `test_batch.py`, `test_invariants.py` (Hypothesis); Ring 3 1000-note run |
 | T9 | `test_divergent_scene_sources_*`, `test_a_far_scene_source_*`, `test_an_identical_sentence_*`; Ring 3 demotion count |
 | T10 | `test_batch.py` (defaults), `tests/test_report_summary.py` (readable preview); Ring 3 run |
+| T11 | `test_normalize.py` (repair rules), `test_plan.py` (guards, exclusivity), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 diff pending |
 
 ## Backlog
 
@@ -83,7 +97,10 @@ below, never as silent scope creep inside a coding session.
   the dimensions to fix (source–child propagation, sentence repair, furigana
   generation after the sentence is repaired, later expression repair and
   formatting), press apply. Includes multi-deck selection and, later, other
-  note types and languages behind a language/note-type profile.
+  note types and languages behind a language/note-type profile. Slice 1 (the
+  sentence-repair dimension) shipped as T11, off by default; the single-window
+  dimension picker, dimension 3 (furigana) and the repair→propagate DAG
+  sequencing are still open.
 - **B6 — Source-first pipeline** (author's idea, text in
   [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md)): normalise a source card before
   its children — strip continuation arrows, collapse `<br>`/padding spaces so

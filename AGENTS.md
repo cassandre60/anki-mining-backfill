@@ -53,9 +53,9 @@ enriched siblings. Two halves:
    `batch_dialog.py` may touch Anki.
 5. **Never guess.** Ambiguity is reported (`plan.reasons`, `plan.warnings`),
    never resolved by picking one of several plausible values.
-6. **Fills only; four approved non-empty writes** (`Source`, `Sentence`,
-   `bold_cloze_word`, `add_tags`) — each must preserve its information, and
-   each carries badges. See `QUALITY.md`.
+6. **Fills only; five approved non-empty writes** (`Source`, `Sentence`,
+   `bold_cloze_word`, `repair_sentence`, `add_tags`) — each must preserve
+   its information, and each carries badges. See `QUALITY.md`.
 7. **Tags are never removed** and bookkeeping tags are never added: the audit
    deck is the container, the note carries only the target's and its sources'
    tags.
@@ -79,10 +79,10 @@ enriched siblings. Two halves:
 
 ```bash
 ruff check . && ruff format --check .     # must be clean
-python3 -m pytest                         # 120 tests with Anki installed
+python3 -m pytest                         # 139 tests with Anki installed
 ```
 
-Then push and watch CI — it is the gate, and it runs without Anki (118 passed,
+Then push and watch CI — it is the gate, and it runs without Anki (137 passed,
 2 skipped):
 
 ```bash

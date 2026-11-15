@@ -18,6 +18,7 @@ the collection never touched by anything the dialog did not show.
 | Scene completion (full sentence, furigana, audio, picture, timestamped source) | `matching.find_scene_parents`, `plan._scene_writes_for` | golden fixture, byte-exact |
 | Word backfill (`Definition`, `Extended definition`, `Pitch Accent`, `Frequency`, `Word Audio`, `furigana`, `reading`) | `matching.word_groups`, `plan._word_writes_for` | unit tests + real-collection run |
 | Bold repair when `Sentence` has no bold term | `plan._bold_repair_for` | 鬱病 verified end to end |
+| Subtitle-noise repair (`<br>` lines, line-tail arrows, padding) — off by default | `normalize.repair_sentence`, `plan._sentence_repair_write`, `batch.py` tier | `tests/test_normalize.py`, `test_plan.py`, `test_batch.py`; Ring 3 diff pending |
 | Tag union from contributing sources (never removes) | `plan._tags_write_for` | golden test pins 診察 = `asbplayer yomitan` |
 | Preview dialog with per-row checkboxes, not-fixable and warning tabs | `preview_dialog.py` | import check + real-apply run |
 | Apply with per-note re-assertion and no-op re-runs | `applier.decide` | `tests/test_applier.py` (13 tests) |
@@ -59,7 +60,7 @@ the collection never touched by anything the dialog did not show.
 ## Acceptance criteria (every release)
 
 - `ruff check .` and `ruff format --check .` clean; `python3 -m pytest` green
-  (120 tests with Anki installed).
+  (139 tests with Anki installed).
 - CI (`tests` workflow) green on the released commit.
 - The golden fixture test still reproduces the author's manual fix
   byte-for-byte on all five fields.

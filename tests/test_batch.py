@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from mining_fixer.batch import allowed_ops, select
+from mining_fixer.batch import allowed_ops, default_ops, select
 from mining_fixer.plan import (
     OP_ADD_TAGS,
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
+    OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     Plan,
     PlannedWrite,
@@ -164,8 +165,6 @@ def test_complete_notes_count_as_untouched_and_ambiguous_bold_is_left_alone():
 def test_default_batch_writes_the_information_preserving_replaces():
     # The bulk fixer completes cards out of the box: the fragment stays in
     # cloze-*, the blob URL stays in the run log, so both replaces are safe.
-    from mining_fixer.batch import default_ops
-
     assert default_ops() == {
         OP_FILL,
         OP_BOLD_CLOZE_WORD,
@@ -175,6 +174,29 @@ def test_default_batch_writes_the_information_preserving_replaces():
     }
     assert OP_EXPAND_SENTENCE not in default_ops({"batch_expand_sentence": False})
     assert OP_REPLACE_SOURCE not in default_ops({"batch_replace_source": False})
+
+
+def test_the_repair_tier_is_off_by_default_and_opt_in():
+    assert OP_REPAIR_SENTENCE not in allowed_ops()
+    assert OP_REPAIR_SENTENCE in allowed_ops(repair_sentence=True)
+    assert OP_REPAIR_SENTENCE not in default_ops()
+    assert OP_REPAIR_SENTENCE in default_ops({"batch_repair_sentence": True})
+
+
+def test_repair_rows_are_selected_only_when_the_tier_is_on():
+    plan = Plan(
+        writes=(
+            w(1, "Sentence", OP_REPAIR_SENTENCE, "前<br>後", "前後"),
+            w(1, "Sentence Audio", OP_FILL, "", "[sound:a.webm]"),
+        )
+    )
+    off = select(plan, allowed_ops())
+    assert [row.field for row in off.rows] == ["Sentence Audio"]
+    assert off.excluded_notes == 1
+
+    on = select(plan, allowed_ops(repair_sentence=True))
+    assert sorted(row.field for row in on.rows) == ["Sentence", "Sentence Audio"]
+    assert on.excluded_notes == 0
 
 
 def test_left_alone_names_the_divergence_so_the_user_knows_why():
