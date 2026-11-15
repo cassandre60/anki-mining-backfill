@@ -386,11 +386,11 @@ def dry_run_folder() -> Path:
     return path
 
 
-def write_dry_run(plan: Plan, records_by_id: dict[int, NoteRecord], meta: dict) -> Path:
-    """Write the Markdown report for a batch the user did not apply."""
-    from .report import render_markdown
+def write_dry_run(plan: Plan, records_by_id: dict[int, NoteRecord], selection, meta: dict) -> Path:
+    """Write the readable preview for a batch the user did not apply."""
+    from .report import render_batch_summary
 
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     path = dry_run_folder() / f"batch-{stamp}.md"
-    path.write_text(render_markdown(plan, records_by_id, meta), encoding="utf-8")
+    path.write_text(render_batch_summary(plan, records_by_id, selection, meta), encoding="utf-8")
     return path

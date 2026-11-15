@@ -16,7 +16,7 @@ from .plan import (
     Plan,
 )
 
-__all__ = ["OP_LABELS", "render_markdown"]
+__all__ = ["OP_LABELS", "render_batch_summary", "render_markdown"]
 
 OP_LABELS = {
     OP_FILL: "fill",
@@ -33,6 +33,94 @@ def _plain(value: str, limit: int = 160) -> str:
     if len(text) > limit:
         text = text[: limit - 1] + "…"
     return text.replace("|", "\\|")
+
+
+def render_batch_summary(
+    plan: Plan,
+    records: dict[int, NoteRecord],
+    selection,
+    meta: dict,
+    limit: int = 200,
+) -> str:
+    """One readable page: what changes, per card, and what was left alone.
+
+    Written for a human skimming a bulk run, not for a machine: one row per
+    note, human field labels, and the reasons listed in plain words. The
+    per-field old → new detail stays in the plan JSON.
+    """
+    lines: list[str] = []
+    lines.append("# Mining Backfill — preview (nothing was changed)")
+    lines.append("")
+    by_op = selection.count_by_op()
+    filled = ", ".join(
+        f"{count} {OP_LABELS.get(op, op)}" for op, count in by_op.items() if op != OP_ADD_TAGS
+    )
+    lines.append(f"- selected: {meta.get('scope', '?')} note(s)")
+    lines.append(
+        f"- will be fixed: {selection.field_notes} note(s)" + (f" — {filled}" if filled else "")
+    )
+    if selection.tag_only_notes:
+        lines.append(f"- only tag updates: {selection.tag_only_notes} note(s)")
+    lines.append(f"- unchanged: {selection.untouched} note(s)")
+    lines.append(f"- left alone: {len(selection.left_alone)} note(s)")
+    lines.append("")
+
+    by_note: dict[int, list[str]] = {}
+    for write in selection.rows:
+        label = _field_label(write)
+        labels = by_note.setdefault(write.note_id, [])
+        if label not in labels:
+            labels.append(label)
+    lines.append("## What will be fixed")
+    lines.append("")
+    if not by_note:
+        lines.append("Nothing.")
+    else:
+        lines.append("| word | note | what changes |")
+        lines.append("|---|---|---|")
+        for note_id in list(by_note)[:limit]:
+            record = records.get(note_id)
+            word = record.get("Expression") if record is not None else ""
+            lines.append(f"| {word or '—'} | {note_id} | {' · '.join(by_note[note_id])} |")
+        if len(by_note) > limit:
+            lines.append("")
+            lines.append(f"(showing the first {limit} of {len(by_note)} notes)")
+    lines.append("")
+
+    if selection.left_alone:
+        lines.append("## Left alone")
+        lines.append("")
+        lines.append("| word | note | why |")
+        lines.append("|---|---|---|")
+        for item in selection.left_alone[:limit]:
+            record = records.get(item.note_id)
+            word = record.get("Expression") if record is not None else ""
+            lines.append(f"| {word or '—'} | {item.note_id} | {item.reason} |")
+        lines.append("")
+        lines.append("Nothing here needs a decision — these are simply untouched.")
+    return "\n".join(lines) + "\n"
+
+
+_LABELS_BY_FIELD = {
+    "Sentence Audio": "scene audio",
+    "Picture": "picture",
+    "Translation": "translation",
+    "Source": "timestamped source",
+    "Sentence (furigana)": "furigana",
+    "Expression": "expression",
+}
+
+
+def _field_label(write) -> str:
+    """A human phrase for one planned write."""
+    if write.op == OP_ADD_TAGS:
+        added = " ".join(sorted(set(write.new_value.split()) - set(write.old_value.split())))
+        return f"tags: {added}" if added else "tags"
+    if write.op == OP_EXPAND_SENTENCE and write.field == "Sentence":
+        return "full scene sentence"
+    if write.op == OP_BOLD_CLOZE_WORD:
+        return "bold on the tested word"
+    return _LABELS_BY_FIELD.get(write.field, write.field)
 
 
 def render_markdown(plan: Plan, records: dict[int, NoteRecord], run_meta: dict) -> str:

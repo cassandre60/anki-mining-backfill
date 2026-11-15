@@ -5,6 +5,8 @@
   "window_days": 3,
   "preview_last_n": 30,
   "scene_auto_gap_hours": 6,
+  "batch_expand_sentence": true,
+  "batch_replace_source": true,
   "min_sentence_len": 6,
   "min_nonspace_chars": 4,
   "scene_fill_fields": ["Sentence Audio", "Picture", "Sentence (furigana)", "Translation"],

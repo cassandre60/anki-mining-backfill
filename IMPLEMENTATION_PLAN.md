@@ -74,9 +74,16 @@ below, never as silent scope creep inside a coding session.
 | T7 | `test_scope_from_selection_*`, `test_browser_context_menu_*`; Ring 3 selection run |
 | T8 | `test_batch.py`, `test_invariants.py` (Hypothesis); Ring 3 1000-note run |
 | T9 | `test_divergent_scene_sources_*`, `test_a_far_scene_source_*`, `test_an_identical_sentence_*`; Ring 3 demotion count |
+| T10 | `test_batch.py` (defaults), `tests/test_report_summary.py` (readable preview); Ring 3 run |
 
 ## Backlog
 
+- **B7 — Bulk fix by dimensions** (the product direction; design in
+  [`BULK_FIX.md`](BULK_FIX.md)): one window, select any number of cards, pick
+  the dimensions to fix (source–child propagation, sentence repair, furigana
+  generation after the sentence is repaired, later expression repair and
+  formatting), press apply. Includes multi-deck selection and, later, other
+  note types and languages behind a language/note-type profile.
 - **B6 — Source-first pipeline** (author's idea, text in
   [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md)): normalise a source card before
   its children — strip continuation arrows, collapse `<br>`/padding spaces so

@@ -50,6 +50,7 @@ __all__ = [
     "BatchSelection",
     "LeftAlone",
     "allowed_ops",
+    "default_ops",
     "select",
 ]
 
@@ -144,6 +145,22 @@ def allowed_ops(expand_sentence: bool = False, replace_source: bool = False) -> 
     if replace_source:
         ops.add(OP_REPLACE_SOURCE)
     return frozenset(ops)
+
+
+def default_ops(cfg: dict | None = None) -> frozenset[str]:
+    """What a bulk run does out of the box.
+
+    Both replaces are *information-preserving*: the mined fragment survives in
+    ``cloze-*`` and the blob URL is kept in the run log, so the undo restores
+    them. A bulk fixer that refused to complete sentences would be useless, so
+    they are on by default and configurable without a UI
+    (``batch_expand_sentence`` / ``batch_replace_source``).
+    """
+    cfg = cfg or {}
+    return allowed_ops(
+        expand_sentence=bool(cfg.get("batch_expand_sentence", True)),
+        replace_source=bool(cfg.get("batch_replace_source", True)),
+    )
 
 
 def _reason_text(reason: str) -> str:

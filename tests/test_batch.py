@@ -161,6 +161,22 @@ def test_complete_notes_count_as_untouched_and_ambiguous_bold_is_left_alone():
     ]
 
 
+def test_default_batch_writes_the_information_preserving_replaces():
+    # The bulk fixer completes cards out of the box: the fragment stays in
+    # cloze-*, the blob URL stays in the run log, so both replaces are safe.
+    from mining_backfill.batch import default_ops
+
+    assert default_ops() == {
+        OP_FILL,
+        OP_BOLD_CLOZE_WORD,
+        OP_ADD_TAGS,
+        OP_EXPAND_SENTENCE,
+        OP_REPLACE_SOURCE,
+    }
+    assert OP_EXPAND_SENTENCE not in default_ops({"batch_expand_sentence": False})
+    assert OP_REPLACE_SOURCE not in default_ops({"batch_replace_source": False})
+
+
 def test_left_alone_names_the_divergence_so_the_user_knows_why():
     plan = Plan(
         writes=(

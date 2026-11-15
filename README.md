@@ -111,28 +111,22 @@ you press Apply.
   last apply replaced and removes exactly the tags it added.
 
 - **In the Browser: select notes → right-click → "Mining Backfill: batch-fix
-  selection…"** — the bulk mode, for hundreds or thousands of notes. It shows
-  **counts, not rows**, and asks for no decisions: how many notes will be
-  filled and with what, how many only gain tags, how many are already
-  complete, and how many were left alone (with the reason available in the
-  report). Default is **lossless**: empty-field fills, bold markup, tag
-  additions. The two checkboxes are the only content rewrites, and each says
-  what it does:
-  - **"Also expand Sentence"** — replaces a card's mined subtitle fragment
-    with the *whole scene sentence* from its source card, moving the bold onto
-    the card's own word. The fragment is not lost: it stays in `cloze-*`. Off
-    by default because it rewrites a non-empty field.
-  - **"Also replace blob Source"** — replaces the `blob:https://…` mining URL
-    with the human-readable timestamped source (`Dr. Rintaro Episode 6.mp4
-    (20m19s)`). The URL is kept in the run log. Off by default for the same
-    reason.
-  Each box shows how many *more* writes it would add, so you can see the value
-  before ticking it. Scene audio, picture and translation are filled either
-  way — they don't depend on the sentence text. Every batch run takes an
-  **Anki backup** first, writes its **undo log before the first write**,
-  applies in chunks, and then **re-reads every written value to verify it
-  landed**. "Write dry-run report" produces the full Markdown report without
-  touching the collection.
+  selection…"** — the bulk mode: select any number of cards, press **Fix N
+  note(s)**, done. The window stays quiet — counts, not rows: how many notes
+  will be fixed, how many are unchanged, how many were left alone (the reasons
+  are behind one button and in the preview report).
+  Out of the box it performs every **information-preserving** fix: fills into
+  empty fields, scene sentence completion (the mined fragment stays in
+  `cloze-*`), blob `Source` → timestamped source (the URL stays in the run
+  log), bold markup, and tag unions. The two replaces can be switched off in
+  the config (`batch_expand_sentence`, `batch_replace_source`) — they are the
+  only writes that replace content that is already there.
+  **Preview report** saves a one-page human-readable summary (word, note, what
+  changes, what was left alone) without touching your collection. A real run
+  takes an **Anki backup** first, writes its **undo log before the first
+  write**, applies in chunks, and **re-reads every written value to verify it
+  landed**. Rows it cannot trust (a source another card disagrees with, or one
+  far outside the mining session) are left alone, never guessed.
 
 Apply is safe by construction:
 
@@ -197,6 +191,7 @@ After auditing: delete the audit deck and the cloned note type.
 | [`TEST_STRATEGY.md`](TEST_STRATEGY.md) | the test rings and what each one proves |
 | [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | shipped slices and the backlog |
 | [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) | the author's ideas, incl. the source-first pipeline (not committed scope) |
+| [`BULK_FIX.md`](BULK_FIX.md) | the product vision: dimensions, ordering, profiles, build plan |
 | [`AGENTS.md`](AGENTS.md) | operating rules for agents working in this repo |
 
 ## Development

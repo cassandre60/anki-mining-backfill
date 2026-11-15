@@ -80,7 +80,13 @@ first, with the reason.
     text unit is dropped; the note's independent scene fields (audio,
     picture, translation) are still filled.
   - A note with nothing safe to write is reported as *left alone* with a
-    reason, never as a question. The dry-run report lists them all.
+    reason, never as a question. The preview report lists them all.
+  - **The batch default includes both information-preserving replaces**
+    (sentence completion and blob-source replacement) so the tool completes
+    cards instead of merely filling blanks; `batch_expand_sentence` and
+    `batch_replace_source` turn each off. Both keep their information: the
+    mined fragment survives in `cloze-*`, the blob URL is written to the run
+    log before the write.
 
 ## Apply behaviour
 

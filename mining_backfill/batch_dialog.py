@@ -1,14 +1,13 @@
-"""Batch dialog: counts and a shortlist, never a thousand checkboxes.
+"""Batch dialog: one screen, counts instead of rows, no decisions to make.
 
-Qt-facing module. Every decision (which rows, which tiers, what a note needs)
-comes from the pure ``batch`` module, so the same selection logic is unit
-tested headless.
+The policy (what may be written, and which guards block it) lives in
+``batch.py``; the dialog only reports what will happen, what was left alone,
+and applies it. Options are config keys, not widgets.
 """
 
 from __future__ import annotations
 
 from aqt.qt import (
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFont,
@@ -23,7 +22,7 @@ from aqt.qt import (
 from aqt.utils import showCritical, showInfo
 
 from .applier import ApplyDecision, run_after_editor_saved
-from .batch import BatchSelection, allowed_ops, select
+from .batch import BatchSelection, default_ops, select
 from .collection_io import (
     Preview,
     apply_batch,
@@ -43,8 +42,7 @@ _OP_SUMMARY = {
 
 
 class BatchDialog(QDialog):
-    """One screen for a bulk run: what will change, what will not, what needs
-    a human — and the two opt-in replace tiers."""
+    """What a bulk run will do, in one short paragraph, and a button to do it."""
 
     def __init__(
         self,
@@ -61,8 +59,8 @@ class BatchDialog(QDialog):
         self.preview: Preview = plan_preview(col, self.cfg, scope_note_ids)
         self.pending: tuple[ApplyDecision, dict] | None = None
 
-        self.setWindowTitle("Mining Backfill — batch")
-        self.resize(760, 520)
+        self.setWindowTitle("Mining Backfill")
+        self.resize(640, 320)
         layout = QVBoxLayout(self)
 
         if self.preview.error:
@@ -80,42 +78,25 @@ class BatchDialog(QDialog):
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
 
-        self.expand_box = QCheckBox(
-            "Also expand Sentence  (fragment → full scene; the fragment stays in cloze-*)"
-        )
-        self.expand_box.toggled.connect(self._refresh)
-        layout.addWidget(self.expand_box)
-        self.source_box = QCheckBox(
-            "Also replace blob Source  (the blob URL is kept in the run log)"
-        )
-        self.source_box.toggled.connect(self._refresh)
-        layout.addWidget(self.source_box)
+        self.left_button = QPushButton("")
+        self.left_button.clicked.connect(self._toggle_left_alone)
+        layout.addWidget(self.left_button)
+        self.left_list = QListWidget()
+        self.left_list.setVisible(False)
+        self.left_list.setMaximumHeight(160)
+        layout.addWidget(self.left_list)
 
-        self.hint = QLabel("")
-        self.hint.setWordWrap(True)
-        layout.addWidget(self.hint)
-
-        self.review_button = QPushButton("")
-        self.review_button.clicked.connect(self._toggle_review)
-        layout.addWidget(self.review_button)
-        self.review_list = QListWidget()
-        self.review_list.setVisible(False)
-        self.review_list.setMaximumHeight(200)
-        layout.addWidget(self.review_list)
-
-        self.status = QLabel("")
-        layout.addWidget(self.status)
-
+        layout.addStretch(1)
         box = QDialogButtonBox()
         self.apply_button = QPushButton("Apply")
         self.apply_button.setDefault(True)
         self.apply_button.clicked.connect(self._on_apply)
-        self.dry_button = QPushButton("Write dry-run report")
-        self.dry_button.clicked.connect(self._on_dry_run)
+        preview_button = QPushButton("Preview report")
+        preview_button.clicked.connect(self._on_preview_report)
         close_button = QPushButton("Close")
         close_button.clicked.connect(self.reject)
         box.addButton(self.apply_button, QDialogButtonBox.ButtonRole.AcceptRole)
-        box.addButton(self.dry_button, QDialogButtonBox.ButtonRole.ActionRole)
+        box.addButton(preview_button, QDialogButtonBox.ButtonRole.ActionRole)
         box.addButton(close_button, QDialogButtonBox.ButtonRole.RejectRole)
         layout.addWidget(box)
         self._refresh()
@@ -125,13 +106,7 @@ class BatchDialog(QDialog):
     def _selection(self) -> BatchSelection:
         plan = self.preview.plan
         assert plan is not None
-        return select(
-            plan,
-            allowed_ops(
-                expand_sentence=self.expand_box.isChecked(),
-                replace_source=self.source_box.isChecked(),
-            ),
-        )
+        return select(plan, default_ops(self.cfg))
 
     def _meta(self, selection: BatchSelection) -> dict:
         plan = self.preview.plan
@@ -143,92 +118,53 @@ class BatchDialog(QDialog):
             "scope": len(self.preview.scope),
             "rows": len(selection.rows),
             "notes": selection.notes,
-            "expand_sentence": self.expand_box.isChecked(),
-            "replace_source": self.source_box.isChecked(),
+            "ops": sorted({write.op for write in selection.rows}),
         }
 
     def _refresh(self) -> None:
         selection = self._selection()
         by_op = selection.count_by_op()
-        field_ops = {op: n for op, n in by_op.items() if op != "add_tags"}
-        field_label = ", ".join(
-            f"{count} {_OP_SUMMARY.get(op, op)}" for op, count in field_ops.items()
+        filled = ", ".join(
+            f"{count} {_OP_SUMMARY.get(op, op)}" for op, count in by_op.items() if op != "add_tags"
         )
-        parts: list[str] = []
+        parts = []
         if selection.field_notes:
             parts.append(
-                f"{selection.field_notes} note(s) will be filled"
-                + (f": {field_label}" if field_label else "")
+                f"{selection.field_notes} note(s) will be fixed"
+                + (f" ({filled})" if filled else "")
             )
-        if selection.tag_only_notes:
-            parts.append(f"{selection.tag_only_notes} note(s) only gain tags")
+        else:
+            parts.append("Nothing to fix")
         if selection.untouched:
-            parts.append(f"{selection.untouched} left exactly as they are")
-        if selection.sentences_left_alone:
-            parts.append(f"{selection.sentences_left_alone} sentence(s) left as they are")
+            parts.append(f"{selection.untouched} unchanged")
         if selection.left_alone:
             parts.append(f"{len(selection.left_alone)} left alone")
-        self.summary.setText((" · ".join(parts) + ".") if parts else "Nothing to do.")
-
-        extras = []
-        current_rows = len(selection.rows)
-        if not self.expand_box.isChecked():
-            with_expand = select(self.preview.plan, allowed_ops(True, self.source_box.isChecked()))
-            added = len(with_expand.rows) - current_rows
-            if added > 0:
-                extra = f"expanding Sentence adds {added} more write(s)"
-                more_notes = with_expand.field_notes - selection.field_notes
-                if more_notes > 0:
-                    extra += f" and fills {more_notes} more note(s)"
-                extras.append(extra)
-        if not self.source_box.isChecked():
-            with_source = select(self.preview.plan, allowed_ops(self.expand_box.isChecked(), True))
-            added = len(with_source.rows) - current_rows
-            if added > 0:
-                extra = f"replacing blob Source adds {added} more write(s)"
-                more_notes = with_source.field_notes - selection.field_notes
-                if more_notes > 0:
-                    extra += f" and fills {more_notes} more note(s)"
-                extras.append(extra)
-        self.hint.setText(("Available: " + "; ".join(extras) + ".") if extras else "")
+        self.summary.setText(" · ".join(parts) + ".")
 
         if selection.left_alone:
-            self.review_button.setText(f"What was left alone ({len(selection.left_alone)})")
-            self.review_button.setVisible(True)
-            self.review_list.clear()
+            self.left_button.setText(f"What was left alone ({len(selection.left_alone)})")
+            self.left_button.setVisible(True)
+            self.left_list.clear()
             names = self.preview.records_by_id or {}
             for item in selection.left_alone:
                 record = names.get(item.note_id)
                 expression = record.get("Expression") if record is not None else ""
-                suffix = f" [{', '.join(item.rows)}]" if item.rows else ""
-                self.review_list.addItem(
-                    QListWidgetItem(
-                        f"{expression or '(no expression)'} · {item.note_id}: {item.reason}{suffix}"
-                    )
+                self.left_list.addItem(
+                    QListWidgetItem(f"{expression or item.note_id} — {item.reason}")
                 )
         else:
-            self.review_button.setVisible(False)
-            self.review_list.setVisible(False)
+            self.left_button.setVisible(False)
+            self.left_list.setVisible(False)
 
-        backup_folder = ""
-        try:
-            from aqt import mw
-
-            backup_folder = mw.pm.backupFolder() if mw is not None else ""
-        except Exception:
-            pass
-        self.status.setText(
-            f"{len(selection.rows)} write(s) · each run takes an Anki backup first"
-            + (f" (into {backup_folder})" if backup_folder else "")
-        )
-        self.apply_button.setText(f"Apply to {selection.notes} note(s)")
+        self.apply_button.setText(f"Fix {selection.field_notes} note(s)")
         self.apply_button.setEnabled(bool(selection.rows))
 
-    def _toggle_review(self) -> None:
-        visible = not self.review_list.isVisible()
-        self.review_list.setVisible(visible)
-        self.review_button.setText(
-            ("Hide" if visible else "Show") + f" what was left alone ({self.review_list.count()})"
+    def _toggle_left_alone(self) -> None:
+        visible = not self.left_list.isVisible()
+        self.left_list.setVisible(visible)
+        count = self.left_list.count()
+        self.left_button.setText(
+            f"Hide what was left alone ({count})" if visible else f"What was left alone ({count})"
         )
 
     # --- actions ------------------------------------------------------
@@ -239,25 +175,24 @@ class BatchDialog(QDialog):
             return
         selection = self._selection()
         if not selection.rows:
-            showInfo("Nothing to apply: nothing in this selection needs a change.", parent=self)
+            showInfo("Nothing to fix in this selection.", parent=self)
             return
         decision = build_batch_decision(self.col, plan, selection.rows, self.cfg)
         if not decision.row_count():
-            showInfo("Nothing to apply: everything already matches.", parent=self)
+            showInfo("Nothing to fix: everything already matches.", parent=self)
             return
         self.pending = (decision, self._meta(selection))
         self.accept()
 
-    def _on_dry_run(self) -> None:
+    def _on_preview_report(self) -> None:
         plan = self.preview.plan
         if plan is None:
             return
         selection = self._selection()
-        path = write_dry_run(plan, self.preview.records_by_id or {}, self._meta(selection))
-        showInfo(
-            f"Dry-run report written to:\n{path}\n\nNothing was changed in your collection.",
-            parent=self,
+        path = write_dry_run(
+            plan, self.preview.records_by_id or {}, selection, self._meta(selection)
         )
+        showInfo(f"Report saved (nothing was changed):\n{path}", parent=self)
 
     def _close_box(self) -> QDialogButtonBox:
         box = QDialogButtonBox()
@@ -289,19 +224,13 @@ def _finish_batch(col, pending, parent) -> None:
             parent=parent,
         )
         return
-    lines = [
-        f"Applied {result.writes} write(s) to {result.modified} note(s).",
-        "Backup: " + ("created" if result.backup_created else "not created (no changes yet)"),
-    ]
-    if result.log_path is not None:
-        lines.append(
-            f"Undo: Tools → “Mining Backfill: undo last run”.\nLog: {result.log_path.name}"
-        )
+    lines = [f"Fixed {result.modified} note(s) ({result.writes} write(s))."]
     if result.problems:
-        lines.append("VERIFY PROBLEMS — undo and report these:")
+        lines.append("These writes did not verify — undo and report them:")
         lines.extend(f"  {problem}" for problem in result.problems)
     else:
-        lines.append("Verified: every written value matches the plan.")
+        lines.append("Verified.")
+    lines.append('Undo: Tools → "Mining Backfill: undo last run".')
     showInfo("\n".join(lines), parent=parent)
 
 
