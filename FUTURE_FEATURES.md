@@ -112,6 +112,25 @@ imperfect — and asbplayer/Yomitan sources usually are:
    sources (the run logs say so) — that tells us how much migration the
    change implies.
 
+## Where each idea lives (traceability)
+
+Every ask from the author, and where it is written down so it can be built
+later. Status is one of *shipped*, *documented* (no code yet).
+
+| Owner ask | Documented in | Status |
+|---|---|---|
+| Bulk fixer: select many cards, pick dimensions, apply, no per-card review | `BULK_FIX.md` (whole file), `QUALITY.md` Q-C9 | propagation + window shipped |
+| Fix the source card before the children | `BULK_FIX.md` §Ordering, this file §F1 | documented (slices 1–2) |
+| Sentence repair: remove continuation arrows, fix spacing and line breaks so the text coheres with the audio | `BULK_FIX.md` dimension 2, this file §F1 | documented (slice 1) |
+| Generate furigana **after** the sentence is fixed, through the installed Japanese Support add-on | `BULK_FIX.md` dimension 3, this file §F1 | documented (slice 2) |
+| Fix the expression itself: inflections, expressions written partly in kana where the kanji form exists | `BULK_FIX.md` dimension 4 | documented (slice 4) |
+| Indentation / formatting | `BULK_FIX.md` dimension 5 | documented (slice 5) |
+| Apply to other decks when they are selected | `BULK_FIX.md` §Scope and profiles | targets shipped; sources still limited to the configured deck |
+| Apply to other languages (Chinese, …) and other note types | `BULK_FIX.md` §Scope and profiles, slice 6 | documented (profile abstraction) |
+| "Ideally there should be no notes that need humans" | `QUALITY.md` Q-C9, `BULK_FIX.md` §The target experience | shipped (left alone with a reason; no decision queue) |
+| A report a human can read, not a data dump | `report.render_batch_summary`, `README.md` | shipped |
+| Never crash the author's machine again | `AGENTS.md` §2 rules 2–3, Lessons Learned | shipped (rules in force) |
+
 ## Other candidates (already listed elsewhere)
 
 - Browser integration for source cards (select sources, fix them, then their
