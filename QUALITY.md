@@ -1,4 +1,4 @@
-# Mining Backfill — Quality Rules (Invariants)
+# Mining Fixer — Quality Rules (Invariants)
 
 Answers: *what properties must remain true?*
 `TEST_STRATEGY.md` answers how each one is mechanically verified.

@@ -49,7 +49,7 @@ def render_batch_summary(
     per-field old → new detail stays in the plan JSON.
     """
     lines: list[str] = []
-    lines.append("# Mining Backfill — preview (nothing was changed)")
+    lines.append("# Mining Fixer — preview (nothing was changed)")
     lines.append("")
     by_op = selection.count_by_op()
     filled = ", ".join(
@@ -130,7 +130,7 @@ def render_markdown(plan: Plan, records: dict[int, NoteRecord], run_meta: dict) 
 
     checked = [w for w in plan.writes if w.default_checked]
     lines: list[str] = []
-    lines.append("# Mining Backfill — run report")
+    lines.append("# Mining Fixer — run report")
     lines.append("")
     for k, v in run_meta.items():
         lines.append(f"- **{k}**: {v}")

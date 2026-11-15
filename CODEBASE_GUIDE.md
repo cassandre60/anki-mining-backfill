@@ -1,4 +1,4 @@
-# Mining Backfill — Codebase & Architecture Guide
+# Mining Fixer — Codebase & Architecture Guide
 
 > A pedagogical tour: what this add-on does, how the code is arranged, why the
 > seams are where they are, and what to be careful about when changing it.
@@ -9,7 +9,7 @@
 
 ## 1. What it is, in one sentence
 
-**Mining Backfill completes incompletely-mined Japanese cards by copying from
+**Mining Fixer completes incompletely-mined Japanese cards by copying from
 their enriched siblings — the same scene's fully-mined card, or another card
 of the same word.**
 
@@ -93,7 +93,7 @@ or the answer is "pass it in".
    are the inverse operation.
 6. **`collection_io.py`** — the Anki adapter: build `NoteRecord`s from the
    deck, read `NoteState`, execute a decision (one update per note), and store
-   run logs under `<profile>/mining_backfill/undo/`.
+   run logs under `<profile>/mining_fixer/undo/`.
 7. **`preview_dialog.py`** — presentation only: one row per write, checkbox
    from `default_checked`, tabs for not-fixable and warnings, and Apply,
    which calls `build_decision` then `apply_decision`.

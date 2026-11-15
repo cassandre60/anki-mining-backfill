@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from mining_backfill.batch import allowed_ops, select
-from mining_backfill.plan import (
+from mining_fixer.batch import allowed_ops, select
+from mining_fixer.plan import (
     OP_ADD_TAGS,
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
@@ -164,7 +164,7 @@ def test_complete_notes_count_as_untouched_and_ambiguous_bold_is_left_alone():
 def test_default_batch_writes_the_information_preserving_replaces():
     # The bulk fixer completes cards out of the box: the fragment stays in
     # cloze-*, the blob URL stays in the run log, so both replaces are safe.
-    from mining_backfill.batch import default_ops
+    from mining_fixer.batch import default_ops
 
     assert default_ops() == {
         OP_FILL,

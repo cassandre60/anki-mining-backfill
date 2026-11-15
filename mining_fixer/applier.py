@@ -174,7 +174,7 @@ def run_after_editor_saved(
         try:
             flush(once)
         except Exception as exc:
-            print(f"Mining Backfill: could not flush the editor first: {exc}")
+            print(f"Mining Fixer: could not flush the editor first: {exc}")
             once()
             return
         if schedule is not None:

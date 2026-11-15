@@ -1,4 +1,4 @@
-# Mining Backfill — MVP / Current Scope
+# Mining Fixer — MVP / Current Scope
 
 `PRODUCT.md` answers *what this add-on is*.
 This file answers *what is actually built right now*. Do not widen this
@@ -36,7 +36,7 @@ the collection never touched by anything the dialog did not show.
   plus a hand-written `meta.json`. Publishing gives a numeric package id,
   self-updates and one-click install (B3).
 - **Packaging script.** No `.ankiaddon`/zip build step exists yet (B3).
-- **Config dialog.** Defaults ship in `mining_backfill/config.json`; Anki's
+- **Config dialog.** Defaults ship in `mining_fixer/config.json`; Anki's
   built-in config editor (Tools → Add-ons → Config) shows the merged config
   and stores edits in `meta.json`. No custom config UI (not planned).
 - **Any auto-update of the AnkiWeb listing**, any network feature: permanently
@@ -59,7 +59,7 @@ the collection never touched by anything the dialog did not show.
 ## Acceptance criteria (every release)
 
 - `ruff check .` and `ruff format --check .` clean; `python3 -m pytest` green
-  (111 tests with Anki installed).
+  (116 tests with Anki installed).
 - CI (`tests` workflow) green on the released commit.
 - The golden fixture test still reproduces the author's manual fix
   byte-for-byte on all five fields.

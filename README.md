@@ -1,4 +1,4 @@
-# Mining Backfill
+# Mining Fixer
 
 An Anki add-on that completes incompletely-mined Japanese cards by copying
 from their enriched siblings — the already-finished card of the same scene,
@@ -81,21 +81,21 @@ artifacts) is refused sense fills entirely.
 
 ## Installing it in Anki
 
-The add-on is the `mining_backfill/` package. Anki discovers any folder in
+The add-on is the `mining_fixer/` package. Anki discovers any folder in
 `addons21/` that contains `__init__.py`, so a symlink gives a live dev
 install (edits take effect on the next Anki restart):
 
 ```
-ln -s "$PWD/mining_backfill" "$HOME/.local/share/Anki2/addons21/mining_backfill"
+ln -s "$PWD/mining_fixer" "$HOME/.local/share/Anki2/addons21/mining_fixer"
 ```
 
 That folder also needs a `meta.json` (Anki writes one when a package is
 installed; for a manual install, copy any installed add-on's and set
 `name`, `human_version`, `package`). Then, after restarting Anki:
 
-- **Tools → "Mining Backfill: preview and apply…"** — plans the newest
+- **Tools → "Mining Fixer: preview and apply…"** — plans the newest
   `preview_last_n` notes of the configured deck (default 30).
-- **In the Browser: select notes → right-click → "Mining Backfill: preview
+- **In the Browser: select notes → right-click → "Mining Fixer: preview
   and apply on selection"** — plans exactly the selected notes. Every note of
   the configured deck still serves as a *source*, so a selection of ten cards
   finds its scene parents and word siblings even when those are not selected.
@@ -107,10 +107,10 @@ field, the exact old → new value, its source note, its badges). Rows the plan
 guarded arrive **unchecked**; the rest are checked. Nothing is written until
 you press Apply.
 
-- **Tools → "Mining Backfill: undo last run"** — restores exactly what the
+- **Tools → "Mining Fixer: undo last run"** — restores exactly what the
   last apply replaced and removes exactly the tags it added.
 
-- **In the Browser: select notes → right-click → "Mining Backfill: batch-fix
+- **In the Browser: select notes → right-click → "Mining Fixer: batch-fix
   selection…"** — the bulk mode: select any number of cards, press **Fix N
   note(s)**, done. The window stays quiet — counts, not rows: how many notes
   will be fixed, how many are unchanged, how many were left alone (the reasons
@@ -136,7 +136,7 @@ Apply is safe by construction:
 - **Re-running is a no-op.** Rows that already hold their target value are
   recognised as done, not re-written.
 - **Undo log.** Each apply writes `run-<timestamp>.json` under
-  `<profile>/mining_backfill/undo/` — old values, applied values, and the
+  `<profile>/mining_fixer/undo/` — old values, applied values, and the
   tags involved. Undo restores only notes whose values are still exactly
   what the run wrote; anything edited since is reported and left alone.
 - **The tag op only adds**, so tags gained since the preview survive.
@@ -162,7 +162,7 @@ builder still exports a standalone `.apkg`:
 python3 scripts/build_audit_package.py --profile-dir ~/.local/share/Anki2/User\ 1 --last 20
 ```
 
-- Imports into deck `zzz-Mining-Backfill-Audit`. Notes carry their target
+- Imports into deck `zzz-Mining-Fixer-Audit`. Notes carry their target
   card's tags plus the tags of the cards they take values from — a union,
   nothing removed, no audit-bookkeeping tags; the deck is the container.
 - Uses a cloned note type (`... (MB Audit)`) with fresh ids, so the import
@@ -172,9 +172,9 @@ python3 scripts/build_audit_package.py --profile-dir ~/.local/share/Anki2/User\ 
 - `--note-id <id>` (repeatable) pins extra cards into the scope, for fixes
   explicitly requested by name — the moving "last N" window would
   otherwise drop them as new cards get mined.
-- `dist/mining-backfill-report-<run>.md` — per-card preview: every write,
+- `dist/mining-fixer-report-<run>.md` — per-card preview: every write,
   its source note, badges, and default check state.
-- `dist/mining-backfill-plan-<run>.json` — the audit log: every old and new
+- `dist/mining-fixer-plan-<run>.json` — the audit log: every old and new
   value, per field.
 
 After auditing: delete the audit deck and the cloned note type.
@@ -197,14 +197,14 @@ After auditing: delete the audit deck and the cloned note type.
 ## Development
 
 ```
-python3 -m pytest         # 111 tests with Anki; 109 + 2 self-skipping without
+python3 -m pytest         # 116 tests with Anki; 114 + 2 self-skipping without
 ruff check . && ruff format --check .
 ```
 
 The golden test (`tests/test_golden_scene.py`) reproduces a real manual fix
 from the author's collection **byte-for-byte on all five fields** — media,
 source, furigana, and the sentence with the bold retargeted to the card's
-own word. The core (`mining_backfill/` minus the three Qt-facing modules)
+own word. The core (`mining_fixer/` minus the three Qt-facing modules)
 imports no `anki`/`aqt` — enforced by an AST test — so the same code runs
 headless, in tests, and inside Anki. `tests/test_addon_load.py` imports the
 package the way Anki does, with a stubbed `aqt`, which is what catches a

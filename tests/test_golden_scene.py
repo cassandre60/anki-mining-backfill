@@ -22,8 +22,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from mining_backfill.matching import NoteRecord
-from mining_backfill.plan import (
+from mining_fixer.matching import NoteRecord
+from mining_fixer.plan import (
     OP_ADD_TAGS,
     OP_EXPAND_SENTENCE,
     OP_FILL,

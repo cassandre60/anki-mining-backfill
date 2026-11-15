@@ -1,7 +1,0 @@
-{
-  "package": "mining_backfill",
-  "name": "Mining Backfill",
-  "human_version": "0.2.0",
-  "min_point_version": 250000,
-  "homepage": "https://github.com/cassandre60/anki-mining-backfill"
-}

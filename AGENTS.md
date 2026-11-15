@@ -1,4 +1,4 @@
-# Mining Backfill — Agent Operating Rules
+# Mining Fixer — Agent Operating Rules
 
 > **Authority hierarchy (conflicts resolve top-down):**
 > `PRODUCT.md` (what to build) → `MVP.md` (what is in scope now) →
@@ -16,11 +16,11 @@ keep the change consistent with them.
 An Anki add-on that completes incompletely-mined Japanese cards from their
 enriched siblings. Two halves:
 
-- `mining_backfill/` — **the add-on**. Anki discovers any `addons21/<folder>/`
+- `mining_fixer/` — **the add-on**. Anki discovers any `addons21/<folder>/`
   that contains `__init__.py` and imports that folder as a Python package.
 - `scripts/`, `tests/` — development tooling. Nothing here ships.
 
-`mining_backfill/` is packaged for AnkiWeb as a zip whose root contains
+`mining_fixer/` is packaged for AnkiWeb as a zip whose root contains
 `manifest.json` and `__init__.py`; `meta.json` in that folder is a
 **dev-install artefact and is gitignored** — never commit it.
 
@@ -72,14 +72,14 @@ enriched siblings. Two halves:
   what has the `anki` package, so headless tooling runs with plain `python3`.
 - `ruff` is in `/usr/bin`; pytest is **not** in system Python (Arch splits
   it) — CI installs it, or use a venv.
-- Repo layout: pure core + add-on shell in `mining_backfill/`, tests in
+- Repo layout: pure core + add-on shell in `mining_fixer/`, tests in
   `tests/` (a `conftest.py` puts the repo root on `sys.path`).
 
 ## 4. Gates before you present work
 
 ```bash
 ruff check . && ruff format --check .     # must be clean
-python3 -m pytest                         # 111 tests with Anki installed
+python3 -m pytest                         # 116 tests with Anki installed
 ```
 
 Then push and watch CI — it is the gate, and it runs without Anki (109 passed,
@@ -181,7 +181,7 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
 - [2026-11-14, OpenCode] Anki's `AddonManager.loadAddons()` imports each
   add-on folder by name; a folder name that is not a valid identifier
   (e.g. the repo's own hyphenated name) cannot be imported. The add-on
-  package is therefore `mining_backfill`, and the repo may be called anything.
+  package is therefore `mining_fixer`, and the repo may be called anything.
   Verified by: `aqt/addons.py` `allAddons`/`loadAddons` and the symlinked dev
   install loading successfully.
 - [2026-11-14, OpenCode] Anki 26.09.4 can crash on Browser close with
@@ -194,7 +194,7 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   Browser editor has a save in flight puts us in that window — so writes now
   happen after the dialog closes and after the editor flushes
   (`applier.run_after_editor_saved`, QUALITY Q-A5).
-  Verified by: the pasted traceback (no Mining Backfill frame) and
+  Verified by: the pasted traceback (no Mining Fixer frame) and
   `tests/test_applier.py` timing tests.
 - [2026-11-14, OpenCode] The author's machine crashed after this agent ran several
   headless Anki/Qt attempts (`aqt._run(exec=False)` under `QT_QPA_PLATFORM=offscreen`)

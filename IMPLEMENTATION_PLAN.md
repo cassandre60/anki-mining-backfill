@@ -1,4 +1,4 @@
-# Mining Backfill — Implementation Plan
+# Mining Fixer — Implementation Plan
 
 Status: **shipped as v0.2.0** — the add-on installs, previews, applies and
 undoes; the audit builder works headless. New work enters through the Backlog
@@ -27,7 +27,7 @@ below, never as silent scope creep inside a coding session.
   take values from (診察 = `asbplayer yomitan`), no bookkeeping tags at all;
   stable GUIDs make re-imports update in place; `--note-id` pins cards the
   moving "last N" window would drop.
-- **T5 — Installable add-on.** Package layout (`mining_backfill/`), entry
+- **T5 — Installable add-on.** Package layout (`mining_fixer/`), entry
   point with two Tools actions, `applier.py` (per-note atomicity, idempotence,
   exact undo), `collection_io.py` (collection adapter + run logs),
   `preview_dialog.py` (per-row checkboxes, not-fixable and warning tabs),

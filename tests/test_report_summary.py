@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from test_plan import rec
 
-from mining_backfill.batch import BatchSelection, LeftAlone, default_ops, select
-from mining_backfill.plan import (
+from mining_fixer.batch import BatchSelection, LeftAlone, default_ops, select
+from mining_fixer.plan import (
     OP_ADD_TAGS,
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
@@ -13,7 +13,7 @@ from mining_backfill.plan import (
     Plan,
     PlannedWrite,
 )
-from mining_backfill.report import render_batch_summary
+from mining_fixer.report import render_batch_summary
 
 
 def note(note_id, expression="診察", reading="しんさつ"):
@@ -72,7 +72,7 @@ def test_the_preview_reads_like_a_sentence_not_a_dump():
     selection = select(plan, default_ops())
     text = render_batch_summary(plan, records, selection, {"scope": 2})
 
-    assert "# Mining Backfill — preview (nothing was changed)" in text
+    assert "# Mining Fixer — preview (nothing was changed)" in text
     assert "will be fixed: 1 note(s)" in text
     assert "unchanged: 1 note(s)" in text
     # Human labels, not field names or op ids.

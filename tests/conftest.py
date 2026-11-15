@@ -1,6 +1,6 @@
 """Pytest bootstrap: make the add-on package importable from the repo root.
 
-The add-on *is* the ``mining_backfill`` package (Anki imports the folder of
+The add-on *is* the ``mining_fixer`` package (Anki imports the folder of
 that name as a package), so tests import it the same way Anki does instead
 of relying on the working directory being on ``sys.path``.
 """

@@ -59,7 +59,7 @@ class BatchDialog(QDialog):
         self.preview: Preview = plan_preview(col, self.cfg, scope_note_ids)
         self.pending: tuple[ApplyDecision, dict] | None = None
 
-        self.setWindowTitle("Mining Backfill")
+        self.setWindowTitle("Mining Fixer")
         self.resize(640, 320)
         layout = QVBoxLayout(self)
 
@@ -230,7 +230,7 @@ def _finish_batch(col, pending, parent) -> None:
         lines.extend(f"  {problem}" for problem in result.problems)
     else:
         lines.append("Verified.")
-    lines.append('Undo: Tools → "Mining Backfill: undo last run".')
+    lines.append('Undo: Tools → "Mining Fixer: undo last run".')
     showInfo("\n".join(lines), parent=parent)
 
 

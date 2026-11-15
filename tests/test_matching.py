@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mining_backfill.matching import (
+from mining_fixer.matching import (
     DAY_MS,
     NoteRecord,
     best_word_source,

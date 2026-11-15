@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mining_backfill.normalize import (
+from mining_fixer.normalize import (
     kana_fold,
     norm_reading,
     norm_sentence,

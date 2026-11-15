@@ -1,4 +1,4 @@
-"""Mining Backfill — Anki add-on entry point.
+"""Mining Fixer — Anki add-on entry point.
 
 Wires two Tools-menu actions: preview & apply, and undo last run.
 
@@ -22,10 +22,10 @@ except ImportError:  # headless import of the package (tests, audit builder)
     gui_hooks = None
     mw = None
 
-PREVIEW_LABEL = "Mining Backfill: preview and apply…"
-UNDO_LABEL = "Mining Backfill: undo last run"
-SELECTION_LABEL = "Mining Backfill: preview and apply on selection"
-BATCH_LABEL = "Mining Backfill: batch-fix selection…"
+PREVIEW_LABEL = "Mining Fixer: preview and apply…"
+UNDO_LABEL = "Mining Fixer: undo last run"
+SELECTION_LABEL = "Mining Fixer: preview and apply on selection"
+BATCH_LABEL = "Mining Fixer: batch-fix selection…"
 
 _menu_added = False
 
@@ -47,8 +47,8 @@ def _run_preview(scope_note_ids=None, browser=None) -> None:
 
         open_preview_dialog(scope_note_ids, browser=browser)
     except Exception:
-        print(f"Mining Backfill: preview failed\n{traceback.format_exc()}")
-        showWarning("Mining Backfill: preview failed — see the debug console.")
+        print(f"Mining Fixer: preview failed\n{traceback.format_exc()}")
+        showWarning("Mining Fixer: preview failed — see the debug console.")
 
 
 def _on_preview() -> None:
@@ -67,8 +67,8 @@ def _on_batch_selection(note_ids, browser=None) -> None:
 
         open_batch_dialog(list(note_ids), browser=browser)
     except Exception:
-        print(f"Mining Backfill: batch failed\n{traceback.format_exc()}")
-        showWarning("Mining Backfill: batch failed — see the debug console.")
+        print(f"Mining Fixer: batch failed\n{traceback.format_exc()}")
+        showWarning("Mining Fixer: batch failed — see the debug console.")
 
 
 def _on_browser_context_menu(browser, menu) -> None:
@@ -93,7 +93,7 @@ def _on_browser_context_menu(browser, menu) -> None:
             lambda _checked=False: _on_batch_selection(selected, browser)
         )
     except Exception:
-        print(f"Mining Backfill: could not add the Browser action\n{traceback.format_exc()}")
+        print(f"Mining Fixer: could not add the Browser action\n{traceback.format_exc()}")
 
 
 def _on_undo() -> None:
@@ -107,12 +107,12 @@ def _on_undo() -> None:
             return
         found = latest_run_log()
         if found is None:
-            showInfo("Mining Backfill: no run to undo.")
+            showInfo("Mining Fixer: no run to undo.")
             return
         path, log = found
         decision = restore_from_log(mw.col, log)
         if not decision.row_count() and not decision.skipped:
-            showInfo("Mining Backfill: that run is already undone.")
+            showInfo("Mining Fixer: that run is already undone.")
             return
         notes = apply_decision(mw.col, decision)
         lines = [f"Restored {decision.row_count()} value(s) across {notes} note(s)."]
@@ -127,8 +127,8 @@ def _on_undo() -> None:
         path.rename(path.with_name(f"undone-{path.name.removeprefix('run-')}"))
         showInfo("\n".join(lines))
     except Exception:
-        print(f"Mining Backfill: undo failed\n{traceback.format_exc()}")
-        showWarning("Mining Backfill: undo failed — see the debug console.")
+        print(f"Mining Fixer: undo failed\n{traceback.format_exc()}")
+        showWarning("Mining Fixer: undo failed — see the debug console.")
 
 
 def _add_menu_entries() -> None:
@@ -145,13 +145,13 @@ def _add_menu_entries() -> None:
         menu.insertSeparator(preview_action)
         _menu_added = True
     except Exception:
-        print(f"Mining Backfill: could not add the Tools menu entries\n{traceback.format_exc()}")
+        print(f"Mining Fixer: could not add the Tools menu entries\n{traceback.format_exc()}")
 
 
 if mw is not None:
     _add_menu_entries()
     with contextlib.suppress(Exception):  # a banner must never break startup
-        print(f"Mining Backfill {addon_version()} loaded.")
+        print(f"Mining Fixer {addon_version()} loaded.")
 
 # main_window_did_init fires once the menu bar exists; the import-time call
 # above covers the common case, and this makes the entry point robust if

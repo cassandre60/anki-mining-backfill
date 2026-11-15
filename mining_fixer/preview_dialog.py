@@ -80,7 +80,7 @@ class PreviewDialog(QDialog):
         self.pending: tuple[ApplyDecision, dict] | None = None
         self.checks: dict[tuple[int, str], bool] = {}
 
-        self.setWindowTitle("Mining Backfill — preview")
+        self.setWindowTitle("Mining Fixer — preview")
         self.resize(1180, 680)
         layout = QVBoxLayout(self)
 
@@ -316,7 +316,7 @@ def _finish_apply(col, decision: ApplyDecision, meta: dict, parent) -> None:
         lines.append(f"Skipped {len(decision.skipped)} note(s): {detail}.")
     if log_path is not None:
         lines.append(
-            f"Undo available: Tools → “Mining Backfill: undo last run”.\nLog: {log_path.name}"
+            f"Undo available: Tools → “Mining Fixer: undo last run”.\nLog: {log_path.name}"
         )
     if problems:
         lines.append("VERIFY PROBLEMS — undo and report these:")

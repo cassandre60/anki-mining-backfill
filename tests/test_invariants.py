@@ -10,14 +10,14 @@ from __future__ import annotations
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from mining_backfill.applier import (
+from mining_fixer.applier import (
     NoteState,
     build_run_log,
     decide,
     decide_undo,
     run_log_records,
 )
-from mining_backfill.plan import (
+from mining_fixer.plan import (
     OP_ADD_TAGS,
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,

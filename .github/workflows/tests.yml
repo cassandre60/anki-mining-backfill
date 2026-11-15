@@ -1,4 +1,4 @@
-# Mining Backfill test gate — runs on every push and pull request.
+# Mining Fixer test gate — runs on every push and pull request.
 #
 # Policy: the suite is verified HERE, not by running the full suite on a
 # developer machine. Push, then watch:

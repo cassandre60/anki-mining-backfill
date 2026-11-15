@@ -1,4 +1,4 @@
-# Mining Backfill — Product Definition
+# Mining Fixer — Product Definition
 
 Authoritative source for *what this add-on is supposed to do*. Code
 implements this document, tests enforce it, architecture serves it.
@@ -33,11 +33,11 @@ anything and without risking a field they have hand-edited.
 
 ## Core user journeys
 
-1. **Preview and apply in Anki.** Tools → *Mining Backfill: preview and
+1. **Preview and apply in Anki.** Tools → *Mining Fixer: preview and
    apply…*; the dialog lists every proposed write (note, field, exact
    old → new, source card, badges) with the guarded rows unchecked. The user
    applies, then studies the cards.
-2. **Undo.** Tools → *Mining Backfill: undo last run* reverses exactly what
+2. **Undo.** Tools → *Mining Fixer: undo last run* reverses exactly what
    the last apply replaced.
 3. **Dry run as a package.** `scripts/build_audit_package.py` exports an
    `.apkg` into a separate deck, so a whole run can be reviewed without the
@@ -63,7 +63,7 @@ anything and without risking a field they have hand-edited.
   already exists in the collection.
 - **Not** a general-purpose card fixer for arbitrary note types: field names
   and the scene/word heuristics are configured for one mining workflow
-  (`mining_backfill/config.json`).
+  (`mining_fixer/config.json`).
 - **Not** a sync or backup system.
 - **Not** automatic: there is no background watcher and no silent repair on
   card creation. The user runs it.

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import types
 
-from mining_backfill.applier import (
+from mining_fixer.applier import (
     NoteState,
     build_run_log,
     decide,
@@ -16,7 +16,7 @@ from mining_backfill.applier import (
     run_after_editor_saved,
     run_log_records,
 )
-from mining_backfill.plan import (
+from mining_fixer.plan import (
     OP_ADD_TAGS,
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,

@@ -16,11 +16,11 @@ dist/
 # Ignore all JSON except the add-on's own config.json and manifest.json
 # (and frozen test fixtures, which the golden test reads on every run).
 *.json
-!mining_backfill/config.json
-!mining_backfill/manifest.json
+!mining_fixer/config.json
+!mining_fixer/manifest.json
 !tests/fixtures/*.json
 
 # Dev-install artefacts: Anki writes these into the add-on folder when the
 # package is symlinked into addons21/ for testing.
-mining_backfill/meta.json
-mining_backfill/user_files/
+mining_fixer/meta.json
+mining_fixer/user_files/

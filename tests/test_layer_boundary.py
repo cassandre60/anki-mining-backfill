@@ -10,7 +10,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-PACKAGE = "mining_backfill"
+PACKAGE = "mining_fixer"
 
 # The only modules allowed to import anki/aqt/PyQt: the menu entry point,
 # the collection adapter, and the preview dialog.

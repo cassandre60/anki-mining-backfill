@@ -61,7 +61,7 @@ def loaded_addon(monkeypatch):
     """Install a stub ``aqt``, then import the add-on as Anki would."""
     MENU_LABELS.clear()
     _purge("aqt")
-    _purge("mining_backfill")
+    _purge("mining_fixer")
 
     aqt = types.ModuleType("aqt")
     aqt.mw = types.SimpleNamespace(form=types.SimpleNamespace(menuTools=_Menu()))
@@ -74,16 +74,16 @@ def loaded_addon(monkeypatch):
     monkeypatch.setitem(sys.modules, "aqt", aqt)
     monkeypatch.setitem(sys.modules, "aqt.utils", utils)
 
-    module = importlib.import_module("mining_backfill")
+    module = importlib.import_module("mining_fixer")
     yield module
-    _purge("mining_backfill")
+    _purge("mining_fixer")
 
 
 def test_entry_point_adds_the_tools_menu_entries(loaded_addon):
     # Pinned literally: these are the strings the user sees in the menu.
     assert MENU_LABELS == [
-        "Mining Backfill: preview and apply…",
-        "Mining Backfill: undo last run",
+        "Mining Fixer: preview and apply…",
+        "Mining Fixer: undo last run",
     ]
 
 
@@ -110,7 +110,7 @@ def test_entry_point_reports_the_packaged_version(loaded_addon):
 
 def test_entry_point_survives_a_missing_main_window(monkeypatch):
     _purge("aqt")
-    _purge("mining_backfill")
+    _purge("mining_fixer")
     aqt = types.ModuleType("aqt")
     aqt.mw = types.SimpleNamespace(form=None)  # main window not built yet
     aqt.gui_hooks = types.SimpleNamespace(
@@ -121,9 +121,9 @@ def test_entry_point_survives_a_missing_main_window(monkeypatch):
     utils.showWarning = lambda *a, **k: None
     monkeypatch.setitem(sys.modules, "aqt", aqt)
     monkeypatch.setitem(sys.modules, "aqt.utils", utils)
-    module = importlib.import_module("mining_backfill")
+    module = importlib.import_module("mining_fixer")
     assert module._menu_added is False
-    _purge("mining_backfill")
+    _purge("mining_fixer")
 
 
 def test_browser_context_menu_offers_the_selection_actions(loaded_addon):
@@ -132,8 +132,8 @@ def test_browser_context_menu_offers_the_selection_actions(loaded_addon):
     menu = _Menu()
     hook[0](types.SimpleNamespace(selected_notes=lambda: [1, 2, 3]), menu)
     assert [a.label for a in menu.actions] == [
-        "Mining Backfill: preview and apply on selection",
-        "Mining Backfill: batch-fix selection…",
+        "Mining Fixer: preview and apply on selection",
+        "Mining Fixer: batch-fix selection…",
     ]
 
 
@@ -188,16 +188,16 @@ def test_preview_dialog_imports_with_real_anki():
     # this is the check that the Qt module has no broken imports or names.
     pytest.importorskip("aqt", reason="needs a real Anki/PyQt6 install")
     importlib.import_module("aqt.qt")  # no stub: fail loudly if only a stub is around
-    dialog = importlib.import_module("mining_backfill.preview_dialog")
+    dialog = importlib.import_module("mining_fixer.preview_dialog")
     assert isinstance(dialog.PreviewDialog, type)
     assert callable(dialog.open_preview_dialog)
-    _purge("mining_backfill.preview_dialog")
+    _purge("mining_fixer.preview_dialog")
 
 
 def test_batch_dialog_imports_with_real_anki():
     pytest.importorskip("aqt", reason="needs a real Anki/PyQt6 install")
     importlib.import_module("aqt.qt")
-    dialog = importlib.import_module("mining_backfill.batch_dialog")
+    dialog = importlib.import_module("mining_fixer.batch_dialog")
     assert isinstance(dialog.BatchDialog, type)
     assert callable(dialog.open_batch_dialog)
-    _purge("mining_backfill.batch_dialog")
+    _purge("mining_fixer.batch_dialog")

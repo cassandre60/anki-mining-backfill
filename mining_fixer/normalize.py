@@ -1,4 +1,4 @@
-"""Pure text normalization for Mining Backfill matching keys.
+"""Pure text normalization for Mining Fixer matching keys.
 
 No anki/aqt imports: this module must stay importable by the headless
 prototype and by tests without Anki installed.

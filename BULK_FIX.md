@@ -1,4 +1,4 @@
-# Mining Backfill — Bulk Fix (product vision)
+# Mining Fixer — Bulk Fix (product vision)
 
 What this add-on becomes: a **bulk fix extension**, not a reviewer of single
 cards. The user selects a huge number of cards — up to a million — picks the

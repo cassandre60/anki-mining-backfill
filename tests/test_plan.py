@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from test_golden_scene import CFG, CHILD, CHILD_ID, PARENT, PARENT_ID
 
-from mining_backfill.matching import NoteRecord
-from mining_backfill.normalize import strip_renderable
-from mining_backfill.plan import (
+from mining_fixer.matching import NoteRecord
+from mining_fixer.normalize import strip_renderable
+from mining_fixer.plan import (
     OP_ADD_TAGS,
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,

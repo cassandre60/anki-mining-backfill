@@ -1,4 +1,4 @@
-# Mining Backfill — Architecture
+# Mining Fixer — Architecture
 
 Technical structure. `PRODUCT.md` says what it must do, `QUALITY.md` what
 must stay true, `TEST_STRATEGY.md` how that is proven.
@@ -6,7 +6,7 @@ must stay true, `TEST_STRATEGY.md` how that is proven.
 ## Shape
 
 ```text
-mining_backfill/                 the add-on (Anki imports this folder as a package)
+mining_fixer/                 the add-on (Anki imports this folder as a package)
 ├── normalize.py     pure   text → matching keys (sentences, words, readings)
 ├── fieldconfig.py   pure   field semantics: emptiness, blob detection, media refs
 ├── matching.py      pure   NoteRecord → scene parents / word groups
@@ -161,7 +161,7 @@ overwrite content; a test asserts nothing else ever does.
 
 ## Configuration
 
-`mining_backfill/config.json` is both the shippable default and Anki's config
+`mining_fixer/config.json` is both the shippable default and Anki's config
 default; user edits live in `meta.json` and are merged over it by
 `mw.addonManager.getConfig`. Keys: `config_version`, `deck_name`,
 `note_type_name`, `window_days`, `preview_last_n`, `min_sentence_len`,
@@ -178,4 +178,4 @@ folder as a package. Flat top-level modules named `plan`, `normalize` or
 repo folder name that is not a Python identifier (this repo's own name
 contains hyphens) cannot be imported at all. Hence: one valid-identifier
 package, relative imports inside it, and a symlinked dev install
-(`addons21/mining_backfill → <repo>/mining_backfill`).
+(`addons21/mining_fixer → <repo>/mining_fixer`).

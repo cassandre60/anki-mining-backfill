@@ -1,4 +1,4 @@
-# Mining Backfill — Test Strategy
+# Mining Fixer — Test Strategy
 
 Answers: *how do we mechanically prove `QUALITY.md` stays true?*
 
@@ -74,7 +74,7 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **111 passed** |
+| Author's machine (`python3 -m pytest`, Anki present) | **116 passed** |
 | CI / a venv without Anki | **109 passed, 2 skipped** |
 
 Both are green; the difference is exactly one self-skipping import check.

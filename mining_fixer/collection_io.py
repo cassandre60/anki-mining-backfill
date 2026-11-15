@@ -1,7 +1,7 @@
 """Anki-facing adapter: read the collection, execute an apply decision.
 
 Only this module (and ``preview_dialog.py`` / ``__init__.py``) may touch
-Anki or Qt. All decision logic lives in :mod:`mining_backfill.applier`, so
+Anki or Qt. All decision logic lives in :mod:`mining_fixer.applier`, so
 the safety rules stay testable without Anki installed.
 
 Nothing here runs automatically: the dialog calls :func:`plan_preview` to
@@ -43,8 +43,8 @@ __all__ = [
     "write_run_log",
 ]
 
-ADDON_MODULE = "mining_backfill"
-UNDO_FOLDER = "mining_backfill"
+ADDON_MODULE = "mining_fixer"
+UNDO_FOLDER = "mining_fixer"
 DEFAULT_PREVIEW_LAST_N = 30
 
 
@@ -240,7 +240,7 @@ def apply_decision(col, decision: ApplyDecision) -> int:
             col.update_note(note)
             modified += 1
         except Exception as exc:
-            print(f"Mining Backfill: could not write note {note_id}: {exc}")
+            print(f"Mining Fixer: could not write note {note_id}: {exc}")
     for tags_write in decision.tags_writes:
         try:
             note = col.get_note(tags_write.note_id)
@@ -252,7 +252,7 @@ def apply_decision(col, decision: ApplyDecision) -> int:
             if tags_write.note_id not in fields_by_note:
                 modified += 1
         except Exception as exc:
-            print(f"Mining Backfill: could not tag note {tags_write.note_id}: {exc}")
+            print(f"Mining Fixer: could not tag note {tags_write.note_id}: {exc}")
     return modified
 
 

@@ -10,9 +10,9 @@ Usage:
         --work-dir /tmp/opencode/mb_audit_build --last 20 --out-dir dist
 
 Produces:
-    dist/mining-backfill-audit-<run>.apkg
-    dist/mining-backfill-report-<run>.md
-    dist/mining-backfill-plan-<run>.json   (audit log: every old value)
+    dist/mining-fixer-audit-<run>.apkg
+    dist/mining-fixer-report-<run>.md
+    dist/mining-fixer-plan-<run>.json   (audit log: every old value)
 """
 
 from __future__ import annotations
@@ -29,9 +29,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from mining_backfill.matching import NoteRecord  # noqa: E402
-from mining_backfill.plan import OP_ADD_TAGS, PLAN_VERSION, build_plan  # noqa: E402
-from mining_backfill.report import render_markdown  # noqa: E402
+from mining_fixer.matching import NoteRecord  # noqa: E402
+from mining_fixer.plan import OP_ADD_TAGS, PLAN_VERSION, build_plan  # noqa: E402
+from mining_fixer.report import render_markdown  # noqa: E402
 
 RUN_TS = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
 
@@ -57,7 +57,7 @@ def prepare_work_dir(profile_dir: Path, work_dir: Path) -> Path:
 
 
 def load_config() -> dict:
-    return json.loads((REPO_ROOT / "mining_backfill" / "config.json").read_text(encoding="utf-8"))
+    return json.loads((REPO_ROOT / "mining_fixer" / "config.json").read_text(encoding="utf-8"))
 
 
 def records_from_collection(col, deck_name: str, note_type_name: str) -> list[NoteRecord]:
@@ -135,7 +135,7 @@ def main() -> int:
         "in addition to --last; used to pin cards whose fix was explicitly requested",
     )
     parser.add_argument("--out-dir", type=Path, default=REPO_ROOT / "dist")
-    parser.add_argument("--deck-name", default="zzz-Mining-Backfill-Audit")
+    parser.add_argument("--deck-name", default="zzz-Mining-Fixer-Audit")
     args = parser.parse_args()
 
     from anki.collection import Collection, DeckIdLimit, ExportAnkiPackageOptions
@@ -198,7 +198,7 @@ def main() -> int:
 
         out_dir = args.out_dir
         out_dir.mkdir(parents=True, exist_ok=True)
-        apkg_path = out_dir / f"mining-backfill-audit-{RUN_TS}.apkg"
+        apkg_path = out_dir / f"mining-fixer-audit-{RUN_TS}.apkg"
         options = ExportAnkiPackageOptions(
             with_scheduling=False,
             with_deck_configs=False,
@@ -226,7 +226,7 @@ def main() -> int:
             "tags": "target tags + contributing sources' tags (union, never removes)",
         }
         report_md = render_markdown(plan, records_by_id, run_meta)
-        report_path = out_dir / f"mining-backfill-report-{RUN_TS}.md"
+        report_path = out_dir / f"mining-fixer-report-{RUN_TS}.md"
         report_path.write_text(report_md, encoding="utf-8")
 
         plan_log = {
@@ -248,7 +248,7 @@ def main() -> int:
             "reasons": {str(k): v for k, v in plan.reasons.items()},
             "warnings": plan.warnings,
         }
-        (out_dir / f"mining-backfill-plan-{RUN_TS}.json").write_text(
+        (out_dir / f"mining-fixer-plan-{RUN_TS}.json").write_text(
             json.dumps(plan_log, ensure_ascii=False, indent=1), encoding="utf-8"
         )
 
