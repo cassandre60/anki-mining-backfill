@@ -79,10 +79,10 @@ enriched siblings. Two halves:
 
 ```bash
 ruff check . && ruff format --check .     # must be clean
-python3 -m pytest                         # 116 tests with Anki installed
+python3 -m pytest                         # 120 tests with Anki installed
 ```
 
-Then push and watch CI — it is the gate, and it runs without Anki (109 passed,
+Then push and watch CI — it is the gate, and it runs without Anki (118 passed,
 2 skipped):
 
 ```bash

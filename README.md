@@ -139,6 +139,9 @@ Apply is safe by construction:
   `<profile>/mining_fixer/undo/` — old values, applied values, and the
   tags involved. Undo restores only notes whose values are still exactly
   what the run wrote; anything edited since is reported and left alone.
+  Logs written before the add-on was renamed (under
+  `<profile>/mining_backfill/undo/`) are still found and undoable; that
+  folder is only ever read.
 - **The tag op only adds**, so tags gained since the preview survive.
 - **A scene source is only trusted when it is unambiguous and close.** If two
   cards would give the same child different values, neither is chosen: the

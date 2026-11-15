@@ -21,8 +21,10 @@ Rules enforced here:
 from __future__ import annotations
 
 import contextlib
+import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .plan import OP_ADD_TAGS, Plan, PlannedWrite
 
@@ -38,6 +40,7 @@ __all__ = [
     "decide",
     "decide_undo",
     "decision_subset",
+    "latest_run_log_in",
     "run_log_records",
     "run_after_editor_saved",
     "verify_writes",
@@ -323,6 +326,26 @@ def run_log_records(log: Mapping[str, object]) -> list[dict]:
     if not isinstance(records, Sequence):
         return []
     return [r for r in records if isinstance(r, dict)]
+
+
+def latest_run_log_in(folders: Sequence[Path]) -> tuple[Path, dict] | None:
+    """The newest undo log across ``folders``, or ``None``.
+
+    Runs are named ``run-<timestamp>.json``, so lexical order is age order.
+    A missing folder simply contributes no logs. If the newest log cannot
+    be read, there is no undo: exactly the behaviour before the fallback
+    existed, never half an undo.
+    """
+    logs = sorted(
+        path for folder in folders if folder.is_dir() for path in folder.glob("run-*.json")
+    )
+    if not logs:
+        return None
+    path = logs[-1]
+    try:
+        return path, json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
 
 def decide_undo(records: Iterable[Mapping[str, object]], read_state: StateReader) -> ApplyDecision:

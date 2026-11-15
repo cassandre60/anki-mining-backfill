@@ -24,6 +24,7 @@ from .applier import (
     decide,
     decide_undo,
     decision_subset,
+    latest_run_log_in,
     run_log_records,
     verify_writes,
 )
@@ -45,6 +46,10 @@ __all__ = [
 
 ADDON_MODULE = "mining_fixer"
 UNDO_FOLDER = "mining_fixer"
+#: Undo logs written before the add-on was renamed from Mining Backfill.
+#: Runs logged by the old build stay undoable; this folder is only ever
+#: read — new runs are logged under ``UNDO_FOLDER``.
+LEGACY_UNDO_FOLDER = "mining_backfill"
 DEFAULT_PREVIEW_LAST_N = 30
 
 
@@ -274,15 +279,13 @@ def write_run_log(decision: ApplyDecision, meta: dict) -> Path:
 
 
 def latest_run_log() -> tuple[Path, dict] | None:
-    folder = undo_folder()
-    logs = sorted(folder.glob("run-*.json"))
-    if not logs:
-        return None
-    path = logs[-1]
-    try:
-        return path, json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+    """The newest undo log, including runs logged by the pre-rename build."""
+    return latest_run_log_in([undo_folder(), legacy_undo_folder()])
+
+
+def legacy_undo_folder() -> Path:
+    """Where the pre-rename build kept its undo logs; read only."""
+    return Path(mw.pm.profileFolder()) / LEGACY_UNDO_FOLDER / "undo"
 
 
 def restore_from_log(col, log: dict) -> ApplyDecision:

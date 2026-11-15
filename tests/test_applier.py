@@ -6,6 +6,7 @@ they are pinned here with a dict-backed fake collection — no Anki needed.
 
 from __future__ import annotations
 
+import json
 import types
 
 from mining_fixer.applier import (
@@ -13,6 +14,7 @@ from mining_fixer.applier import (
     build_run_log,
     decide,
     decide_undo,
+    latest_run_log_in,
     run_after_editor_saved,
     run_log_records,
 )
@@ -265,3 +267,40 @@ def test_a_lost_editor_callback_cannot_swallow_the_run():
     assert events == ["write"]
     editor.callback()  # a late save callback must not write a second time
     assert events == ["write"]
+
+
+# --- undo log lookup (current + pre-rename folders) ---------------------
+
+
+def test_the_newest_run_log_wins_across_folders(tmp_path):
+    legacy = tmp_path / "mining_backfill" / "undo"
+    current = tmp_path / "mining_fixer" / "undo"
+    legacy.mkdir(parents=True)
+    current.mkdir(parents=True)
+    (legacy / "run-20261114-222600.json").write_text(json.dumps({"records": []}), encoding="utf-8")
+    (current / "run-20261115-090000-000000.json").write_text(
+        json.dumps({"records": []}), encoding="utf-8"
+    )
+    path, log = latest_run_log_in([current, legacy])
+    assert path.name == "run-20261115-090000-000000.json"
+    assert log == {"records": []}
+
+
+def test_a_run_logged_before_the_rename_stays_undoable(tmp_path):
+    legacy = tmp_path / "mining_backfill" / "undo"
+    legacy.mkdir(parents=True)
+    (legacy / "run-20261114-222600.json").write_text(json.dumps({"records": []}), encoding="utf-8")
+    current = tmp_path / "mining_fixer" / "undo"  # never created
+    path, _ = latest_run_log_in([current, legacy])
+    assert path.parent == legacy
+
+
+def test_no_run_log_anywhere_means_no_undo(tmp_path):
+    assert latest_run_log_in([tmp_path / "missing", tmp_path / "also-missing"]) is None
+
+
+def test_an_unreadable_newest_log_means_no_undo(tmp_path):
+    folder = tmp_path / "mining_fixer" / "undo"
+    folder.mkdir(parents=True)
+    (folder / "run-20261115-090000-000000.json").write_text("{broken", encoding="utf-8")
+    assert latest_run_log_in([folder]) is None

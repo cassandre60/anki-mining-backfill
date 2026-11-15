@@ -35,7 +35,9 @@ not have and must never be given.
   against a dict-backed fake `NoteState` reader — including the cases that
   matter: one stale row skipping a whole note, re-run detection, tags-only-add
   with a tag gained since preview, `applied_tag` on written notes, undo of
-  edited notes, idempotent undo.
+  edited notes, idempotent undo, and the undo-log lookup (newest log across
+  the current and the pre-rename `mining_backfill` folder, none when the
+  newest log is unreadable).
 - **Write timing** is pinned in the same file with fake editors: writes wait
   for `call_after_note_saved`, a doubled editor callback writes once, a lost
   callback is covered by the scheduler safety net, and a raising or missing
@@ -74,10 +76,11 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **116 passed** |
-| CI / a venv without Anki | **109 passed, 2 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **120 passed** |
+| CI / a venv without Anki | **118 passed, 2 skipped** |
 
-Both are green; the difference is exactly one self-skipping import check.
+Both are green; the difference is exactly two self-skipping import checks
+(the dialog modules need a real `aqt`).
 
 ## Fail-to-pass for bug fixes
 
