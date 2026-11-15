@@ -36,7 +36,7 @@ stays off by default until it is proven on a real collection**.
 | # | Dimension | Status | What it fixes | Evidence / guards |
 |---|---|---|---|---|
 | 1 | Source–child fixes (scene propagation) | **shipped** | `Sentence`, `Sentence (furigana)`, scene audio, picture, `Translation`, timestamped `Source` onto children | source-confidence (`divergent-parents`, `far-from-source`), text-safety (`fragment-not-recoverable`, `cloze-anchor-not-unique`, `stale-fragment-furigana-risk`) |
-| 2 | Sentence repair | **shipped, off by default** | remove continuation arrows (`➡` / `→`), collapse `<br>` and subtitle padding so the text coheres with the audio | config-driven rule list; `cloze-*` fragment anchor must still be found; old → new diff in the report |
+| 2 | Sentence repair | **shipped, off by default** | remove line-tail continuation arrows (`➡` / `→`); `<br>` line breaks and spacing stay exactly as mined (owner decision 2026-11-15) | config-driven rule list (`strip-arrows`); `cloze-*` fragment anchor must still be found; old → new diff in the report |
 | 3 | Furigana generation | **future** | rebuild `Sentence (furigana)` from the repaired sentence | runs *after* repair; `bulkreading.regenerateReadings(nids)` / `reading.regenerateReading(note, src_field)` — Japanese Support (installed, id 3918629684); never a home-grown generator |
 | 4 | Expression repair | **future** | fix inflections; repair an expression written partly in kana when the kanji form exists | needs a per-expression oracle; ambiguity reported, never guessed |
 | 5 | Indentation / formatting | **future** | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
@@ -72,6 +72,42 @@ Two rules are non-negotiable: **sentence repair precedes furigana
 generation** (ruby for text the card will not keep is wasted work), and
 **both precede propagation** (children inherit one clean, ruby-complete
 sentence instead of the noise).
+
+## Audio-aligned line breaks (owner vision, recorded 2026-11-15)
+
+The heuristic line-break and padding rules shipped on 2026-11-15 and were
+rolled back the same day: the owner keeps `<br>` and spacing exactly as
+mined. The direction that replaces the heuristics is **derive the line
+breaks from the audio**, not from text rules:
+
+- **Vision.** A program listens to the card's `Sentence Audio` and makes
+  the sentence's line breaks (and padding) mimic the speaker's actual
+  pauses. Example: a card holding あしたの朝刊の見出しはこうニャ！ becomes
+  あしたの朝刊の見出しは<br>こうニャ！ when the speaker pauses a moment
+  before こうニャ！ in the audio. This pairs with the shipped
+  `strip-arrows` rule: the subtitle's tail arrow marks "the line
+  continues", and the audio decides where the line actually breaks.
+- **How it would work.** Forced alignment of the known sentence text
+  against the audio (word-level timestamps, e.g. Whisper- or
+  wav2vec2-based), inserting a `<br>` where the pause exceeds a threshold.
+- **Why it is not built now.**
+  - Alignment models are large (hundreds of MB) and are normally
+    downloaded from the network — the add-on is fully offline
+    (AGENTS.md §2 rule 8).
+  - Alignment is compute-heavy per card — no heavy jobs on the author's
+    machine (AGENTS.md §2 rule 3); it would have to run as a separate
+    offline pre-pass the owner starts deliberately (or on CI / a second
+    machine), writing results back through a log the add-on consumes.
+  - Every card needs its audio file present and readable before it can be
+    aligned at all.
+- **Cheaper intermediate, if wanted.** Japanese subtitles encode in-line
+  pauses as a full-width space (the broadcast-subtitlers' 内分 space —
+  verify against a style guide before depending on this); the deck's
+  padding census found such spaces in only 0.3% of notes, so the win is
+  small either way.
+- **Entry point.** A new bulk-fix dimension behind its own opt-in op, off
+  by default, designed through this file and shipped via
+  `IMPLEMENTATION_PLAN.md`.
 
 ## Scope and profiles
 
@@ -114,12 +150,15 @@ the live profile (AGENTS.md §2 rules 2–3).
 
 ### Slice 1 — Sentence repair rules (dimension 2)
 
-- **Goal.** Normalise a source `Sentence`: strip configured continuation
-  arrows, collapse `<br>` and padding; keep the `cloze-*` anchor findable.
+- **Goal.** Strip the configured continuation arrows from a source
+  `Sentence`'s line tails; keep the `cloze-*` anchor findable. Line breaks
+  (`<br>`) and spacing stay as mined (owner decision 2026-11-15 — the
+  heuristic joining was rolled back the day it shipped; see
+  "Audio-aligned line breaks" below for what replaces it).
 - **Modules.** `normalize.py` (pure text rules), a new opt-in op in
   `plan.py` / `batch.py`, config keys in `config.json`, diff rendering in
   `report.py`.
-- **Acceptance.** A pinned fixture (real arrow/`<br>` sentence → expected
+- **Acceptance.** A pinned fixture (real arrow sentence → expected
   normalised form) passes; the fragment-recoverability guard still fires;
   Ring 3 run on a copy shows the old → new diff and an exact undo.
 - **Risks.** Arrows are not always noise (`➡` as a separator, `→` as a
@@ -184,9 +223,12 @@ the live profile (AGENTS.md §2 rules 2–3).
   the configured deck's `Sentence` field, 17,589 notes):** `<br>` **72.1%**,
   arrows `➡`/`→` **0.4%** (75 notes), padding (run-together spaces,
   indented or empty leading/trailing lines) **0.3%** (57 notes), any of
-  them **72.2%**. The problem is `<br>` collapse, not arrows — the rule
-  list is config-driven so arrows stay available, but they must never
-  dominate the design.
+  them **72.2%**. The problem is `<br>` collapse, not arrows — but the
+  **owner decision of 2026-11-15 keeps `<br>` and padding exactly as
+  mined**: the line breaks are the sentence's pause structure, and the
+  heuristic collapse was rolled back the day it shipped. Only `strip-arrows`
+  ships. The rule list stays config-driven so arrows remain available
+  without dominating the design.
 - Does Japanese Support's reading beat what Yomitan already stored? Run it
   on a sample and compare.
 - How do we detect "this child was already filled from that source and the

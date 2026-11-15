@@ -187,6 +187,11 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   `config.json` points at the populated `My Life Decks…` one. No action
   taken — data observation only.
   Verified by: the `decks` table listing (0 vs 17,589 notes).
+- [2026-11-15, OpenCode] Owner decision: sentence repair ships
+  `strip-arrows` only — `<br>` line breaks and padding stay exactly as
+  mined (they are the pause structure), and the replacement direction is
+  audio-aligned line breaks recorded in `BULK_FIX.md`.
+  Verified by: the rollback commit's diff + `tests/test_normalize.py`.
 
 ## Lessons Learned
 
@@ -228,3 +233,10 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
 - [2026-11-14, OpenCode] Qt treats a bare `&` in a menu label as a mnemonic,
   so `preview & apply` renders as `preview apply` with a stray underline.
   Verified by: pinning the literal menu strings in `test_addon_load.py`.
+- [2026-11-15, OpenCode] The sentence-repair dimension shipped three rules
+  the owner never asked for; they asked for arrows only and the other two
+  were rolled back the same day. Do not widen an opt-in dimension beyond
+  what the owner described — a census says what is *there*, not what they
+  want *changed*.
+  Verified by: the rollback commit + the owner-decision notes in
+  `BULK_FIX.md`.
