@@ -112,15 +112,27 @@ you press Apply.
 
 - **In the Browser: select notes → right-click → "Mining Backfill: batch-fix
   selection…"** — the bulk mode, for hundreds or thousands of notes. It shows
-  **counts, not rows**: how many notes will be fixed and with what, how many
-  are already complete and will not be touched, and which few need a human.
-  Default is lossless: empty-field fills, bold markup, tag additions. Two
-  opt-in tiers add the information-preserving replaces ("also expand
-  Sentence", "also replace blob Source") with a live count of how many extra
-  notes each would fix. Every batch run takes an **Anki backup** first,
-  writes its **undo log before the first write**, applies in chunks, and then
-  **re-reads every written value to verify it landed**. "Write dry-run report"
-  produces the full Markdown report without touching the collection.
+  **counts, not rows**, and asks for no decisions: how many notes will be
+  filled and with what, how many only gain tags, how many are already
+  complete, and how many were left alone (with the reason available in the
+  report). Default is **lossless**: empty-field fills, bold markup, tag
+  additions. The two checkboxes are the only content rewrites, and each says
+  what it does:
+  - **"Also expand Sentence"** — replaces a card's mined subtitle fragment
+    with the *whole scene sentence* from its source card, moving the bold onto
+    the card's own word. The fragment is not lost: it stays in `cloze-*`. Off
+    by default because it rewrites a non-empty field.
+  - **"Also replace blob Source"** — replaces the `blob:https://…` mining URL
+    with the human-readable timestamped source (`Dr. Rintaro Episode 6.mp4
+    (20m19s)`). The URL is kept in the run log. Off by default for the same
+    reason.
+  Each box shows how many *more* writes it would add, so you can see the value
+  before ticking it. Scene audio, picture and translation are filled either
+  way — they don't depend on the sentence text. Every batch run takes an
+  **Anki backup** first, writes its **undo log before the first write**,
+  applies in chunks, and then **re-reads every written value to verify it
+  landed**. "Write dry-run report" produces the full Markdown report without
+  touching the collection.
 
 Apply is safe by construction:
 

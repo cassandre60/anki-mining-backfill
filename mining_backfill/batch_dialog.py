@@ -164,8 +164,10 @@ class BatchDialog(QDialog):
             parts.append(f"{selection.tag_only_notes} note(s) only gain tags")
         if selection.untouched:
             parts.append(f"{selection.untouched} left exactly as they are")
-        if selection.review:
-            parts.append(f"{len(selection.review)} need your eyes")
+        if selection.sentences_left_alone:
+            parts.append(f"{selection.sentences_left_alone} sentence(s) left as they are")
+        if selection.left_alone:
+            parts.append(f"{len(selection.left_alone)} left alone")
         self.summary.setText((" · ".join(parts) + ".") if parts else "Nothing to do.")
 
         extras = []
@@ -190,14 +192,12 @@ class BatchDialog(QDialog):
                 extras.append(extra)
         self.hint.setText(("Available: " + "; ".join(extras) + ".") if extras else "")
 
-        if selection.review:
-            self.review_button.setText(
-                f"Show the {len(selection.review)} note(s) that need a human"
-            )
+        if selection.left_alone:
+            self.review_button.setText(f"What was left alone ({len(selection.left_alone)})")
             self.review_button.setVisible(True)
             self.review_list.clear()
             names = self.preview.records_by_id or {}
-            for item in selection.review:
+            for item in selection.left_alone:
                 record = names.get(item.note_id)
                 expression = record.get("Expression") if record is not None else ""
                 suffix = f" [{', '.join(item.rows)}]" if item.rows else ""
@@ -228,8 +228,7 @@ class BatchDialog(QDialog):
         visible = not self.review_list.isVisible()
         self.review_list.setVisible(visible)
         self.review_button.setText(
-            ("Hide" if visible else "Show")
-            + f" the {self.review_list.count()} note(s) that need a human"
+            ("Hide" if visible else "Show") + f" what was left alone ({self.review_list.count()})"
         )
 
     # --- actions ------------------------------------------------------

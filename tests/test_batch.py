@@ -67,22 +67,63 @@ def test_the_text_unit_is_atomic_but_scene_media_is_independent():
     }
 
 
-def test_one_guarded_row_sends_the_note_to_review_not_to_the_writer():
+def test_a_note_whose_only_rows_are_guarded_is_left_alone():
     plan = Plan(
         writes=(
-            w(1, "Sentence", OP_EXPAND_SENTENCE, "fragment", "scene", checked=False),
-            w(1, "Sentence (furigana)", OP_FILL, "", "ruby", checked=False),
+            w(
+                1,
+                "Sentence",
+                OP_EXPAND_SENTENCE,
+                "fragment",
+                "scene",
+                checked=False,
+                badges=("expansion-guard", "fragment-not-recoverable"),
+            ),
+            w(
+                1,
+                "Sentence (furigana)",
+                OP_FILL,
+                "",
+                "ruby",
+                checked=False,
+                badges=("paired-with-expansion",),
+            ),
         )
     )
     selection = select(plan, allowed_ops(expand_sentence=True))
     assert selection.rows == ()
-    assert [(item.note_id, item.reason) for item in selection.review] == [
-        (1, "guarded row needs a human")
+    assert [(item.note_id, item.reason) for item in selection.left_alone] == [
+        (1, "sentence left alone — fragment not recoverable")
     ]
-    assert selection.review[0].rows == (
+    assert selection.left_alone[0].rows == (
         "Sentence:expand_sentence",
         "Sentence (furigana):fill",
     )
+
+
+def test_a_text_guard_drops_only_the_sentence_and_still_fills_media():
+    # The exact case that made the window useless: the sentence cannot be
+    # rewritten, but its scene's audio and picture are independent and safe.
+    plan = Plan(
+        writes=(
+            w(
+                1,
+                "Sentence",
+                OP_EXPAND_SENTENCE,
+                "fragment",
+                "scene",
+                checked=False,
+                badges=("expansion-guard", "fragment-not-recoverable"),
+            ),
+            w(1, "Picture", OP_FILL, "", "<img>"),
+            w(1, "Sentence Audio", OP_FILL, "", "[sound:a.webm]"),
+        )
+    )
+    selection = select(plan, allowed_ops(expand_sentence=True))
+    assert sorted(row.field for row in selection.rows) == ["Picture", "Sentence Audio"]
+    assert selection.field_notes == 1
+    assert selection.left_alone == ()
+    assert selection.sentences_left_alone == 1
 
 
 def test_idempotent_and_optional_replaces_are_counted_separately():
@@ -102,7 +143,7 @@ def test_idempotent_and_optional_replaces_are_counted_separately():
     assert everything.notes == 3
 
 
-def test_complete_notes_count_as_untouched_and_ambiguous_bold_as_review():
+def test_complete_notes_count_as_untouched_and_ambiguous_bold_is_left_alone():
     plan = Plan(
         writes=(w(1, "Sentence", OP_FILL, "", "text"),),
         reasons={
@@ -115,12 +156,12 @@ def test_complete_notes_count_as_untouched_and_ambiguous_bold_as_review():
     selection = select(plan, allowed_ops())
     assert selection.notes == 1
     assert selection.untouched == 3  # complete, opted out, nothing found
-    assert [(item.note_id, item.reason) for item in selection.review] == [
+    assert [(item.note_id, item.reason) for item in selection.left_alone] == [
         (3, "bold ambiguous — left alone")
     ]
 
 
-def test_review_names_the_divergence_so_the_user_knows_why():
+def test_left_alone_names_the_divergence_so_the_user_knows_why():
     plan = Plan(
         writes=(
             w(
@@ -135,7 +176,7 @@ def test_review_names_the_divergence_so_the_user_knows_why():
     )
     selection = select(plan, allowed_ops())
     assert selection.rows == ()
-    assert [(item.note_id, item.reason) for item in selection.review] == [
+    assert [(item.note_id, item.reason) for item in selection.left_alone] == [
         (1, "scene sources disagree — left alone")
     ]
 

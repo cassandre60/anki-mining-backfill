@@ -31,25 +31,40 @@ enriched siblings. Two halves:
    or point Anki itself at a scratch base (`ANKI_BASE`). The only code allowed
    to modify someone's collection is the add-on itself, after the user pressed
    Apply — and it must leave an undo log.
-2. **The pure core stays pure.** `normalize.py`, `fieldconfig.py`,
-   `matching.py`, `plan.py`, `report.py`, `applier.py` must not import
-   `anki`, `aqt` or PyQt — `tests/test_layer_boundary.py` fails if they do,
-   and the headless builder plus most of the suite depend on it. Only
-   `__init__.py`, `collection_io.py` and `preview_dialog.py` may touch Anki.
-3. **Never guess.** Ambiguity is reported (`plan.reasons`, `plan.warnings`),
+2. **Never start Anki, Qt or a web engine on the author's machine.** Booting
+   Anki — including `QT_QPA_PLATFORM=offscreen` or importing `aqt`/Qt in a
+   long-running probe — has crashed the author's session (2026-11-14, after
+   several headless Anki/WebEngine attempts). Verify GUI code by import checks
+   in the suite and by asking the author to restart Anki; never by launching
+   it. `python3 -m pip install` and `ruff`/`pytest` are fine; a GUI process is
+   not.
+3. **No heavy jobs on the author's machine.** No full-collection copies, no
+   whole-deck scans, no background or forked workers, no `--watch`, no growing
+   `/tmp` artifacts. Work from one existing snapshot when there is one,
+   otherwise a single scoped read-only query (a few thousand notes at most),
+   and delete what you create. The fast gates are `ruff check .`,
+   `ruff format --check .` and the pytest suite (seconds). Anything bigger is
+   a CI job.
+4. **The pure core stays pure.** `normalize.py`, `fieldconfig.py`,
+   `matching.py`, `plan.py`, `report.py`, `batch.py`, `applier.py` must not
+   import `anki`, `aqt` or PyQt — `tests/test_layer_boundary.py` fails if they
+   do, and the headless builder plus most of the suite depend on it. Only
+   `__init__.py`, `collection_io.py`, `preview_dialog.py` and
+   `batch_dialog.py` may touch Anki.
+5. **Never guess.** Ambiguity is reported (`plan.reasons`, `plan.warnings`),
    never resolved by picking one of several plausible values.
-4. **Fills only; four approved non-empty writes** (`Source`, `Sentence`,
+6. **Fills only; four approved non-empty writes** (`Source`, `Sentence`,
    `bold_cloze_word`, `add_tags`) — each must preserve its information, and
    each carries badges. See `QUALITY.md`.
-5. **Tags are never removed** and bookkeeping tags are never added: the audit
+7. **Tags are never removed** and bookkeeping tags are never added: the audit
    deck is the container, the note carries only the target's and its sources'
    tags.
-6. **Fully offline.** No network calls, no telemetry, no auto-update behaviour
+8. **Fully offline.** No network calls, no telemetry, no auto-update behaviour
    beyond Anki's own.
-7. **No secrets, ever** — not in code, config, fixtures or logs. Fixtures are
+9. **No secrets, ever** — not in code, config, fixtures or logs. Fixtures are
    real captures from the author's collection; keep them minimal.
-8. **Import-time safety.** Anything in `__init__.py` that raises is what users
-   see as "add-on failed to load". Guard it, print instead of throwing.
+10. **Import-time safety.** Anything in `__init__.py` that raises is what users
+    see as "add-on failed to load". Guard it, print instead of throwing.
 
 ## 3. Environment (verified on the author's machine)
 
@@ -181,6 +196,13 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   (`applier.run_after_editor_saved`, QUALITY Q-A5).
   Verified by: the pasted traceback (no Mining Backfill frame) and
   `tests/test_applier.py` timing tests.
+- [2026-11-14, OpenCode] The author's machine crashed after this agent ran several
+  headless Anki/Qt attempts (`aqt._run(exec=False)` under `QT_QPA_PLATFORM=offscreen`)
+  and repeated full-collection copies. The exact cause is unproven, but the
+  activity was the heaviest thing on the machine and is now forbidden by
+  AGENTS.md §2 rules 2–3. Durable rule: never start Anki/Qt/WebEngine here;
+  never copy the collection or scan the deck; use one scoped read-only query
+  and CI. Verified by: the crash report and the new rules above.
 - [2026-11-14, OpenCode] Qt treats a bare `&` in a menu label as a mnemonic,
   so `preview & apply` renders as `preview apply` with a stray underline.
   Verified by: pinning the literal menu strings in `test_addon_load.py`.

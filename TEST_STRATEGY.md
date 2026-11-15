@@ -41,9 +41,10 @@ not have and must never be given.
   callback is covered by the scheduler safety net, and a raising or missing
   editor still lets the run through.
 - **Batch policy** lives in `tests/test_batch.py`: the default tier is
-  lossless, a scene group is all-or-nothing, a note with any guarded row goes
-  to review whole, complete notes count as untouched, and optional replaces
-  are counted separately.
+  lossless, the text unit (sentence + ruby) is atomic, a text-safety guard
+  drops only the sentence while the scene's audio/picture are still filled, a
+  source-confidence guard leaves the whole note alone, complete notes count as
+  untouched, and tag-only notes are reported separately.
 - **Source confidence** is pinned in `tests/test_plan.py`: disagreeing parents
   are never auto-checked, a far containment match ships unchecked, and a
   byte-identical sentence stays trusted at any distance.

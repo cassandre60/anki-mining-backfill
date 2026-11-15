@@ -70,6 +70,17 @@ first, with the reason.
 - **Q-C8 — Nothing is written without explicit acceptance.** Rows are
   `default_checked` only when every guard passed; the user still has to press
   Apply.
+- **Q-C9 — Batch runs ask for no decisions.** A bulk run resolves its own
+  guard policy and writes only what is provably safe:
+  - **Source confidence** (`divergent-parents`, `far-from-source`) — if the
+    source is not trustworthy, nothing from it is written; the note is
+    *left alone* with the reason recorded.
+  - **Text safety** (`fragment-not-recoverable`, `cloze-anchor-not-unique`,
+    `stale-fragment-furigana-risk`, `paired-with-expansion`) — exactly the
+    text unit is dropped; the note's independent scene fields (audio,
+    picture, translation) are still filled.
+  - A note with nothing safe to write is reported as *left alone* with a
+    reason, never as a question. The dry-run report lists them all.
 
 ## Apply behaviour
 
