@@ -177,7 +177,13 @@ the live profile (AGENTS.md §2 rules 2–3).
 ## Open questions (answer before each slice)
 
 - How many source cards actually contain arrows / `<br>` / padding — a 50%
-  problem or a 5% one? A scoped read-only census answers it.
+  problem or a 5% one? **Answered (2026-11-15, one read-only SQL census over
+  the configured deck's `Sentence` field, 17,589 notes):** `<br>` **72.1%**,
+  arrows `➡`/`→` **0.4%** (75 notes), padding (run-together spaces,
+  indented or empty leading/trailing lines) **0.3%** (57 notes), any of
+  them **72.2%**. The problem is `<br>` collapse, not arrows — the rule
+  list is config-driven so arrows stay available, but they must never
+  dominate the design.
 - Does Japanese Support's reading beat what Yomitan already stored? Run it
   on a sample and compare.
 - How do we detect "this child was already filled from that source and the
