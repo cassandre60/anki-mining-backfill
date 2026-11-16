@@ -340,8 +340,10 @@ proof.
   gate on both expression-derived tiers (over-long words are skipped too —
   conservative, reported when verbatim), and the listening predicate on
   the bold repair (both paths; Frequency-without-glosses stays repaired).
-  **Still open:** class C (inflected/mis-mined, 278 cards — silent when
-  nothing was mined, so no warning flood) and the MeCab oracles above.
+  **Deferred by the owner (2026-11-16):** class C —
+  [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) §F3, backlog B10. The stem
+  rule was rejected on evidence; MeCab segmentation is the honest path.
+  Class-C cards stay silent when nothing was mined (no warning flood).
 
 ## Open questions (answer before each slice)
 

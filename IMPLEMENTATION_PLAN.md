@@ -174,6 +174,18 @@ below, never as silent scope creep inside a coding session.
   also supplies bold-match candidates in the other spelling direction.
   Blocked on: dictionary source decision, QUALITY amendment, Ring 3 sample
   review. Not started.
+- **B10 — Bold when the sentence spells the word differently** (owner ask
+  2026-11-16, deferred the same day: "No, leave them"; text in
+  [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) §F3, design in
+  [`BULK_FIX.md`](BULK_FIX.md) dimension 6 / slice 8). The easy half is
+  shipped (T14); the changed-form half (word 読む, sentence 読め) stays
+  unfixed. The okurigana-stem rule was rejected on evidence (2026-11-16
+  read-only sample: 82 of 272 matched, many over-long bolds because kana
+  runs cross word boundaries). The honest path is MeCab segmentation
+  through Japanese Support — the same engine T12 calls — with an
+  exactly-one-token requirement and the T14 guards unchanged. Blocked on
+  nothing technical beyond that engine pass; the owner chose to wait. Not
+  started.
 - **B2 — Rendered card preview.** Render each row's real front/back HTML
   (Anki's card rendering API) in a side pane, so a reviewer sees the card as
   the template shows it rather than as field values.

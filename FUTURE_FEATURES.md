@@ -195,6 +195,48 @@ every other write.
 3. Check whether the dictionaries mark the kana form as the primary spelling
    (いきなり likely is); that decides risk 1 above.
 
+## F3 — Bold the word when the sentence spells it differently
+
+Owner ask 2026-11-16, deferred by the owner the same day ("no, leave them"):
+the easy half shipped, the changed-form half waits.
+
+In plain terms: a card's word is 読む but the sentence says 読め; the word is
+寒い but the sentence says 寒くなかった. Those cards get **no** bold — the
+shipped bold repair matches only what it can see exactly (the mined word,
+the word as written, or a kana spelling of the leading kanji), and
+deliberately does nothing else.
+
+Why the obvious rule was tried and rejected (2026-11-16, read-only sample
+over the real class-C cards): cutting the ending off the word and looking
+for the rest — 読む → 読 followed by kana — matched 82 of 272 cards but
+produced over-long bolds, because Japanese kana runs cross word
+boundaries: 甘い became `<b>甘くておいしい</b>`, 好く became
+`<b>好いてくれてるって</b>`, 取り留める swallowed
+`取り留めたしかしその`. 32 of the 82 ran into the next kanji word. A wrong
+bold changes which word the card tests, so the rule must not ship.
+
+### What would make it honest
+
+- **Segmentation.** The installed Japanese Support add-on's MeCab engine
+  splits a sentence into words and gives each word's dictionary form; a
+  match then means "exactly one token whose base form is this card's word".
+  That is the same engine the furigana regeneration already calls (T12) —
+  a second use of it, not a new dependency — and it only exists inside
+  Anki.
+- **The guards stay unchanged**: exactly one matching token, markup-only
+  write, word-like Expression, listening cards skipped, every miss
+  reported.
+- **Still out of reach, and reported as such**: cards whose data is simply
+  wrong (word 三人, sentence says 3人) and kana-only words with no kanji to
+  match (びびる → ビビった needs the reading, not the spelling).
+
+### Experiments to run before designing it
+
+1. Run MeCab segmentation over the 272 class-C cards and count how many get
+   exactly one matching token — that number, not the stem rule's 82, is the
+   real size of the win.
+2. Eyeball 20 of the resulting bolds before wiring anything in.
+
 ## Where each idea lives (traceability)
 
 Every ask from the author, and where it is written down so it can be built
@@ -208,7 +250,8 @@ later. Status is one of *shipped*, *documented* (no code yet).
 | Generate furigana **after** the sentence is fixed, through the installed Japanese Support add-on | `BULK_FIX.md` dimension 3, this file §F1 | documented (slice 2) |
 | Fix the expression itself: inflections, expressions written partly in kana where the kanji form exists | `BULK_FIX.md` dimension 4 | documented (slice 4) |
 | Rewrite a kana expression to its kanji spelling (いきなり → 行き成り, ときに → 時に) | this file §F2, `BULK_FIX.md` dimension 4 / slice 4, `IMPLEMENTATION_PLAN.md` B9 | documented (no code yet) |
-| Cards with no bold term in `Sentence` (non-listening): bold the expression's inflected occurrence — 前人未到 is a valid target, 漢字は読めるようになりたいかな is not | `BULK_FIX.md` dimension 6 + slice 8 (census 2026-11-16) | documented |
+| Cards with no bold term in `Sentence` (non-listening): bold the expression's inflected occurrence — 前人未到 is a valid target, 漢字は読めるようになりたいかな is not | `BULK_FIX.md` dimension 6 + slice 8 (census 2026-11-16) | verbatim half shipped (T14); changed-form half deferred |
+| Bold when the sentence spells the word differently (読む → 読め) | this file §F3, `BULK_FIX.md` dimension 6 / slice 8, `IMPLEMENTATION_PLAN.md` B10 | documented — owner deferred 2026-11-16; stem rule rejected on evidence |
 | Indentation / formatting | `BULK_FIX.md` dimension 5 | documented (slice 5) |
 | Apply to other decks when they are selected | `BULK_FIX.md` §Scope and profiles | targets shipped; sources still limited to the configured deck |
 | Apply to other languages (Chinese, …) and other note types | `BULK_FIX.md` §Scope and profiles, slice 6 | documented (profile abstraction) |
