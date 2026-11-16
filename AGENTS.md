@@ -306,3 +306,15 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   want *changed*.
   Verified by: the rollback commit + the owner-decision notes in
   `BULK_FIX.md`.
+- [2026-11-16, OpenCode] Two OpenCode sessions have driven this checkout at
+  once: files change mid-turn, `git status` gains entries that are not yours,
+  and the other session may commit *and push* your HEAD while you work. A
+  path-scoped `git commit -- <paths>` still commits the working-tree content
+  of those paths, so a foreign unstaged edit gets swept in (it did, in
+  a0d69d8). Re-read `git status`/`git diff` immediately before staging and
+  again after; never `git checkout HEAD -- <file>` to isolate your hunks
+  without copying the file aside first, or the other session's uncommitted
+  work is gone (report.py had to be restored from /tmp in that same
+  session).
+  Verified by: the a0d69d8 commit's doc hunks (the T15 wave, not mine) and
+  the restored `report.py`.
