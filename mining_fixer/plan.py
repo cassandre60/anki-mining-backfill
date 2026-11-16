@@ -1152,6 +1152,9 @@ def _bold_candidates(target: NoteRecord) -> list[str]:
         strip_renderable(target.get("Expression")).strip(),
         kana_fold(norm_reading(target.get("reading") or "")),
         *kana_spelling_candidates(target.get("Expression") or "", target.get("furigana") or ""),
+        # Reading-prefix spellings (鬱病 -> うつ病) — the same forms the bold
+        # tier uses; without them a kana-prefix spelling cannot be bolded.
+        *_mixed_form_candidates(target.get("Expression") or "", target.get("reading") or ""),
     ):
         if cand and cand not in out:
             out.append(cand)

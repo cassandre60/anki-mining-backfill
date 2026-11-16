@@ -36,12 +36,8 @@ from build_audit_package import prepare_work_dir, records_from_collection  # noq
 
 from mining_fixer.applier import NoteState, decide  # noqa: E402
 from mining_fixer.batch import default_ops, select  # noqa: E402
-from mining_fixer.matching import kana_spelling_candidates  # noqa: E402
-from mining_fixer.normalize import (  # noqa: E402
-    furigana_base_matches,
-    kana_fold,
-    strip_renderable,
-)
+from mining_fixer.matching import NoteRecord  # noqa: E402
+from mining_fixer.normalize import furigana_base_matches, strip_renderable  # noqa: E402
 from mining_fixer.plan import build_plan  # noqa: E402
 
 SOUND_RE = re.compile(r"\[sound:([^\]]+)\]")
@@ -134,12 +130,13 @@ def main() -> int:
                 violations["C ruby does not match its sentence"] += 1
                 examples["C ruby does not match its sentence"].append(word)
 
-            spellings = {
-                (card.get("Expression") or "").strip(),
-                strip_renderable(card.get("cloze-body")).strip(),
-                kana_fold(card.get("Expression") or ""),
-                *kana_spelling_candidates(card.get("Expression") or "", card.get("furigana") or ""),
-            } - {""}
+            from mining_fixer.plan import _bold_candidates
+
+            spellings = set(
+                _bold_candidates(
+                    NoteRecord(note_id=note_id, notetype_id=0, fields=dict(card), tags=frozenset())
+                )
+            )
             spans = BOLD_RE.findall(sentence)
             if len(spans) > 1 or (
                 spans and not any(strip_renderable(span).strip() in spellings for span in spans)
