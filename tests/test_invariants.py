@@ -22,13 +22,21 @@ from mining_fixer.plan import (
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
+    OP_REGENERATE_FURIGANA,
+    OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     Plan,
     PlannedWrite,
 )
 
-FIELDS = ["Sentence", "Source", "Definition"]
-VALUE_OPS = [OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE, OP_BOLD_CLOZE_WORD]
+FIELDS = ["Sentence", "Sentence (furigana)", "Source", "Definition"]
+VALUE_OPS = [
+    OP_REPLACE_SOURCE,
+    OP_EXPAND_SENTENCE,
+    OP_BOLD_CLOZE_WORD,
+    OP_REPAIR_SENTENCE,
+    OP_REGENERATE_FURIGANA,
+]
 
 
 @st.composite
