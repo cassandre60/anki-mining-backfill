@@ -10,6 +10,7 @@ exactly what is written.
 
 from __future__ import annotations
 
+import collections
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
@@ -1238,6 +1239,173 @@ def _fragment_anchored_sentence(
     return parent.replace(fragment, bolded, 1)
 
 
+#: Cards within this many seconds of each other were mined from the same
+#: subtitle moment.
+MOMENT_TOLERANCE_SECONDS = 20
+
+
+def _moment_group(
+    target: NoteRecord,
+    episodes: dict[str, list[NoteRecord]],
+    tolerance: int = MOMENT_TOLERANCE_SECONDS,
+) -> list[NoteRecord]:
+    """The cards mined at the same moment as ``target`` (plus itself).
+
+    A card's timestamped Source says exactly where it came from; the cards at
+    that moment are the ones that can be trusted to agree, because they mined
+    the same subtitle line. Empty when the card's Source names no episode.
+    """
+    episode = _episode_key(target.get("Source"))
+    moment = _source_seconds(target.get("Source"))
+    if episode is None or moment is None:
+        return []
+    mates = [
+        record
+        for record in episodes.get(episode, [])
+        if (other := _source_seconds(record.get("Source"))) is not None
+        and abs(other - moment) <= tolerance
+    ]
+    return mates
+
+
+def _modal(values: list[str], minimum: int = 2) -> str | None:
+    """The value at least ``minimum`` cards agree on, or None."""
+    counted = collections.Counter(value for value in values if value.strip())
+    if not counted:
+        return None
+    value, count = counted.most_common(1)[0]
+    return value if count >= minimum else None
+
+
+def _moment_group_writes(
+    target: NoteRecord,
+    mates: list[NoteRecord],
+    cfg: dict,
+) -> tuple[list[PlannedWrite], str | None]:
+    """Harmonise a card with the moment it was mined from.
+
+    The moment's cards are the oracle for every scene field: two or more of
+    them agreeing byte-identically is evidence a single parent cannot give.
+    The sentence is taken first (the bold is recomputed for *this* card's
+    word), then the ruby that describes it, then the audio and picture the
+    moment used — replacing a value that belongs to another moment (the
+    author's wrong-audio and stale-ruby cards). When the moment's sentence
+    does not contain this card's word, the card was mined from another line:
+    nothing is written and the why is returned.
+
+    Returns ``(writes, reason)``. Pure.
+    """
+    if len(mates) < 2:
+        return [], None
+    repair_rules = tuple(
+        rule for rule in cfg.get("sentence_repair_rules", ()) if rule in REPAIR_RULES
+    )
+    moment_sentence = _modal([record.get("Sentence") or "" for record in mates])
+    if moment_sentence is None:
+        return [], None
+    representative = next(
+        record for record in mates if (record.get("Sentence") or "") == moment_sentence
+    )
+    current_sentence = target.get("Sentence") or ""
+    writes: list[PlannedWrite] = []
+
+    def same(left: str, right: str) -> bool:
+        return norm_sentence_match(left) == norm_sentence_match(right)
+
+    planned_sentence = _single_bold(
+        moment_sentence,
+        strip_renderable(target.get("cloze-body")),
+        tuple(_bold_candidates(target)),
+    )
+    if repair_rules:
+        planned_sentence, _applied = repair_sentence(planned_sentence, repair_rules)
+    if same(current_sentence, moment_sentence):
+        # Same text, but the bold may belong to another card of the moment
+        # (このたび bold on a card that tests 自閉症スペクトラム): normalise the
+        # markup only — the rendered text is unchanged.
+        if planned_sentence != current_sentence and same(planned_sentence, current_sentence):
+            writes.append(
+                PlannedWrite(
+                    note_id=target.note_id,
+                    field="Sentence",
+                    op=OP_BOLD_CLOZE_WORD,
+                    old_value=current_sentence,
+                    new_value=planned_sentence,
+                    source_note_id=representative.note_id,
+                    default_checked=True,
+                    badges=("moment-group", "bold-for-this-card"),
+                )
+            )
+        return writes, None
+    if not same(current_sentence, moment_sentence):
+        folded = kana_fold(norm_sentence_match(moment_sentence))
+        if not any(
+            kana_fold(norm_sentence_match(word)) in folded
+            for word in _bold_candidates(target)
+            if word
+        ):
+            return [], "moment-sentence-lacks-the-word"
+        writes.append(
+            PlannedWrite(
+                note_id=target.note_id,
+                field="Sentence",
+                op=OP_EXPAND_SENTENCE,
+                old_value=current_sentence,
+                new_value=planned_sentence,
+                source_note_id=representative.note_id,
+                default_checked=True,
+                badges=("moment-group", f"source-note:{representative.note_id}"),
+            )
+        )
+
+    current_ruby = target.get(FURIGANA_FIELD) or ""
+    if not (current_ruby.strip() and furigana_base_matches(current_ruby, planned_sentence)):
+        usable = [
+            record.get(FURIGANA_FIELD) or ""
+            for record in mates
+            if record.get(FURIGANA_FIELD)
+            and furigana_base_matches(record.get(FURIGANA_FIELD) or "", planned_sentence)
+        ]
+        cleaned = [
+            repair_sentence(value, repair_rules)[0] if repair_rules else value for value in usable
+        ]
+        moment_ruby = _modal(cleaned)
+        if cleaned and moment_ruby is None:
+            moment_ruby = max(cleaned, key=len)
+        if moment_ruby:
+            writes.append(
+                PlannedWrite(
+                    note_id=target.note_id,
+                    field=FURIGANA_FIELD,
+                    op=OP_FILL if is_empty(current_ruby) else OP_EXPAND_SENTENCE,
+                    old_value="" if is_empty(current_ruby) else current_ruby,
+                    new_value=moment_ruby,
+                    source_note_id=representative.note_id,
+                    default_checked=True,
+                    badges=("moment-group", f"source-note:{representative.note_id}"),
+                )
+            )
+
+    for field_name in ("Sentence Audio", "Picture"):
+        current = target.get(field_name) or ""
+        moment_value = _modal([record.get(field_name) or "" for record in mates])
+        if moment_value is None or moment_value == current:
+            continue
+        writes.append(
+            PlannedWrite(
+                note_id=target.note_id,
+                field=field_name,
+                op=OP_FILL if is_empty(current) else OP_EXPAND_SENTENCE,
+                old_value="" if is_empty(current) else current,
+                new_value=moment_value,
+                source_note_id=representative.note_id,
+                default_checked=True,
+                badges=("moment-group", f"source-note:{representative.note_id}"),
+            )
+        )
+    return writes, None
+
+
 def _scene_writes_for(
     candidate: NoteRecord,
     matches: list[SceneMatch],
@@ -1752,139 +1920,26 @@ def build_plan(
             )
             or is_blob_source(target.get("Source"))
         )
-        if has_scene_gap:
+        # The moment group is the oracle: the cards mined at the same
+        # timestamp agree on the sentence, the ruby, the audio and the
+        # picture. It replaces the parent search for those fields — mixing the
+        # two paths is what made a second run change things again.
+        moment_writes, moment_reason = _moment_group_writes(
+            target, _moment_group(target, episodes), cfg
+        )
+        if moment_writes:
+            target_writes.extend(moment_writes)
+        elif has_scene_gap:
             matches = find_scene_parents(target, parents_by_id, window_ms, min_len, cache)
             scene_writes, reason = _scene_writes_for(target, matches, cfg)
             if not scene_writes and reason == "no-parent-that-fills":
-                # The card's own sentence matched nothing (a mis-mine): try
-                # to recover the scene by the word inside the same episode.
                 recovered, _recovered_reason = _word_recovered_scene_writes(target, episodes, cfg)
                 if recovered:
                     scene_writes, reason = recovered, None
             if reason:
                 reasons[target.note_id] = reason
-        # Damage repair: the card's sentence belongs to another moment than
-        # its own timestamp (an earlier run copied a neighbouring scene).
-        # Damage repair: the card's sentence belongs to another moment than
-        # its own timestamp (an earlier run copied a neighbouring scene).
-        # Cards mined at the same moment, agreeing byte-identically, win —
-        # and the restored sentence brings its ruby in the same write.
-        if not any(w.field == "Sentence" for w in target_writes):
-            episode_key = _episode_key(target.get("Source"))
-            same_episode = episodes.get(episode_key, []) if episode_key else []
-            restored = _same_moment_sentence(target, same_episode, repair_rules)
-            if restored is not None:
-                restored_sentence, representative = restored
-                body = strip_renderable(target.get("cloze-body")).strip()
-                new_sentence = _single_bold(
-                    restored_sentence, body, tuple(_bold_candidates(target))
-                )
-                if repair_rules:
-                    new_sentence, _applied = repair_sentence(new_sentence, repair_rules)
-                ruby_source = _ruby_for_sentence(
-                    new_sentence, representative, same_episode, repair_rules
-                )
-                if norm_sentence_match(new_sentence) != norm_sentence_match(
-                    target.get("Sentence") or ""
-                ):
-                    target_writes.append(
-                        PlannedWrite(
-                            note_id=target.note_id,
-                            field="Sentence",
-                            op=OP_EXPAND_SENTENCE,
-                            old_value=target.get("Sentence"),
-                            new_value=new_sentence,
-                            source_note_id=representative.note_id,
-                            default_checked=True,
-                            badges=(
-                                "sentence-restored-from-same-moment",
-                                f"source-note:{representative.note_id}",
-                            ),
-                        )
-                    )
-                    ruby_write = _ruby_write_for(
-                        target, new_sentence, ruby_source, representative, repair_rules
-                    )
-                    if ruby_write is not None:
-                        target_writes.append(ruby_write)
-        # A card that adopts a parent's Source also adopts that parent's
-        # moment: the cards mined at that moment are the ground truth for the
-        # sentence, so prefer their agreement over the single parent's block
-        # (one run, no oscillation — author's 自閉症すぺくとらむ).
-        source_write = next(
-            (w for w in scene_writes if w.field == "Source" and w.default_checked), None
-        )
-        if source_write is not None:
-            adopted_episode = _episode_key(source_write.new_value)
-            moment_group = _same_moment_sentence(
-                NoteRecord(
-                    note_id=target.note_id,
-                    notetype_id=target.notetype_id,
-                    fields={**target.fields, "Source": source_write.new_value},
-                    tags=target.tags,
-                ),
-                episodes.get(adopted_episode, []) if adopted_episode else [],
-                repair_rules,
-            )
-            if moment_group is not None:
-                moment_sentence, moment_parent = moment_group
-                body = strip_renderable(target.get("cloze-body")).strip()
-                chosen = _single_bold(moment_sentence, body, tuple(_bold_candidates(target)))
-                if repair_rules:
-                    chosen, _applied = repair_sentence(chosen, repair_rules)
-                for index, write in enumerate(scene_writes):
-                    if write.field == "Sentence":
-                        scene_writes[index] = replace(
-                            write,
-                            new_value=chosen,
-                            source_note_id=moment_parent.note_id,
-                            badges=(
-                                "sentence-restored-from-same-moment",
-                                f"source-note:{moment_parent.note_id}",
-                            ),
-                        )
-                        break
-                # The restored sentence brings its ruby in the same run: a
-                # ruby that does not match the new sentence would otherwise be
-                # "fixed" by the next run (or left stale).
-                moment_ruby = moment_parent.get(FURIGANA_FIELD) or ""
-                if not moment_ruby.strip():
-                    # The moment's own card may have no ruby: take one from any
-                    # same-episode card whose ruby matches the restored
-                    # sentence, so the ruby lands in this run (a second run
-                    # would otherwise fill it and break "run twice = no-op").
-                    for record in episodes.get(adopted_episode, []) if adopted_episode else []:
-                        candidate_ruby = record.get(FURIGANA_FIELD) or ""
-                        if candidate_ruby.strip() and furigana_base_matches(candidate_ruby, chosen):
-                            moment_ruby = candidate_ruby
-                            break
-                current_ruby = target.get(FURIGANA_FIELD) or ""
-                ruby_cleaned = (
-                    repair_sentence(moment_ruby, repair_rules)[0] if repair_rules else moment_ruby
-                )
-                ruby_op: str | None = None
-                ruby_old = ""
-                if ruby_cleaned.strip() and is_empty(current_ruby):
-                    ruby_op = OP_FILL
-                elif ruby_cleaned.strip() and not furigana_base_matches(current_ruby, chosen):
-                    ruby_op, ruby_old = OP_EXPAND_SENTENCE, current_ruby
-                if ruby_op is not None:
-                    scene_writes = [w for w in scene_writes if w.field != FURIGANA_FIELD]
-                    scene_writes.append(
-                        PlannedWrite(
-                            note_id=target.note_id,
-                            field=FURIGANA_FIELD,
-                            op=ruby_op,
-                            old_value=ruby_old,
-                            new_value=ruby_cleaned,
-                            source_note_id=moment_parent.note_id,
-                            default_checked=True,
-                            badges=(
-                                "sentence-restored-from-same-moment",
-                                f"source-note:{moment_parent.note_id}",
-                            ),
-                        )
-                    )
+        elif moment_reason:
+            reasons[target.note_id] = moment_reason
         for w in scene_writes:
             if w.source_note_id:
                 parent_usage[w.source_note_id] = parent_usage.get(w.source_note_id, 0) + 1

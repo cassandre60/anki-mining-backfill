@@ -54,11 +54,18 @@ def main() -> int:
     parser.add_argument("--profile-dir", required=True, type=Path)
     parser.add_argument("--work-dir", type=Path, default=Path("/tmp/opencode/mb_audit"))
     parser.add_argument("--last", type=int, default=300)
+    parser.add_argument(
+        "--reuse-copy",
+        action="store_true",
+        help="audit the existing work dir instead of re-copying the profile "
+        "(a frozen snapshot is reproducible; the live collection moves)",
+    )
     args = parser.parse_args()
 
-    if args.work_dir.exists():
-        shutil.rmtree(args.work_dir)
-    prepare_work_dir(args.profile_dir, args.work_dir)
+    if not args.reuse_copy:
+        if args.work_dir.exists():
+            shutil.rmtree(args.work_dir)
+        prepare_work_dir(args.profile_dir, args.work_dir)
     from anki.collection import Collection
 
     col = Collection(str(args.work_dir / "collection.anki2"))
