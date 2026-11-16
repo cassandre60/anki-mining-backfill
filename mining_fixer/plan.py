@@ -298,44 +298,45 @@ def _is_listening(target: NoteRecord) -> bool:
     )
 
 
-def _bold_normalized_sentence(sentence: str, candidates: list[str]) -> tuple[str, str] | None:
-    """Markup-only fix for a sentence whose bold is foreign or duplicated.
+def _bold_normalized_sentence(
+    sentence: str, candidates: list[str], body: str = ""
+) -> tuple[str, str] | None:
+    """Markup-only fix for a sentence whose bold is missing, foreign or doubled.
 
-    A block copied before this rule existed can carry the scene's own bold
-    (ぜひ) plus the child's (校): two bold items (author report). The deck
-    convention is exactly one — the tested word. Every ``<b>`` tag is
-    stripped and the single unambiguous candidate is bolded again; the
-    rendered text is unchanged by construction.
+    The deck convention is exactly one bold item — the tested word. Cases
+    seen on the author's cards: two bold items (校 and ぜひ), a block with no
+    bold at all (the same-moment restore), and a bold on another word.
+    Returns ``(new_value, chosen_word)``; the rendered text is unchanged.
     """
     wanted = {strip_renderable(cand).strip() for cand in candidates if cand}
+    word = strip_renderable(body).strip() or next(iter(sorted(wanted)), "")
     spans = _BOLD_RE.findall(sentence)
+    if not spans:
+        if word and sentence.count(word) == 1:
+            return sentence.replace(word, f"<b>{word}</b>", 1), word
+        return None
     matching = [span for span in spans if strip_renderable(span).strip() in wanted]
     if len(spans) > 1:
-        # Several bold items: keep the one that wraps the tested word (the
-        # author's 校 block carried <b>校</b> and <b>ぜひ</b>), unbold the rest.
-        if len(matching) == 1:
-            keep = matching[0]
-            seen = False
+        if len(matching) != 1:
+            return None
+        keep = matching[0]
+        seen = False
 
-            def only_kept(match: re.Match) -> str:
-                nonlocal seen
-                if not seen and match.group(1) == keep:
-                    seen = True
-                    return match.group(0)
-                return match.group(1)
+        def only_kept(match: re.Match) -> str:
+            nonlocal seen
+            if not seen and match.group(1) == keep:
+                seen = True
+                return match.group(0)
+            return match.group(1)
 
-            new_value = _BOLD_RE.sub(only_kept, sentence)
-            if new_value != sentence:
-                return new_value, keep
-        return None
+        new_value = _BOLD_RE.sub(only_kept, sentence)
+        return (new_value, keep) if new_value != sentence else None
+    if matching:
+        return None  # already one bold, on the tested word
     without_bold = _BOLD_RE.sub(lambda match: match.group(1), sentence)
-    for cand in candidates:
-        if len(cand) < 2 or without_bold.count(cand) != 1:
-            continue
-        new_value = without_bold.replace(cand, f"<b>{cand}</b>", 1)
-        if new_value != sentence:
-            return new_value, cand
-        return None
+    if word and without_bold.count(word) == 1:
+        new_value = without_bold.replace(word, f"<b>{word}</b>", 1)
+        return (new_value, word) if new_value != sentence else None
     return None
 
 
@@ -388,7 +389,16 @@ def _bold_repair_for(
         reading = kana_fold(norm_reading(target.get("reading") or ""))
         if reading:
             candidates.append(reading)
-        normalised = _bold_normalized_sentence(sentence, [c for c in candidates if c])
+        span_list = _BOLD_RE.findall(sentence)
+        wanted = {strip_renderable(cand).strip() for cand in candidates if cand}
+        if len(span_list) == 1 and strip_renderable(span_list[0]).strip() in wanted:
+            # Already exactly one bold, and it wraps the tested word: done.
+            return None, None, None
+        normalised = _bold_normalized_sentence(
+            sentence,
+            [c for c in candidates if c],
+            strip_renderable(target.get("cloze-body")),
+        )
         if normalised is None:
             return None, None, None
         new_value, chosen = normalised
@@ -838,6 +848,64 @@ def _episode_key(source: str) -> str | None:
     return None
 
 
+#: A timestamped Source ends with the mining moment: ``… (15m20s)``.
+_SOURCE_TIME_RE = re.compile(r"\((\d+)m(\d+)s\)")
+
+
+def _source_seconds(source: str) -> int | None:
+    match = _SOURCE_TIME_RE.search(source or "")
+    if not match:
+        return None
+    return int(match.group(1)) * 60 + int(match.group(2))
+
+
+def _same_moment_sentence(
+    target: NoteRecord,
+    same_episode: list[NoteRecord],
+    rules: tuple[str, ...] = (),
+    tolerance: int = 20,
+) -> tuple[str, NoteRecord] | None:
+    """The sentence the cards mined at the *same moment* agree on.
+
+    Earlier runs could copy another moment's block onto a card (author's
+    自閉症すぺくとらむ kept the 親御 scene while its audio and Source stayed
+    at 15m20s). A card's own timestamp is the ground truth: siblings within
+    ``tolerance`` seconds that agree byte-identically (two or more) tell us
+    which sentence belongs here. ``None`` when they agree on nothing or on
+    the sentence the card already holds.
+    """
+    moment = _source_seconds(target.get("Source"))
+    if moment is None:
+        return None
+    near = [
+        record
+        for record in same_episode
+        if record.note_id != target.note_id
+        and (other := _source_seconds(record.get("Source"))) is not None
+        and abs(other - moment) <= tolerance
+    ]
+    groups: dict[str, list[NoteRecord]] = {}
+    for record in near:
+        sentence = record.get("Sentence") or ""
+        if not sentence.strip():
+            continue
+        # Group and compare on the *cleaned* text: the plan writes the defects
+        # fixed, so comparing raw values would restore the arrows on every run.
+        cleaned = repair_sentence(sentence, rules)[0] if rules else sentence
+        groups.setdefault(norm_sentence_match(cleaned), []).append(record)
+    if not groups:
+        return None
+    best_text, members = max(groups.items(), key=lambda kv: len(kv[1]))
+    if len(members) < 2:
+        return None
+    current = target.get("Sentence") or ""
+    current_cleaned = repair_sentence(current, rules)[0] if rules else current
+    if norm_sentence_match(current_cleaned) == best_text:
+        return None
+    representative = members[0]
+    return representative.get("Sentence") or "", representative
+
+
 def _word_recovered_scene_writes(
     target: NoteRecord,
     episodes: dict[str, list[NoteRecord]],
@@ -955,6 +1023,7 @@ def _word_recovered_scene_writes(
     new_sentence, bold_badge = _retarget_bold(
         best_sentence, representative.get("cloze-body"), written
     )
+    new_sentence = _single_bold(new_sentence, written, tuple(_bold_candidates(target)))
     current = target.get("Sentence")
     writes: list[PlannedWrite] = []
     if new_sentence != current:
@@ -1029,24 +1098,112 @@ def _word_recovered_scene_writes(
     return writes, None
 
 
-def _single_bold(value: str, body: str) -> str:
-    """Leave exactly one bold span — around the tested word — in ``value``.
+def _ruby_for_sentence(
+    sentence: str,
+    representative: NoteRecord,
+    same_episode: list[NoteRecord],
+    rules: tuple[str, ...] = (),
+) -> str:
+    """A ruby that describes ``sentence``, from the representative or any
+    same-episode card that has one (cleaned of subtitle noise)."""
+    candidates = [representative, *same_episode]
+    for record in candidates:
+        ruby = record.get(FURIGANA_FIELD) or ""
+        if not ruby.strip():
+            continue
+        cleaned = repair_sentence(ruby, rules)[0] if rules else ruby
+        if furigana_base_matches(cleaned, sentence):
+            return cleaned
+    return ""
+
+
+def _ruby_write_for(
+    target: NoteRecord,
+    sentence: str,
+    ruby: str,
+    representative: NoteRecord,
+    rules: tuple[str, ...] = (),
+) -> PlannedWrite | None:
+    """The ruby write paired with a restored sentence, or ``None``."""
+    if not ruby.strip():
+        return None
+    current = target.get(FURIGANA_FIELD) or ""
+    if current.strip() and furigana_base_matches(current, sentence):
+        return None  # already correct
+    return PlannedWrite(
+        note_id=target.note_id,
+        field=FURIGANA_FIELD,
+        op=OP_FILL if is_empty(current) else OP_EXPAND_SENTENCE,
+        old_value="" if is_empty(current) else current,
+        new_value=ruby,
+        source_note_id=representative.note_id,
+        default_checked=True,
+        badges=("sentence-restored-from-same-moment", f"source-note:{representative.note_id}"),
+    )
+
+
+def _bold_candidates(target: NoteRecord) -> list[str]:
+    """Spellings of a card's word: itself, its cloze body, its reading, and
+    every kanji/kana mix from its own furigana (類い希 -> 類いまれ)."""
+    out: list[str] = []
+    for cand in (
+        strip_renderable(target.get("cloze-body")).strip(),
+        strip_renderable(target.get("Expression")).strip(),
+        kana_fold(norm_reading(target.get("reading") or "")),
+        *kana_spelling_candidates(target.get("Expression") or "", target.get("furigana") or ""),
+    ):
+        if cand and cand not in out:
+            out.append(cand)
+    return sorted(out, key=len, reverse=True)
+
+
+def _single_bold(value: str, body: str, extras: tuple[str, ...] = ()) -> str:
+    """Exactly one bold span — around the tested word — in ``value``.
 
     The deck convention is one bold term. An expanded block can carry the
     scene's own bold (ぜひ's ``<b>ぜひ</b>``) and the child's word on top of
-    it, which produced two bold items (author report on 校).
+    it (two bold items, author report on 校), or no bold at all (a block
+    written by the same-moment restore) — both are fixed here, markup only.
     """
-    target = strip_renderable(body).strip()
-    if not target:
-        return value
+    names = [c for c in (strip_renderable(body).strip(), *extras) if c]
+    chosen = ""
+    for candidate in sorted(dict.fromkeys(names), key=len, reverse=True):
+        if value.count(candidate) == 1:
+            chosen = candidate
+            break
+    known = {c.strip() for c in names}
+    if not chosen:
+        # The word repeats in the block (校 in 校 and 医学校): keep the one
+        # existing bold that wraps it and drop the others (ぜひ).
+        spans = _BOLD_RE.findall(value)
+        wanted = [span for span in spans if strip_renderable(span).strip() in known]
+        if len(spans) <= 1 or len(wanted) != 1:
+            return value
+        keep = wanted[0]
+        seen = False
+
+        def only_kept(match: re.Match) -> str:
+            nonlocal seen
+            if not seen and match.group(1) == keep:
+                seen = True
+                return match.group(0)
+            return match.group(1)
+
+        return _BOLD_RE.sub(only_kept, value)
+    if not _BOLD_RE.search(value):
+        # No bold at all: place it where the word is unambiguous.
+        return value.replace(chosen, f"<b>{chosen}</b>", 1)
 
     def keep_wanted(match: re.Match) -> str:
         inner = match.group(1)
-        if strip_renderable(inner).strip() == target:
-            return match.group(0)
-        return inner
+        return match.group(0) if strip_renderable(inner).strip() in known else inner
 
-    return _BOLD_RE.sub(keep_wanted, value)
+    kept = _BOLD_RE.sub(keep_wanted, value)
+    if _BOLD_RE.search(kept):
+        return kept
+    # Every bold was foreign (ぜひ next to 校): bold the word instead.
+    without = _BOLD_RE.sub(lambda match: match.group(1), value)
+    return without.replace(chosen, f"<b>{chosen}</b>", 1) if without.count(chosen) == 1 else kept
 
 
 def _fragment_anchored_sentence(
@@ -1248,12 +1405,20 @@ def _scene_writes_for(
                     parent.get("cloze-body"),
                     candidate.get("cloze-body"),
                 )
-                new_sentence = _single_bold(new_sentence, candidate.get("cloze-body"))
+                new_sentence = _single_bold(
+                    new_sentence,
+                    candidate.get("cloze-body"),
+                    tuple(_bold_candidates(candidate)),
+                )
             else:
                 # The word occurs more than once in the block (校 in 精神医学
                 # 校, 医学校, …): bold the occurrence inside the child's own
                 # fragment, which is unique by definition.
-                new_sentence = _single_bold(fragment_bold, candidate.get("cloze-body"))
+                new_sentence = _single_bold(
+                    fragment_bold,
+                    candidate.get("cloze-body"),
+                    tuple(_bold_candidates(candidate)),
+                )
                 bold_badge = "bold-added-to-cloze-word"
             if bold_badge:
                 badges.append(bold_badge)
@@ -1598,6 +1763,128 @@ def build_plan(
                     scene_writes, reason = recovered, None
             if reason:
                 reasons[target.note_id] = reason
+        # Damage repair: the card's sentence belongs to another moment than
+        # its own timestamp (an earlier run copied a neighbouring scene).
+        # Damage repair: the card's sentence belongs to another moment than
+        # its own timestamp (an earlier run copied a neighbouring scene).
+        # Cards mined at the same moment, agreeing byte-identically, win —
+        # and the restored sentence brings its ruby in the same write.
+        if not any(w.field == "Sentence" for w in target_writes):
+            episode_key = _episode_key(target.get("Source"))
+            same_episode = episodes.get(episode_key, []) if episode_key else []
+            restored = _same_moment_sentence(target, same_episode, repair_rules)
+            if restored is not None:
+                restored_sentence, representative = restored
+                body = strip_renderable(target.get("cloze-body")).strip()
+                new_sentence = _single_bold(
+                    restored_sentence, body, tuple(_bold_candidates(target))
+                )
+                if repair_rules:
+                    new_sentence, _applied = repair_sentence(new_sentence, repair_rules)
+                ruby_source = _ruby_for_sentence(
+                    new_sentence, representative, same_episode, repair_rules
+                )
+                if norm_sentence_match(new_sentence) != norm_sentence_match(
+                    target.get("Sentence") or ""
+                ):
+                    target_writes.append(
+                        PlannedWrite(
+                            note_id=target.note_id,
+                            field="Sentence",
+                            op=OP_EXPAND_SENTENCE,
+                            old_value=target.get("Sentence"),
+                            new_value=new_sentence,
+                            source_note_id=representative.note_id,
+                            default_checked=True,
+                            badges=(
+                                "sentence-restored-from-same-moment",
+                                f"source-note:{representative.note_id}",
+                            ),
+                        )
+                    )
+                    ruby_write = _ruby_write_for(
+                        target, new_sentence, ruby_source, representative, repair_rules
+                    )
+                    if ruby_write is not None:
+                        target_writes.append(ruby_write)
+        # A card that adopts a parent's Source also adopts that parent's
+        # moment: the cards mined at that moment are the ground truth for the
+        # sentence, so prefer their agreement over the single parent's block
+        # (one run, no oscillation — author's 自閉症すぺくとらむ).
+        source_write = next(
+            (w for w in scene_writes if w.field == "Source" and w.default_checked), None
+        )
+        if source_write is not None:
+            adopted_episode = _episode_key(source_write.new_value)
+            moment_group = _same_moment_sentence(
+                NoteRecord(
+                    note_id=target.note_id,
+                    notetype_id=target.notetype_id,
+                    fields={**target.fields, "Source": source_write.new_value},
+                    tags=target.tags,
+                ),
+                episodes.get(adopted_episode, []) if adopted_episode else [],
+                repair_rules,
+            )
+            if moment_group is not None:
+                moment_sentence, moment_parent = moment_group
+                body = strip_renderable(target.get("cloze-body")).strip()
+                chosen = _single_bold(moment_sentence, body, tuple(_bold_candidates(target)))
+                if repair_rules:
+                    chosen, _applied = repair_sentence(chosen, repair_rules)
+                for index, write in enumerate(scene_writes):
+                    if write.field == "Sentence":
+                        scene_writes[index] = replace(
+                            write,
+                            new_value=chosen,
+                            source_note_id=moment_parent.note_id,
+                            badges=(
+                                "sentence-restored-from-same-moment",
+                                f"source-note:{moment_parent.note_id}",
+                            ),
+                        )
+                        break
+                # The restored sentence brings its ruby in the same run: a
+                # ruby that does not match the new sentence would otherwise be
+                # "fixed" by the next run (or left stale).
+                moment_ruby = moment_parent.get(FURIGANA_FIELD) or ""
+                if not moment_ruby.strip():
+                    # The moment's own card may have no ruby: take one from any
+                    # same-episode card whose ruby matches the restored
+                    # sentence, so the ruby lands in this run (a second run
+                    # would otherwise fill it and break "run twice = no-op").
+                    for record in episodes.get(adopted_episode, []) if adopted_episode else []:
+                        candidate_ruby = record.get(FURIGANA_FIELD) or ""
+                        if candidate_ruby.strip() and furigana_base_matches(candidate_ruby, chosen):
+                            moment_ruby = candidate_ruby
+                            break
+                current_ruby = target.get(FURIGANA_FIELD) or ""
+                ruby_cleaned = (
+                    repair_sentence(moment_ruby, repair_rules)[0] if repair_rules else moment_ruby
+                )
+                ruby_op: str | None = None
+                ruby_old = ""
+                if ruby_cleaned.strip() and is_empty(current_ruby):
+                    ruby_op = OP_FILL
+                elif ruby_cleaned.strip() and not furigana_base_matches(current_ruby, chosen):
+                    ruby_op, ruby_old = OP_EXPAND_SENTENCE, current_ruby
+                if ruby_op is not None:
+                    scene_writes = [w for w in scene_writes if w.field != FURIGANA_FIELD]
+                    scene_writes.append(
+                        PlannedWrite(
+                            note_id=target.note_id,
+                            field=FURIGANA_FIELD,
+                            op=ruby_op,
+                            old_value=ruby_old,
+                            new_value=ruby_cleaned,
+                            source_note_id=moment_parent.note_id,
+                            default_checked=True,
+                            badges=(
+                                "sentence-restored-from-same-moment",
+                                f"source-note:{moment_parent.note_id}",
+                            ),
+                        )
+                    )
         for w in scene_writes:
             if w.source_note_id:
                 parent_usage[w.source_note_id] = parent_usage.get(w.source_note_id, 0) + 1
