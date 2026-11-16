@@ -78,11 +78,26 @@ not have and must never be given.
   exactly.
 - **Acceptance runs use a curated battery, not bulk 1000-note runs** (owner
   guidance, 2026-11-16). Future Ring 3 runs pick a small set where each card
-  pins one defect class — a line-tail arrow, an anchor-risk fragment, a
-  divergent-parents note, a stale-furigana card, a blob Source, a note with
-  nothing to fix — so a failure names the class it broke instead of hiding in
-  aggregate counts. The 1000-note run above stands as the one-off scale proof;
-  it does not need repeating per dimension.
+  pins one defect class — a failure then names the class it broke instead of
+  hiding in aggregate counts. The 1000-note run above stands as the one-off
+  scale proof; it does not need repeating per dimension.
+
+  | # | Class | Card property | Must prove |
+  |---|---|---|---|
+  | 1 | tail arrow only | `Sentence` ends `➡` | arrow stripped, every other character byte-identical |
+  | 2 | mid-line arrow | `f:X→Y` inside a line | no write at all (pure noop) |
+  | 3 | arrow around bold | `…<b>殺し</b>➡` | arrow gone, `<b>` intact |
+  | 4 | anchor risk | the tested word's occurrence count would change | skipped with a warning, no write |
+  | 5 | expansion queued | scene gap + tail arrow | exactly one `Sentence` row (the expansion), no repair row |
+  | 6 | bold repair queued | no `<b>` in `Sentence` + tail arrow | the bold row owns the field, no repair row |
+  | 7 | stale furigana | sentence fine, ruby wrong | regenerated row with an old → new diff |
+  | 8 | correct furigana | already annotated as the engine would | no furigana row |
+  | 9 | child of a source | child with empty ruby under a scene fill | scene fill only, no regen row |
+  | 10 | blob Source | asbplayer URL | timestamped replace, URL recorded in the run log |
+  | 11 | divergent parents | two parents, different payloads | left unchecked with the divergence reason |
+  | 12 | nothing to fix | fully enriched note | untouched; byte-identical after apply + undo |
+
+  Twelve cards, one per class; a new guard adds one card, not a bigger run.
 - The **UI** (`preview_dialog.py`) is not unit-tested; its import is checked
   in Ring 2 and its behaviour is exercised by Ring 3's apply run. Anything
   decision-shaped in it is delegated to `applier.py`/`plan.py` precisely so it

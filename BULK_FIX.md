@@ -148,9 +148,10 @@ Ordered slices. Each ships **independently** and stays **off by default**
 until proven on a real collection. "Tests" means the hermetic suite;
 "real-collection check" means the Ring 3 run on an existing snapshot, never
 the live profile (AGENTS.md §2 rules 2–3) — and it is a **curated battery,
-not a bulk 1000-note run** (owner guidance, 2026-11-16): a small set where
-each card pins one defect class, so a failure names the class it broke. The
-1000-note run of T8 stands as the one-off scale proof.
+not a bulk 1000-note run** (owner guidance, 2026-11-16): twelve cards, one
+per defect class, so a failure names the class it broke (table in
+`TEST_STRATEGY.md`). The 1000-note run of T8 stands as the one-off scale
+proof.
 
 ### Slice 1 — Sentence repair rules (dimension 2)
 
