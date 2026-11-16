@@ -18,7 +18,14 @@ from .plan import (
     Plan,
 )
 
-__all__ = ["OP_LABELS", "render_batch_summary", "render_markdown"]
+__all__ = [
+    "GLANCE_LIMIT",
+    "OP_LABELS",
+    "change_lines",
+    "field_label",
+    "render_batch_summary",
+    "render_markdown",
+]
 
 OP_LABELS = {
     OP_FILL: "fill",
@@ -29,6 +36,46 @@ OP_LABELS = {
     OP_REGENERATE_FURIGANA: "regenerate furigana",
     OP_ADD_TAGS: "add tags (never removes)",
 }
+
+
+#: Rows a capped list shows before pointing at the full report — one knob for
+#: the batch window's glance lists so neither grows with the selection.
+GLANCE_LIMIT = 40
+
+
+def change_lines(
+    selection,
+    records: dict[int, NoteRecord],
+    limit: int = GLANCE_LIMIT,
+) -> list[str]:
+    """One glimpse line per changed note: the word, what changes, and for the
+    sentence rewrites a short before → after sample.
+
+    Built for the batch window's "planned changes" list — labels and a
+    sample, never full field values; the report has the complete page. The
+    risky dimensions (sentence expansion, subtitle repair) get the sample so
+    soundness is checkable at a glance; ruby markup and markup-only bold
+    stay label-only because their values are noise.
+    """
+    by_note: dict[int, list] = {}
+    for write in selection.rows:
+        by_note.setdefault(write.note_id, []).append(write)
+
+    lines: list[str] = []
+    for note_id, writes in list(by_note.items())[:limit]:
+        record = records.get(note_id)
+        word = record.get("Expression") if record is not None else ""
+        labels = []
+        for write in writes:
+            label = field_label(write)
+            if write.op in (OP_EXPAND_SENTENCE, OP_REPAIR_SENTENCE):
+                label += f" ({_plain(write.old_value, 40)} → {_plain(write.new_value, 60)})"
+            labels.append(label)
+        prefix = word if word else f"note {note_id}"
+        lines.append(f"{prefix} — {' · '.join(labels)}")
+    if len(by_note) > limit:
+        lines.append(f"… and {len(by_note) - limit} more note(s) — the report has the full list")
+    return lines
 
 
 def _plain(value: str, limit: int = 160) -> str:
@@ -71,7 +118,7 @@ def render_batch_summary(
 
     by_note: dict[int, list[str]] = {}
     for write in selection.rows:
-        label = _field_label(write)
+        label = field_label(write)
         labels = by_note.setdefault(write.note_id, [])
         if label not in labels:
             labels.append(label)
@@ -115,7 +162,7 @@ _LABELS_BY_FIELD = {
 }
 
 
-def _field_label(write) -> str:
+def field_label(write) -> str:
     """A human phrase for one planned write."""
     if write.op == OP_ADD_TAGS:
         added = " ".join(sorted(set(write.new_value.split()) - set(write.old_value.split())))

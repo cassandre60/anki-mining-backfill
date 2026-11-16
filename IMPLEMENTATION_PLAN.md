@@ -90,7 +90,11 @@ below, never as silent scope creep inside a coding session.
   handling, unique undo-log names, field preflight, per-note write failures
   reported instead of aborting, and a log-first single-run path. Verified on
   1000 real notes: 2.2 s plan, 1.5 s apply, verification clean, 793 untouched
-  notes byte-identical, re-run a no-op, undo exact.
+  notes byte-identical, re-run a no-op, undo exact. The report is now
+  **viewed inside Anki** (2026-11-16; the file became an optional copy in the
+  viewer), and the window gained a per-dimension breakdown line plus a capped
+  glance list of the planned changes (`report.change_lines`), so a run's
+  soundness is checkable without leaving the dialog or drowning in rows.
 
 ## Slice map
 
@@ -103,14 +107,14 @@ below, never as silent scope creep inside a coding session.
 | T5 | `tests/test_applier.py`, `test_addon_load.py`, Ring 3 apply + undo |
 | T6 | Green CI on every push |
 | T7 | `test_scope_from_selection_*`, `test_browser_context_menu_*`; Ring 3 selection run |
-| T8 | `test_batch.py`, `test_invariants.py` (Hypothesis); Ring 3 1000-note run |
+| T8 | `test_batch.py`, `test_invariants.py` (Hypothesis), `test_report_summary.py` (glimpse); Ring 3 1000-note run |
 | T9 | `test_divergent_scene_sources_*`, `test_a_far_scene_source_*`, `test_an_identical_sentence_*`; Ring 3 demotion count |
 | T10 | `test_batch.py` (defaults), `tests/test_report_summary.py` (readable preview); Ring 3 run |
 | T11 | `test_normalize.py` (repair rules), `test_plan.py` (guards, exclusivity), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 diff pending |
 | T12 | `test_normalize.py` (base-text guard), `test_plan.py` (guards, ordering, exclusivity, engine failures), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 battery pending |
 | T13 | superseded 2026-11-16 (picker built, then removed at the owner's request); `test_plan.py` keeps the `batch_scene_propagation` gate |
 | T14 | `test_plan.py` (expression tier, word-like gate, listening predicate incl. the Frequency exception); Ring 3 battery pending |
-| T15 | `test_normalize.py` (`furigana_base`), `test_plan.py` (rewrite + every Q-D12 guard), `test_batch.py` (opt-in tier); real card 1736973220751; Ring 3 pending |
+| T15 | `test_normalize.py` (`furigana_base`), `test_plan.py` (rewrite + every Q-D12 guard), `test_batch.py` (on-by-default tier with its opt-out key); real card 1736973220751; Ring 3 pending |
 
 - **T13 — Dimension picker in the batch window (B7) — superseded.** Built
   on 2026-11-16 with three checkboxes (scene / arrows / furigana) and pure
@@ -143,10 +147,10 @@ below, never as silent scope creep inside a coding session.
   the normalized `reading` field, the base differs from the Expression,
   contains kanji and passes the word-like gate; deferred while
   word-level writes are queued (F2 risk 4: the rewrite must not land in
-  the same run as fills sourced from the old spelling's word group).
-  Opt-in tier `batch_repair_expression` (default false — the
-  highest-guess-risk dimension stays opt-in per slice 4), badge
-  `expression-repaired-from-furigana`, old spelling in the run log
+  the same run as fills sourced from the old spelling's word group). On
+  by default under the owner's automatic-mode decision ("I want things
+  to be easy", 2026-11-16); `batch_repair_expression` is the escape
+  hatch, badge `expression-repaired-from-furigana`, old spelling in the run log
   (Q-D7), reasons `expression-repair-reading-mismatch`,
   `expression-repair-no-kanji-form`, `expression-not-word-like` in the
   left-alone report. The dictionary seam for furigana-less kana

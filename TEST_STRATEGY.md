@@ -18,7 +18,7 @@ and moves outward only when it needs more of the real world.
 
 | Ring | What | Where it runs | Cost |
 |---|---|---|---|
-| **Ring 0 — pure units** (`tests/test_normalize.py`, `test_fieldconfig.py`, `test_matching.py`, `test_plan.py`, `test_applier.py`, `test_batch.py`, `test_invariants.py`, `test_layer_boundary.py`) | Every pure function against plain values: normalization keys, field semantics, parent ranking, plan guards and badges, the apply/undo decision matrix, the batch policy (tiers, group and note atomicity, review shortlist), **property-based invariants** over generated plans (every write's precondition holds, apply→undo restores exactly, re-running is a no-op, an edited field aborts its note), and the AST-enforced layer boundary. No Anki, no Qt, no collection, no network. | Local + CI | ms–2 s |
+| **Ring 0 — pure units** (`tests/test_normalize.py`, `test_fieldconfig.py`, `test_matching.py`, `test_plan.py`, `test_applier.py`, `test_batch.py`, `test_report_summary.py`, `test_invariants.py`, `test_layer_boundary.py`) | Every pure function against plain values: normalization keys, field semantics, parent ranking, plan guards and badges, the apply/undo decision matrix, the batch policy (tiers, group and note atomicity, review shortlist), the report and glance rendering (human labels, capped lists), **property-based invariants** over generated plans (every write's precondition holds, apply→undo restores exactly, re-running is a no-op, an edited field aborts its note), and the AST-enforced layer boundary. No Anki, no Qt, no collection, no network. | Local + CI | ms–2 s |
 | **Ring 1 — golden acceptance** (`tests/test_golden_scene.py`) | The pipeline must reproduce the author's real manual fix (診察, from scene 至急) **byte-for-byte on all five fields** plus the tag union, from a frozen fixture (`tests/fixtures/golden_scene.json`). This is the anchor: if it moves, behaviour moved. | Local + CI | ms |
 | **Ring 2 — add-on load contract** (`tests/test_addon_load.py`) | Imports the package *the way Anki does* (folder name → package, stubbed `aqt`), asserting the two Tools entries are added once, the banner reports the packaged version, a missing main window does not raise, and the Browser context-menu action appears **only** when notes are selected (ids captured when the menu opened). Catches "add-on failed to load" and menu-wiring regressions. | Local + CI | ms |
 | **Ring 3 — real-collection verification** (ad-hoc scripts, not committed as tests) | Apply + undo against a **copy** of the real collection (every checked write lands verbatim, guarded-only notes untouched, undo restores exactly); the audit builder's `--last`/`--note-id` scope and package round-trip; the entry point against the real `aqt` package. A live-GUI pass is manual: apply from the Browser selection, then close the Browser and quit Anki, watching the debug console — Anki's legacy-editor teardown has its own known crash (see `AGENTS.md`), and no headless harness here reproduces the Browser's save/close path reliably. | Author's machine, on demand | seconds–minutes |
@@ -44,7 +44,8 @@ not have and must never be given.
   mid-line arrows kept), `tests/test_plan.py` (checked write
   with rule badges, off without rules, exclusivity with expansion/bold,
   tested-word occurrence guard, unknown-rule warning) and
-  `tests/test_batch.py` (the opt-in `batch_repair_sentence` tier).
+  `tests/test_batch.py` (the on-by-default `batch_repair_sentence` tier
+  with its opt-out key).
 - **Bold repair** (template contract) is pinned in `tests/test_plan.py`:
   the three tiers (cloze-body, Expression verbatim, reading-derived
   surface form), exactly-one occurrence, markup-only verification,
@@ -57,23 +58,24 @@ not have and must never be given.
 - **Furigana regeneration** (bulk-fix dimension 3) is pinned in
   `tests/test_normalize.py` (`furigana_base_matches`: whitespace and the
   engine's spacing quirks, speaker brackets, mangled/unbalanced output
-  rejected), `tests/test_plan.py` (checked write with badges, off by
+  rejected), `tests/test_plan.py` (checked write with badges, on by
   default, noop when the ruby already matches, generator unreachable →
   one warning per run, generated from the post-repair sentence, defers to
   a queued scene fill of the field, dropped on a mangled or raising
-  engine) and `tests/test_batch.py` (the opt-in `batch_regenerate_furigana`
-  tier). The engine itself is never faked into the suite's core paths: it
+  engine) and `tests/test_batch.py` (the on-by-default
+  `batch_regenerate_furigana` tier with its opt-out key). The engine
+  itself is never faked into the suite's core paths: it
   is an injected callable, so a broken MeCab degrades to a skip, not a
   wrong write — **never run it inside Anki from the suite**.
 - **Expression repair** (bulk-fix dimension 4, self-oracled variant, Q-D12)
   is pinned in `tests/test_normalize.py` (`furigana_base` extracts the
   dictionary form from inline ruby, unusable markup yields nothing),
   `tests/test_plan.py` (the ひと握り → 一握り rewrite from the note's own
-  furigana, off by default, inert when the furigana base already matches the
-  Expression, silent without furigana, reading mismatch reported, kanji-less
-  and clause-like bases refused, deferred while word-level writes are
-  queued), and `tests/test_batch.py` (the opt-in `batch_repair_expression`
-  tier, selected only when enabled).
+  furigana, switchable off via the escape hatch, inert when the furigana
+  base already matches the Expression, silent without furigana, reading
+  mismatch reported, kanji-less and clause-like bases refused, deferred
+  while word-level writes are queued), and `tests/test_batch.py` (the
+  on-by-default `batch_repair_expression` tier with its opt-out key).
 - **Write timing** is pinned in the same file with fake editors: writes wait
   for `call_after_note_saved`, a doubled editor callback writes once, a lost
   callback is covered by the scheduler safety net, and a raising or missing
@@ -83,6 +85,14 @@ not have and must never be given.
   drops only the sentence while the scene's audio/picture are still filled, a
   source-confidence guard leaves the whole note alone, complete notes count as
   untouched, and tag-only notes are reported separately.
+- **The batch window's glimpse** lives in `tests/test_report_summary.py`
+  (`report.change_lines`): one line per changed note with human labels, a
+  short old → new sample only for the sentence rewrites (ruby and
+  markup-only bold stay label-only — their values are noise in one line), the
+  40-row cap pointing at the full report, and the note-id fallback when the
+  expression is unknown. The in-app report viewer, the breakdown line and the
+  list widgets are presentation; they are covered by the dialog import check
+  (Ring 2), and anything decision-shaped stays in `applier.py`/`plan.py`.
 - **Source confidence** is pinned in `tests/test_plan.py`: disagreeing parents
   are never auto-checked, a far containment match ships unchecked, and a
   byte-identical sentence stays trusted at any distance.
@@ -112,7 +122,7 @@ not have and must never be given.
   | 8 | correct furigana | already annotated as the engine would | no furigana row |
   | 9 | child of a source | child with empty ruby under a scene fill | scene fill only, no regen row |
   | 10 | blob Source | asbplayer URL | timestamped replace, URL recorded in the run log |
-  | 11 | divergent parents | two parents, different payloads | left unchecked with the divergence reason |
+  | 11 | divergent parents | two parents, different payloads | the suspect scene rows dropped and reported; the card's own repairs (bold, arrows, furigana) still apply |
   | 12 | nothing to fix | fully enriched note | untouched; byte-identical after apply + undo |
 
   Twelve cards, one per class; a new guard adds one card, not a bigger run.
@@ -143,8 +153,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **173 passed** |
-| CI / a venv without Anki | **171 passed, 2 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **177 passed** |
+| CI / a venv without Anki | **175 passed, 2 skipped** |
 
 Both are green; the difference is exactly two self-skipping import checks
 (the dialog modules need a real `aqt`).

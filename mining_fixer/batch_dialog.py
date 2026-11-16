@@ -15,9 +15,11 @@ from aqt.qt import (
     QDialog,
     QDialogButtonBox,
     QFont,
+    QFontDatabase,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPlainTextEdit,
     QPushButton,
     QTimer,
     QVBoxLayout,
@@ -35,6 +37,17 @@ from .collection_io import (
     plan_preview,
     write_dry_run,
 )
+from .plan import OP_ADD_TAGS
+from .report import GLANCE_LIMIT, OP_LABELS, change_lines, render_batch_summary
+
+
+def _op_breakdown(selection: BatchSelection) -> str:
+    """What the run will do, by dimension: '8 furigana regenerated · 5 fill · 2 tags added'."""
+    parts = []
+    for op, count in selection.count_by_op().items():
+        label = "tags added" if op == OP_ADD_TAGS else OP_LABELS.get(op, op)
+        parts.append(f"{count} {label}")
+    return " · ".join(parts)
 
 
 class BatchDialog(QDialog):
@@ -54,6 +67,8 @@ class BatchDialog(QDialog):
         self.browser = browser
         self.preview: Preview = plan_preview(col, self.cfg, scope_note_ids)
         self.pending: tuple[ApplyDecision, dict] | None = None
+        self._changes_total = 0
+        self._left_total = 0
 
         self.setWindowTitle("Mining Fixer")
         self.resize(640, 320)
@@ -74,6 +89,14 @@ class BatchDialog(QDialog):
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
 
+        self.changes_button = QPushButton("")
+        self.changes_button.clicked.connect(self._toggle_changes)
+        layout.addWidget(self.changes_button)
+        self.changes_list = QListWidget()
+        self.changes_list.setVisible(False)
+        self.changes_list.setMaximumHeight(160)
+        layout.addWidget(self.changes_list)
+
         self.left_button = QPushButton("")
         self.left_button.clicked.connect(self._toggle_left_alone)
         layout.addWidget(self.left_button)
@@ -87,8 +110,8 @@ class BatchDialog(QDialog):
         self.apply_button = QPushButton("Apply")
         self.apply_button.setDefault(True)
         self.apply_button.clicked.connect(self._on_apply)
-        preview_button = QPushButton("Preview report")
-        preview_button.clicked.connect(self._on_preview_report)
+        preview_button = QPushButton("View report")
+        preview_button.clicked.connect(self._on_view_report)
         close_button = QPushButton("Close")
         close_button.clicked.connect(self.reject)
         box.addButton(self.apply_button, QDialogButtonBox.ButtonRole.AcceptRole)
@@ -122,6 +145,9 @@ class BatchDialog(QDialog):
         parts = []
         if selection.field_notes:
             parts.append(f"{selection.field_notes} note(s) will be fixed")
+            breakdown = _op_breakdown(selection)
+            if breakdown:
+                parts.append(f"{len(selection.rows)} write(s): {breakdown}")
         else:
             parts.append("Nothing to fix")
         if selection.untouched:
@@ -130,31 +156,44 @@ class BatchDialog(QDialog):
             parts.append(f"{len(selection.left_alone)} left alone")
         self.summary.setText(" · ".join(parts) + ".")
 
-        if selection.left_alone:
-            self.left_button.setText(f"What was left alone ({len(selection.left_alone)})")
-            self.left_button.setVisible(True)
-            self.left_list.clear()
-            names = self.preview.records_by_id or {}
-            for item in selection.left_alone:
-                record = names.get(item.note_id)
-                expression = record.get("Expression") if record is not None else ""
-                self.left_list.addItem(
-                    QListWidgetItem(f"{expression or item.note_id} — {item.reason}")
+        self.changes_button.setText(f"Show planned changes ({selection.notes})")
+        self.changes_button.setVisible(bool(selection.rows))
+        self._changes_total = selection.notes
+        self.changes_list.clear()
+        for line in change_lines(selection, self.preview.records_by_id or {}):
+            self.changes_list.addItem(QListWidgetItem(line))
+
+        records = self.preview.records_by_id or {}
+        left_alone = selection.left_alone
+        self.left_button.setText(f"Show what was left alone ({len(left_alone)})")
+        self.left_button.setVisible(bool(left_alone))
+        self._left_total = len(left_alone)
+        self.left_list.clear()
+        for item in left_alone[:GLANCE_LIMIT]:
+            record = records.get(item.note_id)
+            expression = record.get("Expression") if record is not None else ""
+            self.left_list.addItem(QListWidgetItem(f"{expression or item.note_id} — {item.reason}"))
+        if len(left_alone) > GLANCE_LIMIT:
+            self.left_list.addItem(
+                QListWidgetItem(
+                    f"… and {len(left_alone) - GLANCE_LIMIT} more — the report has the full list"
                 )
-        else:
-            self.left_button.setVisible(False)
-            self.left_list.setVisible(False)
+            )
 
         self.apply_button.setText(f"Fix {selection.field_notes} note(s)")
         self.apply_button.setEnabled(bool(selection.rows))
 
+    def _toggle_changes(self) -> None:
+        self._toggle(self.changes_button, self.changes_list, self._changes_total, "planned changes")
+
     def _toggle_left_alone(self) -> None:
-        visible = not self.left_list.isVisible()
-        self.left_list.setVisible(visible)
-        count = self.left_list.count()
-        self.left_button.setText(
-            f"Hide what was left alone ({count})" if visible else f"What was left alone ({count})"
-        )
+        self._toggle(self.left_button, self.left_list, self._left_total, "what was left alone")
+
+    def _toggle(self, button: QPushButton, view: QListWidget, total: int, noun: str) -> None:
+        visible = not view.isVisible()
+        view.setVisible(visible)
+        # The widget's own count is capped, so the real total travels with it.
+        button.setText(f"{'Hide' if visible else 'Show'} {noun} ({total})")
 
     # --- actions ------------------------------------------------------
 
@@ -173,14 +212,43 @@ class BatchDialog(QDialog):
         self.pending = (decision, self._meta(selection))
         self.accept()
 
-    def _on_preview_report(self) -> None:
+    def _on_view_report(self) -> None:
+        """The full preview report inside Anki — no file trip required.
+
+        Nothing here writes to the collection; the file copy is an explicit
+        save inside the viewer.
+        """
         plan = self.preview.plan
         if plan is None:
             return
         selection = self._selection()
-        path = write_dry_run(
-            plan, self.preview.records_by_id or {}, selection, self._meta(selection)
-        )
+        meta = self._meta(selection)
+        report = render_batch_summary(plan, self.preview.records_by_id or {}, selection, meta)
+
+        viewer = QDialog(self)
+        viewer.setWindowTitle("Mining Fixer — preview report (nothing was changed)")
+        viewer.resize(780, 620)
+        layout = QVBoxLayout(viewer)
+        view = QPlainTextEdit()
+        view.setReadOnly(True)
+        view.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        view.setPlainText(report)
+        layout.addWidget(view)
+        box = QDialogButtonBox()
+        save_button = QPushButton("Save to file…")
+        save_button.clicked.connect(lambda: self._save_report(selection, meta))
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(viewer.reject)
+        box.addButton(save_button, QDialogButtonBox.ButtonRole.ActionRole)
+        box.addButton(close_button, QDialogButtonBox.ButtonRole.RejectRole)
+        layout.addWidget(box)
+        viewer.exec()
+
+    def _save_report(self, selection, meta: dict) -> None:
+        plan = self.preview.plan
+        if plan is None:
+            return
+        path = write_dry_run(plan, self.preview.records_by_id or {}, selection, meta)
         showInfo(f"Report saved (nothing was changed):\n{path}", parent=self)
 
     def _close_box(self) -> QDialogButtonBox:

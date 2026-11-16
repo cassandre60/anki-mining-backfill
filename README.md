@@ -40,7 +40,7 @@ and covered by tests, not just intended:
      whole clause (漢字は読めるようになりたいかな) are refused with a
      reason — never bolded — and audio-only listening cards are skipped
      (their front hides the sentence).
-   - Sentence noise repair (`repair_sentence`): an opt-in rewrite of the
+   - Sentence noise repair (`repair_sentence`): a rewrite of the
      card's own `Sentence` that removes the subtitle's line-tail
      continuation arrows (`➡`). Line breaks (`<br>`) and spacing are kept
      exactly as mined — they are the sentence's pause structure (owner
@@ -48,27 +48,28 @@ and covered by tests, not just intended:
      from the audio, see `BULK_FIX.md`). Mid-line glyphs like the math
      arrow in `f:X→Y` are never touched, a card whose `Sentence` is already
      queued for expansion or bold is skipped, and the repair must not
-     change how often the tested word occurs. Off by default
-     (`sentence_repair_rules` / `batch_repair_sentence`).
-   - Furigana regeneration (`regenerate_furigana`): an opt-in rebuild of
+     change how often the tested word occurs. On by default
+     (`batch_repair_sentence` is the escape hatch to switch it off;
+     `sentence_repair_rules` selects the rules).
+   - Furigana regeneration (`regenerate_furigana`): a rebuild of
      `Sentence (furigana)` from the card's own sentence, through the
      Japanese Support add-on you already have (its MeCab/Kakasi reading —
      never a home-grown generator). The ruby is generated from the
      sentence as the plan will leave it (after a queued repair or
      expansion), is skipped when a scene fill already owns that field, and
      is dropped when the engine produces nothing, raises, or returns ruby
-     whose base text no longer matches the sentence. Off by default
-     (`batch_regenerate_furigana`).
-   - Expression spelling repair (`repair_expression`): an opt-in rewrite of
-     the card's own `Expression` to the dictionary form its `furigana` field
-     already records — the card mined ひと握り while Yomitan resolved the
-     lookup to 一握り (`furigana`: `一握[ひとにぎ]り`). The furigana base is
-     the oracle: the rewrite happens only when the furigana is well-formed,
+     whose base text no longer matches the sentence. On by default
+     (`batch_regenerate_furigana` is the escape hatch to switch it off).
+   - Expression spelling repair (`repair_expression`): rewrites the card's
+     own `Expression` to the dictionary form its `furigana` field already
+     records — the card mined ひと握り while Yomitan resolved the lookup
+     to 一握り (`furigana`: `一握[ひとにぎ]り`). The furigana base is the
+     oracle: the rewrite happens only when the furigana is well-formed,
      reads exactly as the note's `reading` field says, and the base is a
      word-like kanji spelling that differs from the Expression. Anything
      else is a reported reason, never a guess; the rewrite is deferred while
-     word-level fills are queued for the same card. Off by default
-     (`batch_repair_expression`).
+     word-level fills are queued for the same card. On by default
+     (`batch_repair_expression` is the escape hatch to switch it off).
    - Tags (`add_tags`): the target keeps its tags and gains every
      contributing source card's tags — a pure union that never removes;
      Anki control tags (`marked`, `leech`) and this tool's own tags
@@ -145,9 +146,15 @@ you press Apply.
 
 - **In the Browser: select notes → right-click → "Mining Fixer: batch-fix
   selection…"** — the bulk mode: select any number of cards, press **Fix N
-  note(s)**, done. The window stays quiet — counts, not rows: how many notes
-  will be fixed, how many are unchanged, how many were left alone (the reasons
-  are behind one button and in the preview report).
+  note(s)**, done. The window stays quiet: one summary line with the counts —
+  how many notes will be fixed and **what the run will do, dimension by
+  dimension** (`16 writes: 8 furigana regenerated · 5 bold markup · 3 fill …`),
+  how many are unchanged, how many were left alone — plus two capped glance
+  lists behind toggles. **Show planned changes (N)** shows one line per note
+  (the word, what changes, and a short old → new sample for the sentence
+  rewrites — the risky ones); **Show what was left alone (N)** shows word —
+  reason. Neither list grows with the selection: at 40 rows it stops and
+  points at the report.
   Out of the box it does **everything it can, on its own, in one pass**:
   fills into empty fields, completes sentences from scene sources (the
   mined fragment stays in `cloze-*`), replaces blob `Source` with the
@@ -163,8 +170,10 @@ you press Apply.
   `sentence_repair_rules`), `batch_regenerate_furigana` — all default
   true. Without the Japanese Support add-on the furigana step reports
   itself unavailable and writes nothing.
-  **Preview report** saves a one-page human-readable summary (word, note, what
-  changes, what was left alone) without touching your collection. A real run
+  **View report** opens the full one-page human-readable summary inside Anki
+  (word, note, what changes, what was left alone) without touching your
+  collection — **Save to file…** inside the viewer keeps a copy under
+  `<profile>/mining_fixer/dry-runs/` when you want one. A real run
   takes an **Anki backup** first, writes its **undo log before the first
   write**, applies in chunks, and **re-reads every written value to verify it
   landed**. Rows it cannot trust (a source another card disagrees with, or one

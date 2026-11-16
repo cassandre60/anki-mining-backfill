@@ -20,11 +20,12 @@ enters through `IMPLEMENTATION_PLAN.md`.
 
 ## The target experience
 
-Select cards across the Browser, tick the dimensions, press apply. The tool
-resolves every guard itself: what is provably safe is written, what is not
-is *left alone with a reason* in the preview report. The dialog shows
-counts, not rows — the contract `batch.py` already ships, kept as the
-selection grows and as more dimensions are added.
+Select cards across the Browser and press apply — every dimension runs by
+default (owner decision 2026-11-16). The tool resolves every guard itself:
+what is provably safe is written, what is not is *left alone with a reason*
+in the preview report. The dialog shows counts and a capped glance of the
+planned changes, not a decision queue — the contract `batch.py` already
+ships, kept as the selection grows and as more dimensions are added.
 
 ## Dimensions
 
@@ -40,7 +41,7 @@ guard that drops what cannot be proven.
 | 1 | Source–child fixes (scene propagation) | **shipped** | `Sentence`, `Sentence (furigana)`, scene audio, picture, `Translation`, timestamped `Source` onto children | source-confidence (`divergent-parents`, `far-from-source`), text-safety (`fragment-not-recoverable`, `cloze-anchor-not-unique`, `stale-fragment-furigana-risk`) |
 | 2 | Sentence repair | **shipped, on by default** | remove line-tail continuation arrows (`➡` / `→`); `<br>` line breaks and spacing stay exactly as mined (owner decision 2026-11-15) | config-driven rule list (`strip-arrows`); `cloze-*` fragment anchor must still be found; old → new diff in the report |
 | 3 | Furigana generation | **shipped, on by default** | rebuild `Sentence (furigana)` from the note's own post-write sentence | runs *after* repair in one plan; `reading.mecab.reading` of Japanese Support (installed, id 3918629684) — never a home-grown generator; base-text guard + engine-failure reasons |
-| 4 | Expression repair | **future** | fix inflections; repair an expression written partly in kana when the kanji form exists; **rewrite a kana-only expression to its kanji spelling** (owner ask 2026-11-16: いきなり → 行き成り, ときに → 時に) | needs an offline dictionary and a per-expression oracle; exactly one dictionary form, ambiguity reported, never guessed; a non-empty write on `Expression` — new approved write + opt-in tier (FUTURE_FEATURES.md §F2) |
+| 4 | Expression repair | **shipped (self-oracled variant), on by default** | rewrite an Expression kept as the subtitle's surface form (ひと握り) to the dictionary form its own `furigana` records (一握[ひとにぎ]り → 一握り); kana-only Expressions without furigana and inflections stay future | the furigana base is the oracle, cross-checked against the `reading` field (`reading_from_furigana`); base must be a word-like kanji spelling (Q-D3 gate); deferred while word-level writes are queued; old → new in the preview, run-log undo; `batch_repair_expression` escape hatch |
 | 5 | Indentation / formatting | **future** | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
 | 6 | Bold from expression | **shipped (verbatim only)**; inflected matching future | on **non-listening** cards whose `Sentence` has no bold term, bold the expression's occurrence (including from a missing/junk `cloze-body`); an inflected surface (読む → 読め) is the open part | expression must look like a word (clause-like expressions such as 漢字は読めるようになりたいかな are rejected, never bolded); occurrence must be unique; ambiguity reported, never guessed; listening predicate mirrors the card template (see below) |
 
@@ -167,7 +168,11 @@ is **shipped** today in `collection_io.apply_batch`; new dimensions reuse it:
 - **Chunked writes**, leaving a partially applied but fully logged run.
 - **Post-write verification** re-reads every written value and reports misses.
 - **No write when confidence is insufficient** — the note is reported, never
-  guessed; every new dimension must add its own guards.
+  guessed; every new dimension must add its own guards. A source-confidence
+  guard (disagreeing or far scene siblings) drops the rows *from that
+  source*; it does not block the card's own in-place repairs, which do not
+  depend on any source (owner-visible decision, 2026-11-16 — cards whose
+  siblings disagree were otherwise frozen and nothing got fixed).
 - **Dry-run report** available with zero writes.
 - **Fully offline** — no network, no telemetry.
 
@@ -243,9 +248,10 @@ decision 2026-11-16).
   records the dictionary form (`一握[ひとにぎ]り`): the furigana base is the
   oracle, cross-checked against the `reading` field (`normalize.furigana_base`,
   `plan._expression_repair_for`, op `repair_expression`, badge
-  `expression-repaired-from-furigana`, QUALITY Q-D12). Opt-in via
-  `batch_repair_expression` (default false). No offline dictionary needed for
-  this variant.
+  `expression-repaired-from-furigana`, QUALITY Q-D12). On by default under
+  the owner's automatic-mode decision (2026-11-16, "I want things to be
+  easy"); `batch_repair_expression` is the escape hatch. No offline
+  dictionary needed for this variant.
 - **Still open.** Kana-only Expressions without a usable `furigana` field
   (いきなり with an empty furigana) need the offline dictionary seam below,
   and inflection repair needs MeCab (B8).
@@ -254,13 +260,15 @@ decision 2026-11-16).
   bundled lookup — never a hand-written kana→kanji table).
 - **Acceptance.** Only unambiguous rewrites ship — exactly one dictionary
   form; every ambiguity is a reason in the report; the T14 word-like gate
-  also applies (ときに is 時 + に, not a word); the rewrite is opt-in and
-  Ring-3 reviewed. Before code, QUALITY Q-D2 gains the seventh approved
-  write (`Expression`) with its information-preservation rule.
-- **Risks.** Highest guess risk of every dimension — must stay opt-in.
-  The common spelling is often kana (いきなり), so "any attested kanji form"
-  versus "the dictionary's common form" is a decision to record, not an
-  accident. `Expression` also feeds `word_key`/scene grouping, so the
+  also applies (ときに is 時 + に, not a word); every rewrite is previewed
+  old → new and undone from the run log; Ring-3 review pending. Before
+  code, QUALITY Q-D2 gained the seventh approved write (`Expression`) with
+  its information-preservation rule.
+- **Risks.** Highest guess risk of every dimension. The furigana-base
+  variant is self-oracled (no dictionary, no hand-written table) and ships
+  on by default under the owner's automatic-mode decision (2026-11-16); a
+  future dictionary seam must stay opt-in until Ring-3 reviewed.
+  `Expression` also feeds `word_key`/scene grouping, so the
   rewrite must not silently move a card between word groups.
 
 ### Slice 5 — Indentation / formatting (dimension 5)

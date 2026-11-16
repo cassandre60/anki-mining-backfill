@@ -15,7 +15,7 @@ from mining_fixer.plan import (
     Plan,
     PlannedWrite,
 )
-from mining_fixer.report import render_batch_summary
+from mining_fixer.report import GLANCE_LIMIT, change_lines, render_batch_summary
 
 
 def note(note_id, expression="診察", reading="しんさつ"):
@@ -163,3 +163,91 @@ def test_furigana_rows_are_labelled_for_a_human():
     )
     assert "furigana regenerated" in text
     assert "regenerate_furigana" not in text
+
+
+# --- the batch window's glance list (report.change_lines) -----------------
+
+
+def test_the_change_glimpse_labels_each_note_and_samples_the_rewrites():
+    # The glimpse must answer "is this change sound?" without opening the
+    # report: human labels per note, and a short before → after only where
+    # the text is actually rewritten.
+    plan = Plan(writes=writes(1), reasons={2: "nothing-to-fill"})
+    records = {1: note(1), 2: note(2, "尾ける", "つける")}
+    lines = change_lines(select(plan, default_ops()), records)
+
+    assert len(lines) == 1
+    line = lines[0]
+    assert line.startswith("診察 — ")
+    assert "picture" in line
+    assert "tags: asbplayer" in line
+    assert "full scene sentence (fragment → full scene)" in line
+
+
+def test_the_change_glimpse_stays_label_only_where_the_values_are_noise():
+    # Ruby markup and markup-only bold are not readable in one line; their
+    # labels carry the meaning, the values would only bury it.
+    plan = Plan(
+        writes=(
+            PlannedWrite(
+                note_id=7,
+                field="Sentence",
+                op=OP_BOLD_CLOZE_WORD,
+                old_value="母は うつ病に。",
+                new_value="母は <b>うつ病</b>に。",
+                default_checked=True,
+            ),
+            PlannedWrite(
+                note_id=7,
+                field="Sentence (furigana)",
+                op=OP_REGENERATE_FURIGANA,
+                old_value="見出しはこうニャ!",
+                new_value="見出[みだ]しはこうニャ!",
+                default_checked=True,
+                badges=("furigana-regenerated",),
+            ),
+        )
+    )
+    lines = change_lines(select(plan, default_ops()), {7: note(7, "見出し", "みだし")})
+
+    assert lines == ["見出し — bold on the tested word · furigana regenerated"]
+
+
+def test_the_change_glimpse_caps_itself_and_points_at_the_report():
+    plan = Plan(
+        writes=tuple(
+            PlannedWrite(
+                note_id=note_id,
+                field="Picture",
+                op=OP_FILL,
+                old_value="",
+                new_value="<img>",
+                source_note_id=9,
+                default_checked=True,
+            )
+            for note_id in range(1, 46)
+        )
+    )
+    records = {note_id: note(note_id) for note_id in range(1, 46)}
+    lines = change_lines(select(plan, default_ops()), records)
+
+    assert len(lines) == GLANCE_LIMIT + 1
+    assert lines[-1] == f"… and {45 - GLANCE_LIMIT} more note(s) — the report has the full list"
+
+
+def test_the_change_glimpse_names_the_note_without_an_expression():
+    plan = Plan(
+        writes=(
+            PlannedWrite(
+                note_id=7,
+                field="Picture",
+                op=OP_FILL,
+                old_value="",
+                new_value="<img>",
+                default_checked=True,
+            ),
+        )
+    )
+    lines = change_lines(select(plan, default_ops()), {})
+
+    assert lines == ["note 7 — picture"]
