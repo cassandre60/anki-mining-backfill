@@ -612,6 +612,169 @@ def test_nested_scene_clips_are_trusted():
     assert "divergent-parents" not in badges
 
 
+def test_a_mismined_sentence_is_recovered_from_the_word_in_the_same_episode():
+    # The author's 類い希 card: its Sentence is the wrong subtitle block, so it
+    # matches no parent, yet the word (written 類いまれ) is in the scene the
+    # same episode mined elsewhere. Recovery anchors on the word, uses the
+    # tighter clip of two nested blocks, and bolds the word it found.
+    target = rec(
+        1,
+        {
+            "Expression": "類い希",
+            "reading": "たぐいまれ",
+            "furigana": "類[たぐ]い 希[まれ]",
+            "Sentence": "関係のない文です。",
+            "Sentence Audio": "",
+            "Picture": "",
+            "Sentence (furigana)": "",
+            "Source": "Show.mp4 (15m01s)",
+            "cloze-prefix": "たぐいまれ【類いまれ】[",
+            "cloze-body": "類い希",
+            "cloze-suffix": "] 形動だな",
+        },
+    )
+    wide = rec(
+        2,
+        {
+            "Expression": "診断",
+            "reading": "しんだん",
+            "Sentence": "今回 対象としたい患者は この方。<br>深也くんは自閉症でありながら"
+            "<br>その立体造形に<br>類いまれなる才能を持ち<br><b>診断</b>されます。",
+            "Sentence Audio": " [sound:a.webm] ",
+            "Picture": '<img src="a.jpg">',
+            "Sentence (furigana)": "",
+            "Source": "Show.mp4 (15m20s)",
+            "cloze-prefix": "",
+            "cloze-body": "診断",
+            "cloze-suffix": "",
+        },
+    )
+    tight = rec(
+        3,
+        {
+            "Expression": "造形",
+            "reading": "ぞうけい",
+            "Sentence": "その立体造形に<br>類いまれなる才能を持ち",
+            "Sentence Audio": " [sound:b.webm] ",
+            "Picture": '<img src="b.jpg">',
+            "Sentence (furigana)": "",
+            "Source": "Show.mp4 (15m10s)",
+            "cloze-prefix": "",
+            "cloze-body": "造形",
+            "cloze-suffix": "",
+        },
+    )
+    plan = build_plan([target, wide, tight], CFG, scope_note_ids=[1])
+    rows = [w for w in plan.writes if w.note_id == 1]
+    recovered = [w for w in rows if w.op == OP_EXPAND_SENTENCE and "recovered-sentence" in w.badges]
+    assert recovered, plan.reasons.get(1)
+    assert "<b>類いまれ</b>" in recovered[0].new_value
+    assert recovered[0].default_checked is True
+    assert "word-in-sentence" in recovered[0].badges
+
+
+def test_word_recovery_is_refused_without_an_episode():
+    # A blob link names no episode: attaching a scene would be a guess.
+    target = rec(
+        1,
+        {
+            "Expression": "此の度",
+            "reading": "このたび",
+            "furigana": "此[こ]の 度[たび]",
+            "Sentence": "この‐たび【×此の度】",
+            "Sentence Audio": "",
+            "Picture": "",
+            "Source": "asbplayer blob:https://x",
+            "cloze-prefix": "この‐たび【×",
+            "cloze-body": "此の度",
+            "cloze-suffix": "】",
+        },
+    )
+    other = rec(
+        2,
+        {
+            "Expression": "美術",
+            "reading": "びじゅつ",
+            "Sentence": "このたび こども美術展において",
+            "Sentence Audio": " [sound:a.webm] ",
+            "Picture": '<img src="a.jpg">',
+            "Source": "Show.mp4 (10m00s)",
+            "cloze-prefix": "",
+            "cloze-body": "美術",
+            "cloze-suffix": "",
+        },
+    )
+    third = rec(
+        3,
+        {
+            "Expression": "受賞",
+            "reading": "じゅしょう",
+            "Sentence": "このたび こども美術展において グランプリを受賞",
+            "Sentence Audio": " [sound:b.webm] ",
+            "Picture": '<img src="b.jpg">',
+            "Source": "Show.mp4 (10m05s)",
+            "cloze-prefix": "",
+            "cloze-body": "受賞",
+            "cloze-suffix": "",
+        },
+    )
+    plan = build_plan([target, other, third], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if "recovered-sentence" in w.badges], (
+        "a blob source must never anchor a recovered scene"
+    )
+
+
+def test_word_recovery_refuses_two_different_scenes():
+    # Same episode, same word, genuinely different sentences: no recovery.
+    target = rec(
+        1,
+        {
+            "Expression": "類い希",
+            "reading": "たぐいまれ",
+            "furigana": "類[たぐ]い 希[まれ]",
+            "Sentence": "関係のない文です。",
+            "Sentence Audio": "",
+            "Picture": "",
+            "Source": "Show.mp4 (15m01s)",
+            "cloze-prefix": "",
+            "cloze-body": "類い希",
+            "cloze-suffix": "",
+        },
+    )
+    first = rec(
+        2,
+        {
+            "Expression": "甲",
+            "reading": "こう",
+            "Sentence": "類いまれなる 才能があります。",
+            "Sentence Audio": " [sound:a.webm] ",
+            "Picture": '<img src="a.jpg">',
+            "Source": "Show.mp4 (15m20s)",
+            "cloze-prefix": "",
+            "cloze-body": "甲",
+            "cloze-suffix": "",
+        },
+    )
+    second = rec(
+        3,
+        {
+            "Expression": "乙",
+            "reading": "おつ",
+            "Sentence": "まったく別の話題で 類いまれな 話をした。",
+            "Sentence Audio": " [sound:b.webm] ",
+            "Picture": '<img src="b.jpg">',
+            "Source": "Show.mp4 (15m30s)",
+            "cloze-prefix": "",
+            "cloze-body": "乙",
+            "cloze-suffix": "",
+        },
+    )
+    plan = build_plan([target, first, second], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if "recovered-sentence" in w.badges], (
+        "different scenes must never be adopted"
+    )
+
+
 def test_a_short_fragment_still_finds_its_parent():
     # 親御-shaped: a five-character fragment. The length floor belongs to the
     # parent's scene sentence, not to the fragment.

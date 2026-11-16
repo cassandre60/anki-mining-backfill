@@ -114,6 +114,23 @@ first, with the reason.
   and every rewrite is previewed old → new and undone from the run log
   like every other write.
 
+- **Q-D14 — A mis-mined sentence is recovered by the word, never by the
+  episode's mood.** When a card's own `Sentence` contains none of the word's
+  spellings (the author's 類い希: the wrong subtitle block was mined), the
+  scene is recovered by anchoring on the **word**, with every guard from the
+  author's own cards:
+  - the spelling candidates come from the note's own furigana — every mix of
+    "kanji kept / kanji written in kana" (`類い希` → 類いまれ, たぐい希, …);
+  - the `Source` must name an episode (a bare blob link is refused: the
+    episode is unknowable and attaching a scene would be a guess);
+  - each candidate must occur **exactly once** in a same-episode,
+    audio-bearing card's sentence;
+  - at least **two** same-episode cards must match, and their sentences must
+    be **nested** (the same block at different clips) — the tighter clip
+    wins; a genuinely different scene is refused;
+  - the write is checked (`recovered-sentence`, `word-in-sentence` badges),
+    carries the paired ruby (arrow-cleaned), and the scene's audio/picture/
+    source fill the card's empty ones in the same run.
 - **Q-D13 — A definition that renders as nothing may be rewritten.** The
   `strip_empty_glossary` op clears a definition field only when it holds
   nothing but empty container markup (the Yomitan `<ol></ol>` shell) — the

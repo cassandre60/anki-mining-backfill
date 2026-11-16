@@ -70,6 +70,12 @@ not have and must never be given.
   a clause is never bolded, junk data is reported not guessed. It exists
   because synthetic fixtures passed while real cards stayed broken; it
   caught the ruby-arrow and copied-ruby bugs the day it was written.
+- **Word-anchored scene recovery** (QUALITY Q-D14) is pinned in
+  `tests/test_plan.py`: a mis-mined sentence is recovered from the word's
+  own spellings, the tighter of two nested same-episode blocks wins, the
+  paired ruby comes along, and a blob source or two different scenes are
+  refused. The captured 類い希 card (with its two sibling blocks) lives in
+  the real-card fixture, so the replay covers it too.
 - **Furigana regeneration** (bulk-fix dimension 3) is pinned in
   `tests/test_normalize.py` (`furigana_base_matches`: whitespace and the
   engine's spacing quirks, speaker brackets, mangled/unbalanced output

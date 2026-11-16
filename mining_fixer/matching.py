@@ -40,6 +40,7 @@ __all__ = [
     "SceneMatch",
     "WordSource",
     "find_scene_parents",
+    "kana_spelling_candidates",
     "rank_scene_parents",
     "word_groups",
     "best_word_source",
@@ -231,6 +232,90 @@ def agreement_groups(ranked: list[SceneMatch]) -> dict[tuple, list[SceneMatch]]:
     for m in ranked:
         groups.setdefault(m.fill_payload, []).append(m)
     return groups
+
+
+def kana_spelling_candidates(expression: str, furigana: str) -> list[str]:
+    """Spellings of a word with any of its kanji written in kana.
+
+    The deck spells a word inconsistently between its fields and its sentence:
+    the word is 類い希 while the sentence says 類いまれ. The note's own
+    furigana (``類[たぐ]い 希[まれ]``) carries the per-kanji reading, so every
+    combination of "kanji kept / kanji written in kana" is a candidate —
+    ``類い希``, ``類いまれ``, ``たぐい希``, ``たぐいまれ``. Up to three kanji
+    are expanded (eight spellings); beyond that only the all-kanji and
+    all-kana forms are produced, so the list stays small and the caller's
+    uniqueness oracle stays meaningful.
+
+    Returns only candidates that contain at least one kanji or equal the
+    whole reading, deduplicated, in a stable order.
+    """
+    import re as _re
+
+    from .normalize import kana_fold
+
+    word = (expression or "").strip()
+    ruby = (furigana or "").strip()
+    if not word or not ruby:
+        return []
+    drop_space = not any(ch.isspace() for ch in word)
+    kana_run = _re.compile(r"[㐀-\u4dbf\u4e00-\u9fff\u3005\u3006]+$")
+    segments: list[tuple[str, str | None]] = []
+
+    def add_literal(text: str) -> None:
+        if not text:
+            return
+        if drop_space:
+            text = _re.sub(r"\s+", "", text)
+        pieces = [p for p in (text,) if p]
+        if pieces:
+            segments.append((pieces[0], None))
+
+    pos = 0
+    for match in _re.finditer(r"\[([^\[\]]*)\]", ruby):
+        prefix = ruby[pos : match.start()]
+        annotated = kana_run.search(prefix)
+        if annotated is None:
+            add_literal(prefix)
+        else:
+            add_literal(prefix[: annotated.start()])
+            segments.append((annotated.group(0), kana_fold(match.group(1))))
+        pos = match.end()
+    add_literal(ruby[pos:])
+    if not any(reading for _, reading in segments):
+        return []
+    kanji_count = sum(1 for _, reading in segments if reading)
+    out: list[str] = []
+    if kanji_count <= 3:
+        combos = range(1 << kanji_count)
+        bit_for: list[int] = []
+        index = 0
+        for _, reading in segments:
+            if reading:
+                bit_for.append(index)
+                index += 1
+            else:
+                bit_for.append(-1)
+        for mask in combos:
+            pieces: list[str] = []
+            for (text, reading), bit in zip(segments, bit_for, strict=True):
+                if reading is None:
+                    pieces.append(text)
+                elif mask & (1 << bit):
+                    pieces.append(reading)
+                else:
+                    pieces.append(text)
+            out.append("".join(pieces))
+    else:
+        out.append(word)
+        out.append(kana_fold(_re.sub(r"[\[\]]", "", ruby)))
+    seen: set[str] = set()
+    unique: list[str] = []
+    for cand in out:
+        cand = cand.strip()
+        if cand and cand not in seen:
+            seen.add(cand)
+            unique.append(cand)
+    return unique
 
 
 def word_groups(records: list[NoteRecord]) -> dict[tuple[str, str], list[NoteRecord]]:

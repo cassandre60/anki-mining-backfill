@@ -272,12 +272,24 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   these bugs: the arrows the author still saw lived in `Sentence (furigana)`
   (the repair only cleaned `Sentence`), and a scene fill copied the parent's
   ruby *with* its arrows. Both are fixed; the committed real-card suite
-  (`tests/test_real_cards.py` + `tests/fixtures/real_cards.json.gz`, 13
-  captured cards, five classes) caught them within minutes of being written
+  (`tests/test_real_cards.py` + `tests/fixtures/real_cards.json.gz`, 16
+  captured cards, seven classes) caught them within minutes of being written
   and pins the properties: second run = no-op, no arrow in either sentence
   field, no junk shell left, clauses never bolded. Extend that fixture
   (read-only capture) whenever a new real bug is found.
-  Verified by: `tests/test_real_cards.py` (8 tests) and the full suite.
+  Verified by: `tests/test_real_cards.py` (9 tests) and the full suite.
+- [2026-11-16, OpenCode] Word-anchored scene recovery (QUALITY Q-D14)
+  fixes the "I can fix it by hand" cards the author reported: 類い希's own
+  Sentence was the wrong subtitle block, so no parent matched — the word
+  (written 類いまれ in the same episode) was the right anchor. Candidates
+  come from the note's own furigana (every kanji/kana mix), the Source
+  must name an episode (blob refused), each candidate must occur exactly
+  once, two same-episode cards must match with nested sentences (tighter
+  clip wins), and the paired ruby/audio/picture/source come along in the
+  same checked write. 此の度 stays refused: its source is a bare blob and
+  the only このたび occurrences are a different scene.
+  Verified by: `test_a_mismined_sentence_is_recovered_from_the_word_in_the_same_episode`,
+  the two refusal tests, and the captured 類い希 card in the real-card suite.
 - [2026-11-16, OpenCode] Source-confidence guards (divergent/far scene
   siblings) now drop the *scene rows* only; a guarded (unchecked) row no
   longer suppresses the note's own repairs (bold/arrows/furigana) nor

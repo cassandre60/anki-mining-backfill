@@ -29,6 +29,7 @@ from .matching import (
     agreement_groups,
     best_word_source,
     find_scene_parents,
+    kana_spelling_candidates,
     rank_scene_parents,
     singleton_kanji_guard,
     word_groups,
@@ -715,6 +716,164 @@ def _empty_glossary_writes(
     return out
 
 
+def _episode_key(source: str) -> str | None:
+    """The episode a timestamped ``Source`` names, or None.
+
+    ``Dr. Rintaro Episode 7 (1).mp4 (15m20s)`` -> ``Dr. Rintaro Episode
+    7 (1).mp4``. A blob link names no episode (the video is opaque), so
+    word-anchored recovery refuses those cards rather than guess.
+    """
+    text = (source or "").strip()
+    if not text or "asbplayer" in text.lower():
+        return None
+    match = re.search(r"^(.*?\.(?:mp4|mkv|webm|srt|ass|m4a|mp3|wav|flac))\s*\(", text, re.I)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
+def _word_recovered_scene_writes(
+    target: NoteRecord,
+    episodes: dict[str, list[NoteRecord]],
+    cfg: dict,
+) -> tuple[list[PlannedWrite], str | None]:
+    """Recover a scene by the *word* when the card's own sentence is wrong.
+
+    The author's 類い希 card carries the wrong subtitle block and never
+    matches a parent, yet its word (written 類いまれ) is plainly in the scene
+    the same episode mined elsewhere. Recovery therefore anchors on the word,
+    not on the card's sentence:
+
+    - only for a timestamped ``Source`` (the episode is identifiable; a blob
+      link is refused);
+    - every spelling of the word from its own furigana is tried
+      (:func:`matching.kana_spelling_candidates`), plus the cloze body and
+      the reading;
+    - each candidate must occur **exactly once** in a same-episode,
+      audio-bearing card's sentence;
+    - at least **two** such cards must agree on the sentence byte-identically
+      (the corroboration rule that replaced the divergence refusal) — one
+      card alone is a suggestion the author can act on by hand, never an
+      automatic write.
+
+    Returns ``(writes, reason)``; writes are checked and carry
+    ``recovered-sentence``.
+    """
+    episode = _episode_key(target.get("Source"))
+    if episode is None:
+        return [], "no-parent-that-fills"
+    candidates: list[str] = []
+    for cand in kana_spelling_candidates(
+        target.get("Expression") or "", target.get("furigana") or ""
+    ):
+        if cand and cand not in candidates:
+            candidates.append(cand)
+    body = strip_renderable(target.get("cloze-body")).strip()
+    if body and body not in candidates:
+        candidates.append(body)
+    reading = kana_fold(norm_reading(target.get("reading") or ""))
+    if len(reading) >= 2 and reading not in candidates:
+        candidates.append(reading)
+
+    pools = episodes.get(episode, [])
+    # Group by the spelling that matched, not by the whole sentence: the
+    # same episode's blocks are clipped differently (診断 vs 今回), and the
+    # tighter clip is the right one — nesting is the agreement signal.
+    hits: dict[str, list[tuple[NoteRecord, str]]] = {}
+    for other in pools:
+        if other.note_id == target.note_id:
+            continue
+        sentence = other.get("Sentence") or ""
+        for cand in candidates:
+            if len(cand) < 2 or sentence.count(cand) != 1:
+                continue
+            hits.setdefault(cand, []).append((other, sentence))
+            break
+    if not hits:
+        return [], "no-parent-that-fills"
+    best_cand, members = max(hits.items(), key=lambda kv: (len(kv[1]), -len(kv[1][0][1])))
+    if len(members) < 2:
+        return [], "no-parent-that-fills"
+    # The candidates must be the same scene at different clips: every pair of
+    # sentences nested (one contains the other). A genuinely different scene
+    # is refused — that is the wrong-source protection.
+    texts = [norm_sentence_match(sentence) for _, sentence in members]
+    for left in texts:
+        for right in texts:
+            if left not in right and right not in left:
+                return [], "no-parent-that-fills"
+    representative, best_sentence = min(members, key=lambda item: len(item[1]))
+    written = best_cand
+    new_sentence, bold_badge = _retarget_bold(
+        best_sentence, representative.get("cloze-body"), written
+    )
+    current = target.get("Sentence")
+    writes: list[PlannedWrite] = []
+    if new_sentence != current:
+        badges = [
+            "recovered-sentence",
+            "word-in-sentence",
+            f"source-note:{representative.note_id}",
+            f"{len(members)}-siblings-agree",
+        ]
+        if bold_badge:
+            badges.append(bold_badge)
+        writes.append(
+            PlannedWrite(
+                note_id=target.note_id,
+                field="Sentence",
+                op=OP_EXPAND_SENTENCE,
+                old_value=current,
+                new_value=new_sentence,
+                source_note_id=representative.note_id,
+                default_checked=True,
+                badges=tuple(badges),
+            )
+        )
+    repair_rules = tuple(
+        rule for rule in cfg.get("sentence_repair_rules", ()) if rule in REPAIR_RULES
+    )
+    for field_name in tuple(cfg.get("scene_fill_fields", ())):
+        if field_name == "Sentence":
+            continue
+        value = representative.get(field_name)
+        if not is_empty(target.get(field_name)) or is_empty(value):
+            continue
+        if field_name in ("Sentence (furigana)",) and repair_rules:
+            value, _applied = repair_sentence(value, repair_rules)
+        if field_name == "Sentence Audio":
+            refs = sound_files(value)
+            if not refs:
+                continue
+        writes.append(
+            PlannedWrite(
+                note_id=target.note_id,
+                field=field_name,
+                op=OP_FILL,
+                old_value="",
+                new_value=value,
+                source_note_id=representative.note_id,
+                default_checked=True,
+                badges=("recovered-sentence", f"source-note:{representative.note_id}"),
+            )
+        )
+    source_value = representative.get("Source")
+    if is_blob_source(target.get("Source")) and not is_empty(source_value):
+        writes.append(
+            PlannedWrite(
+                note_id=target.note_id,
+                field="Source",
+                op=OP_REPLACE_SOURCE,
+                old_value=target.get("Source"),
+                new_value=source_value,
+                source_note_id=representative.note_id,
+                default_checked=True,
+                badges=("recovered-sentence", f"source-note:{representative.note_id}"),
+            )
+        )
+    return writes, None
+
+
 def _scene_writes_for(
     candidate: NoteRecord,
     matches: list[SceneMatch],
@@ -1142,6 +1301,13 @@ def build_plan(
             or all(media_exists(f) for f in sound_files(r.get("Sentence Audio")))
         )
     }
+    # Audio-bearing cards grouped by the episode their timestamped Source
+    # names — the fallback for a card whose own sentence is a mis-mine.
+    episodes: dict[str, list[NoteRecord]] = {}
+    for record in parents_by_id.values():
+        key = _episode_key(record.get("Source"))
+        if key is not None:
+            episodes.setdefault(key, []).append(record)
 
     if scope_note_ids is None:
         scope = [r for r in records if is_blob_source(r.get("Source"))]
@@ -1185,6 +1351,12 @@ def build_plan(
         if has_scene_gap:
             matches = find_scene_parents(target, parents_by_id, window_ms, min_len, cache)
             scene_writes, reason = _scene_writes_for(target, matches, cfg)
+            if not scene_writes and reason == "no-parent-that-fills":
+                # The card's own sentence matched nothing (a mis-mine): try
+                # to recover the scene by the word inside the same episode.
+                recovered, _recovered_reason = _word_recovered_scene_writes(target, episodes, cfg)
+                if recovered:
+                    scene_writes, reason = recovered, None
             if reason:
                 reasons[target.note_id] = reason
         for w in scene_writes:
@@ -1262,7 +1434,16 @@ def build_plan(
             warnings.append(
                 f"note {target.note_id} ({expr}): no bold in Sentence — {bold_detail}{suffix}"
             )
-            if not target_writes and target.note_id not in reasons:
+            if not target_writes and (
+                target.note_id not in reasons
+                # A more specific verdict beats the generic scene reason: a
+                # sentence that does not contain its own word is a mis-mine
+                # the author must see (類い希-shaped cards).
+                or (
+                    bold_reason == "cloze-word-not-in-sentence"
+                    and reasons.get(target.note_id) == "no-parent-that-fills"
+                )
+            ):
                 reasons[target.note_id] = bold_reason
         # Subtitle-noise repair (dimension 2). Only when no *checked* other
         # Sentence write is queued for this note — expansion and bold own the

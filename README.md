@@ -74,6 +74,12 @@ and covered by tests, not just intended:
      holds nothing but empty markup (the Yomitan `<ol></ol>` shell) is
      cleared — it renders as nothing either way, so no information is lost.
      Any media or visible text means the field is never touched.
+   - Mis-mined sentences (`recovered-sentence`): when a card's sentence is
+     the wrong subtitle block, the app finds the scene by the word itself —
+     the same episode's cards that contain it, tightened to the right clip —
+     and rebuilds the sentence, its furigana, audio, picture and source in
+     one run. A blob link names no episode, so those cards are reported
+     instead.
    - Tags (`add_tags`): the target keeps its tags and gains every
      contributing source card's tags — a pure union that never removes;
      Anki control tags (`marked`, `leech`) and this tool's own tags
