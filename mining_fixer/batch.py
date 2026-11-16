@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .normalize import REPAIR_RULES
 from .plan import (
     OP_ADD_TAGS,
     OP_BOLD_CLOZE_WORD,
@@ -47,14 +48,21 @@ from .plan import (
 )
 
 __all__ = [
+    "DIMENSIONS",
     "OPTIONAL_OPS",
     "SAFE_OPS",
     "BatchSelection",
     "LeftAlone",
     "allowed_ops",
+    "cfg_for_dimensions",
     "default_ops",
+    "dimension_flags",
     "select",
 ]
+
+#: The bulk-fix dimensions a run can select (BULK_FIX.md). Word fills, bold
+#: repair and tag unions are lossless core work and are never a dimension.
+DIMENSIONS = ("scene", "arrows", "furigana")
 
 #: Writes that cannot lose information: empty-field fills, markup-only bold,
 #: and tag additions.
@@ -182,6 +190,42 @@ def default_ops(cfg: dict | None = None) -> frozenset[str]:
         repair_sentence=bool(cfg.get("batch_repair_sentence", False)),
         regenerate_furigana=bool(cfg.get("batch_regenerate_furigana", False)),
     )
+
+
+def dimension_flags(cfg: dict | None = None) -> dict[str, bool]:
+    """Which bulk-fix dimensions the config enables — the picker's defaults.
+
+    ``scene`` — source–child propagation (fills plus the configured replace
+    tiers); ``arrows`` — the line-tail arrow repair, which needs its rule
+    list; ``furigana`` — regeneration through Japanese Support.
+    """
+    cfg = cfg or {}
+    return {
+        "scene": bool(cfg.get("batch_scene_propagation", True)),
+        "arrows": bool(cfg.get("batch_repair_sentence", False))
+        and bool(tuple(cfg.get("sentence_repair_rules", ()) or ())),
+        "furigana": bool(cfg.get("batch_regenerate_furigana", False)),
+    }
+
+
+def cfg_for_dimensions(cfg: dict, flags: dict[str, bool]) -> dict:
+    """A config copy that runs exactly the chosen dimensions.
+
+    Only documented ``batch_*`` keys are touched: the picker narrows or
+    enables a dimension, it never unlocks a write the config does not
+    describe. Ticking ``arrows`` with an empty rule list selects the
+    shipped rule set — a tick must do something — while unticking keeps
+    the configured list for later runs.
+    """
+    out = dict(cfg)
+    out["batch_scene_propagation"] = bool(flags.get("scene", True))
+    out["batch_repair_sentence"] = bool(flags.get("arrows", False))
+    rules = tuple(cfg.get("sentence_repair_rules", ()) or ())
+    if flags.get("arrows") and not rules:
+        rules = REPAIR_RULES
+    out["sentence_repair_rules"] = list(rules)
+    out["batch_regenerate_furigana"] = bool(flags.get("furigana", False))
+    return out
 
 
 def _reason_text(reason: str) -> str:

@@ -796,6 +796,7 @@ def build_plan(
 
     groups = word_groups(records)
     parent_usage: dict[int, int] = {}
+    scene_dimension = bool(cfg.get("batch_scene_propagation", True))
 
     for target in scope:
         if optout in target.tags:
@@ -803,10 +804,13 @@ def build_plan(
             continue
         target_writes: list[PlannedWrite] = []
         scene_writes, reason = [], None
-        has_scene_gap = any(
-            is_empty(target.get(f))
-            for f in ("Sentence Audio", "Picture", "Sentence (furigana)", "Translation")
-        ) or is_blob_source(target.get("Source"))
+        has_scene_gap = scene_dimension and (
+            any(
+                is_empty(target.get(f))
+                for f in ("Sentence Audio", "Picture", "Sentence (furigana)", "Translation")
+            )
+            or is_blob_source(target.get("Source"))
+        )
         if has_scene_gap:
             matches = find_scene_parents(target, parents_by_id, window_ms, min_len, cache)
             scene_writes, reason = _scene_writes_for(target, matches, cfg)

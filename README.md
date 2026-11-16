@@ -152,6 +152,11 @@ you press Apply.
   engine, from the sentence the run will leave behind. It rewrites
   non-empty ruby, so it also stays off until you turn it on; without the
   Japanese Support add-on it reports itself unavailable and writes nothing.
+  **In the batch window** the three bulk-fix dimensions appear as
+  checkboxes — complete from scene sources, strip line-end arrows,
+  regenerate furigana — initialised from the config keys above. Ticking
+  one rebuilds the preview; nothing is written until you press Apply, and
+  a dimension can only ever enable a documented, guarded write.
   **Preview report** saves a one-page human-readable summary (word, note, what
   changes, what was left alone) without touching your collection. A real run
   takes an **Anki backup** first, writes its **undo log before the first

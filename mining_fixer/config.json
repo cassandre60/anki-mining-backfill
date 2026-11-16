@@ -7,6 +7,7 @@
   "scene_auto_gap_hours": 6,
   "batch_expand_sentence": true,
   "batch_replace_source": true,
+  "batch_scene_propagation": true,
   "batch_repair_sentence": false,
   "sentence_repair_rules": [],
   "batch_regenerate_furigana": false,

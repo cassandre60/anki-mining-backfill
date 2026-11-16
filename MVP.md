@@ -20,6 +20,7 @@ the collection never touched by anything the dialog did not show.
 | Bold repair when `Sentence` has no bold term | `plan._bold_repair_for` | 鬱病 verified end to end |
 | Subtitle-noise repair (line-tail arrows; `<br>`/padding kept as mined) — off by default | `normalize.repair_sentence`, `plan._sentence_repair_write`, `batch.py` tier | `tests/test_normalize.py`, `test_plan.py`, `test_batch.py`; Ring 3 diff pending |
 | Furigana regeneration through Japanese Support — off by default | `normalize.furigana_base_matches`, `plan._furigana_write_for`, `collection_io.japanese_support_furigana_generator`, `batch.py` tier | `tests/test_normalize.py`, `test_plan.py`, `test_batch.py`; Ring 3 battery pending |
+| Dimension picker in the batch window (scene / arrows / furigana checkboxes) | `batch.dimension_flags`, `batch.cfg_for_dimensions`, `batch_dialog.BatchDialog` | `tests/test_batch.py`, `test_plan.py` (scene-off gate); Ring 3 battery pending |
 | Tag union from contributing sources (never removes) | `plan._tags_write_for` | golden test pins 診察 = `asbplayer yomitan` |
 | Preview dialog with per-row checkboxes, not-fixable and warning tabs | `preview_dialog.py` | import check + real-apply run |
 | Apply with per-note re-assertion and no-op re-runs | `applier.decide` | `tests/test_applier.py` (13 tests) |

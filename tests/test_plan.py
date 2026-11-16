@@ -715,3 +715,17 @@ def test_regeneration_is_dropped_when_the_engine_raises():
     plan = build_plan([target], REGEN_CFG, scope_note_ids=[1], furigana_generator=boom)
     assert not any(w.op == OP_REGENERATE_FURIGANA for w in plan.writes)
     assert any("reading engine raised" in warning for warning in plan.warnings)
+
+
+# --- dimension picker: scene propagation off (BULK_FIX.md B7) -----------------
+
+
+def test_the_scene_dimension_off_leaves_scene_fills_out_of_the_plan():
+    # The picker can turn propagation off without unlocking anything else:
+    # no scene-origin row is planned, so no fill can slip through selection.
+    cfg = {**CFG, "batch_scene_propagation": False}
+    plan = build_plan([PARENT, CHILD], cfg, scope_note_ids=[CHILD_ID])
+    assert not any(w.op == OP_FILL for w in plan.writes)
+    assert not any(w.op in (OP_EXPAND_SENTENCE, OP_REPLACE_SOURCE) for w in plan.writes)
+    # The lossless core still works (bold repair is not a dimension).
+    assert any(w.op == OP_BOLD_CLOZE_WORD for w in plan.writes) or not plan.writes

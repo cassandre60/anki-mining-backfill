@@ -229,6 +229,25 @@ proof.
 - **Risks.** Largest refactor; do it only once a second setup actually
   exists.
 
+### Slice 7 — Dimension picker (B7)
+
+- **Goal.** One window: the selected cards, three checkboxes (scene
+  propagation / line-end arrows / furigana regeneration), counts, Apply.
+  Shipped as T13.
+- **Modules.** `batch.dimension_flags` / `batch.cfg_for_dimensions` (a pure
+  overlay onto documented `batch_*` keys — a tick can only enable a
+  documented, guarded write), `build_plan`'s `batch_scene_propagation`
+  gate, the batch dialog's checkboxes (rebuild the preview on toggle).
+  The lossless core — word fills, bold repair, tag unions — is not a
+  dimension and always stays eligible.
+- **Acceptance.** Toggling a dimension rebuilds the preview and the
+  counts; scene-off leaves no scene-origin row in the plan; hermetic tests
+  pin the overlay and the gate; the Ring 3 battery confirms the counts
+  per class.
+- **Risks.** The plan is rebuilt per toggle — fine at the shipped scale
+  (thousands of notes); a million-card selection would need a cheaper
+  filter instead of a rebuild.
+
 ## Open questions (answer before each slice)
 
 - How many source cards actually contain arrows / `<br>` / padding — a 50%

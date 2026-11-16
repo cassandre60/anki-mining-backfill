@@ -106,6 +106,20 @@ below, never as silent scope creep inside a coding session.
 | T10 | `test_batch.py` (defaults), `tests/test_report_summary.py` (readable preview); Ring 3 run |
 | T11 | `test_normalize.py` (repair rules), `test_plan.py` (guards, exclusivity), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 diff pending |
 | T12 | `test_normalize.py` (base-text guard), `test_plan.py` (guards, ordering, exclusivity, engine failures), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 battery pending |
+| T13 | `test_batch.py` (flags, overlay keys, no-op tick), `test_plan.py` (scene-off gate); Ring 3 battery pending |
+
+- **T13 — Dimension picker in the batch window (B7).** Three checkboxes
+  (scene propagation / line-end arrows / furigana regeneration) initialised
+  from the config keys, each mapping onto documented `batch_*` keys via
+  `batch.dimension_flags` / `batch.cfg_for_dimensions`; toggling rebuilds
+  the preview and the counts. Ticking arrows with an empty rule list
+  selects the shipped `strip-arrows` set; unticking keeps the configured
+  rules for later runs. Turning scene propagation off removes scene-origin
+  rows at plan time (`build_plan` honours `batch_scene_propagation`), so
+  no fill can slip through selection; the lossless core (word fills, bold
+  repair, tag unions) is not a dimension and always stays eligible. The
+  picker can enable only documented, guarded writes. Ring 3 battery
+  pending.
 
 ## Backlog
 
@@ -115,9 +129,9 @@ below, never as silent scope creep inside a coding session.
   generation after the sentence is repaired, later expression repair and
   formatting), press apply. Includes multi-deck selection and, later, other
   note types and languages behind a language/note-type profile. Slice 1 (the
-  sentence-repair dimension) shipped as T11 and slice 2 (furigana
-  regeneration) as T12, both off by default; the single-window dimension
-  picker and the repair→propagate DAG sequencing are still open.
+  sentence-repair dimension) shipped as T11, slice 2 (furigana regeneration)
+  as T12 (both off by default) and the single-window dimension picker as
+  T13; the repair→propagate DAG sequencing is still open.
 - **B6 — Source-first pipeline** (author's idea, text in
   [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md)): normalise a source card before
   its children — strip continuation arrows (line breaks stay as mined; see
