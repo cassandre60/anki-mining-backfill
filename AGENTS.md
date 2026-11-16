@@ -228,6 +228,14 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   (inflected/mis-mined, 278) stay silent when nothing was mined.
   Verified by: `tests/test_plan.py` bold-repair tests + the 2026-11-16
   census.
+- [2026-11-16, OpenCode] The okurigana-stem rule for inflected bolding
+  was tried on the real class-C cards (read-only scratch experiment) and
+  rejected: 82 of 272 matched, 32 in the risky kana+kanji shape, many
+  over-long because Japanese kana runs cross word boundaries (甘い →
+  甘くておいしい). Do not ship stem matching; MeCab segmentation is the
+  only honest oracle. Scratch script deleted.
+  Verified by: the experiment output recorded in BULK_FIX.md
+  (dimension 6, open questions).
 
 ## Lessons Learned
 
