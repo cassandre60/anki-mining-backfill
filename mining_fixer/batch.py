@@ -201,7 +201,7 @@ def default_ops(cfg: dict | None = None) -> frozenset[str]:
         replace_source=bool(cfg.get("batch_replace_source", True)),
         repair_sentence=bool(cfg.get("batch_repair_sentence", True)),
         regenerate_furigana=bool(cfg.get("batch_regenerate_furigana", True)),
-        repair_expression=bool(cfg.get("batch_repair_expression", False)),
+        repair_expression=bool(cfg.get("batch_repair_expression", True)),
     )
 
 
@@ -247,19 +247,19 @@ def select(plan: Plan, ops: frozenset[str]) -> BatchSelection:
     for note_id, note_rows in rows_by_note.items():
         guarded = [write for write in note_rows if not write.default_checked]
         source_blocked = [write for write in guarded if SOURCE_GUARDS & set(write.badges)]
+        source_why = None
         if source_blocked:
             badges = {badge for write in source_blocked for badge in write.badges}
-            why = (
-                "scene sources disagree — left alone"
+            source_why = (
+                "scene sources disagree — scene rows left alone"
                 if "divergent-parents" in badges
-                else "scene source far away in time — left alone"
+                else "scene source far away in time — scene rows left alone"
             )
-            left_alone[note_id] = LeftAlone(
-                note_id,
-                why,
-                tuple(f"{write.field}:{write.op}" for write in source_blocked),
-            )
-            continue
+            # The guard is about the *source*: drop its rows, never the note.
+            # A card whose scene siblings disagree still gets its own bold,
+            # arrows and furigana, which do not depend on that source.
+            note_rows = [write for write in note_rows if write not in source_blocked]
+            guarded = [write for write in guarded if write not in source_blocked]
 
         usable = [write for write in note_rows if write.default_checked]
         text_rows = [write for write in usable if write.field in TEXT_FIELDS]
@@ -280,11 +280,11 @@ def select(plan: Plan, ops: frozenset[str]) -> BatchSelection:
         note_writes.extend(text_rows)
         selected.extend(note_writes)
 
-        if not note_writes and guarded:
+        if not note_writes and (source_blocked or guarded):
             left_alone[note_id] = LeftAlone(
                 note_id,
-                _text_guard_reason(guarded),
-                tuple(f"{write.field}:{write.op}" for write in guarded),
+                source_why or _text_guard_reason(guarded),
+                tuple(f"{write.field}:{write.op}" for write in (source_blocked or guarded)),
             )
 
     for note_id, reason in plan.reasons.items():

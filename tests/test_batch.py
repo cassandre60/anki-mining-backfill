@@ -170,8 +170,8 @@ def test_complete_notes_count_as_untouched_and_ambiguous_bold_is_left_alone():
 
 def test_default_batch_fixes_everything_fixable():
     # Owner decision 2026-11-16: out of the box the bulk fixer completes
-    # cards, strips arrows and rebuilds furigana; every config key can still
-    # switch its dimension off.
+    # cards, strips arrows, rebuilds furigana and repairs Expression
+    # spellings; every config key can still switch its dimension off.
     assert default_ops() == {
         OP_FILL,
         OP_BOLD_CLOZE_WORD,
@@ -180,6 +180,7 @@ def test_default_batch_fixes_everything_fixable():
         OP_REPLACE_SOURCE,
         OP_REPAIR_SENTENCE,
         OP_REGENERATE_FURIGANA,
+        OP_REPAIR_EXPRESSION,
     }
     assert OP_EXPAND_SENTENCE not in default_ops({"batch_expand_sentence": False})
     assert OP_REPLACE_SOURCE not in default_ops({"batch_replace_source": False})
@@ -248,8 +249,36 @@ def test_left_alone_names_the_divergence_so_the_user_knows_why():
     selection = select(plan, allowed_ops())
     assert selection.rows == ()
     assert [(item.note_id, item.reason) for item in selection.left_alone] == [
-        (1, "scene sources disagree — left alone")
+        (1, "scene sources disagree — scene rows left alone")
     ]
+
+
+def test_a_disagreeing_scene_does_not_freeze_the_cards_own_repairs():
+    # The suspect scene rows are dropped; the note's own bold/arrow/furigana
+    # work (which does not depend on that source) still applies.
+    plan = Plan(
+        writes=(
+            w(
+                1,
+                "Picture",
+                OP_FILL,
+                checked=False,
+                group="scene-1-9",
+                badges=("divergent-parents",),
+            ),
+            w(1, "Sentence", OP_REPAIR_SENTENCE, "前➡", "前"),
+            w(
+                2,
+                "Picture",
+                OP_FILL,
+                checked=False,
+                badges=("divergent-parents",),
+            ),
+        )
+    )
+    selection = select(plan, allowed_ops(repair_sentence=True))
+    assert [(row.note_id, row.field) for row in selection.rows] == [(1, "Sentence")]
+    assert [(item.note_id) for item in selection.left_alone] == [2]
 
 
 def test_tag_only_notes_are_reported_separately():
@@ -279,17 +308,18 @@ def test_tag_only_notes_are_reported_separately():
     assert selection.notes == 2
 
 
-def test_the_expression_repair_tier_is_opt_in():
-    # BULK_FIX slice 4: the highest-guess-risk dimension stays opt-in, even
-    # under the automatic-mode defaults (owner decision 2026-11-16).
+def test_the_expression_repair_tier_is_on_by_default():
+    # Owner decision 2026-11-16 ("I want things to be easy"): the
+    # furigana-base oracle is self-contained, so the rewrite runs with every
+    # other dimension; the config key is the escape hatch.
     assert OP_REPAIR_EXPRESSION not in allowed_ops()
     assert OP_REPAIR_EXPRESSION in allowed_ops(repair_expression=True)
-    assert OP_REPAIR_EXPRESSION not in default_ops()
+    assert OP_REPAIR_EXPRESSION in default_ops()
     assert OP_REPAIR_EXPRESSION not in default_ops({"batch_repair_expression": False})
-    assert OP_REPAIR_EXPRESSION in default_ops({"batch_repair_expression": True})
 
 
 def test_expression_rows_are_selected_only_when_the_tier_is_on():
+    # The escape hatch: `batch_repair_expression: false` removes the tier.
     plan = Plan(
         writes=(
             w(1, "Expression", OP_REPAIR_EXPRESSION, "ひと握り", "一握り"),

@@ -236,6 +236,17 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   only honest oracle. Scratch script deleted.
   Verified by: the experiment output recorded in BULK_FIX.md
   (dimension 6, open questions).
+- [2026-11-16, OpenCode] Source-confidence guards (divergent/far scene
+  siblings) now drop the *scene rows* only; a guarded (unchecked) row no
+  longer suppresses the note's own repairs (bold/arrows/furigana) nor
+  blocks the whole note in `batch.select`. Before this, a card whose
+  siblings disagreed was frozen: the older-test run on the newest 20
+  cards fixed ~3; after the fix ~9 (furigana rows need the real engine in
+  Anki, so more in practice). A guarded row is also dropped when a checked
+  write now covers the same field (one field, one applied row).
+  Verified by: `test_a_disagreeing_scene_does_not_freeze_the_cards_own_repairs`,
+  `test_divergent_scene_sources_are_never_auto_checked` (scene rows only),
+  and the read-only replay of the author's newest 20 notes.
 - [2026-11-16, OpenCode] Owner decision — **automatic mode**: the tool
   fixes on its own, no options to tick. Every dimension is on by default
   (`batch.default_ops`: fills, scene completion, blob-Source replace,

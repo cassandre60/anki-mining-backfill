@@ -969,7 +969,7 @@ def build_plan(
         warnings.append(f"unknown sentence_repair_rules ignored: {', '.join(unknown_rules)}")
     repair_rules = tuple(rule for rule in raw_repair_rules if rule in REPAIR_RULES)
     furigana_tier = bool(cfg.get("batch_regenerate_furigana", False))
-    expression_tier = bool(cfg.get("batch_repair_expression", False))
+    expression_tier = bool(cfg.get("batch_repair_expression", True))
     # Fields whose queued values come from the old spelling's word group;
     # the Expression rewrite must not land in the same run as them.
     word_fields = frozenset({*cfg.get("word_fill_fields", ()), "Expression"})
@@ -1045,11 +1045,14 @@ def build_plan(
                 )
                 if not target_writes and target.note_id not in reasons:
                     reasons[target.note_id] = repair_expr_reason
-        # Markup-only bold repair. Never issued when a Sentence expansion is
-        # queued for the same note: the two ops would fight over the field.
+        # Markup-only bold repair. Never issued when a *checked* Sentence
+        # write is queued for the same note: the two ops would fight over the
+        # field. A guarded (unchecked) row never applies, so it must not
+        # suppress the repair — the card's own text is not the suspect part.
         bold_write, bold_reason, bold_detail = _bold_repair_for(target)
         queued_expansion = any(
-            w.field == "Sentence" and w.op == OP_EXPAND_SENTENCE for w in target_writes
+            w.field == "Sentence" and w.op == OP_EXPAND_SENTENCE and w.default_checked
+            for w in target_writes
         )
         if bold_write is not None and not queued_expansion:
             target_writes.append(bold_write)
@@ -1061,10 +1064,13 @@ def build_plan(
             )
             if not target_writes and target.note_id not in reasons:
                 reasons[target.note_id] = bold_reason
-        # Subtitle-noise repair (dimension 2). Only when no other Sentence
-        # write is queued for this note: expansion and bold own the field
-        # first, and two writes to one field would fight at apply time.
-        if repair_rules and not any(w.field == "Sentence" for w in target_writes):
+        # Subtitle-noise repair (dimension 2). Only when no *checked* other
+        # Sentence write is queued for this note — expansion and bold own the
+        # field first, and two applied writes to one field would fight. A
+        # guarded row never applies, so it must not block the repair.
+        if repair_rules and not any(
+            w.field == "Sentence" and w.default_checked for w in target_writes
+        ):
             repair_write, repair_reason, repair_detail = _sentence_repair_write(
                 target, repair_rules
             )
@@ -1088,7 +1094,7 @@ def build_plan(
                         " is available (Japanese Support unreachable) — dimension"
                         " skipped"
                     )
-            elif not any(w.field == FURIGANA_FIELD for w in target_writes):
+            elif not any(w.field == FURIGANA_FIELD and w.default_checked for w in target_writes):
                 furigana_write, furigana_reason, furigana_detail = _furigana_write_for(
                     target, furigana_generator, target_writes
                 )
@@ -1104,6 +1110,15 @@ def build_plan(
         tags_write = _tags_write_for(target, target_writes, by_id, cfg)
         if tags_write is not None:
             target_writes.append(tags_write)
+        # A guarded (unchecked) row never applies; when a checked write now
+        # covers the same field, the guarded row would only fight it at apply
+        # time (one field, two rows, one of them dead). Drop it — its reason
+        # stays in the plan's warnings/reasons.
+        applied_fields = {w.field for w in target_writes if w.default_checked}
+        if applied_fields:
+            target_writes = [
+                w for w in target_writes if w.default_checked or w.field not in applied_fields
+            ]
         if not target_writes and target.note_id not in reasons:
             reasons[target.note_id] = "nothing-to-fill"
         if target_writes:

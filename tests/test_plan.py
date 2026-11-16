@@ -510,7 +510,8 @@ def test_divergent_scene_sources_are_never_auto_checked():
     plan = build_plan([child, first, second], CFG, scope_note_ids=[child.note_id])
     rows = [w for w in plan.writes if w.note_id == child.note_id]
     assert rows
-    assert not any(w.default_checked for w in rows), [w.badges for w in rows]
+    scene_rows = [w for w in rows if w.field != "Sentence"]
+    assert not any(w.default_checked for w in scene_rows), [w.badges for w in scene_rows]
     assert any("divergent-parents" in w.badges for w in rows)
     assert any("scene sources disagree" in warning for warning in plan.warnings)
 
@@ -523,7 +524,8 @@ def test_a_far_scene_source_is_left_unchecked():
     plan = build_plan([child, far], CFG, scope_note_ids=[child.note_id])
     rows = [w for w in plan.writes if w.note_id == child.note_id]
     assert rows
-    assert not any(w.default_checked for w in rows)
+    scene_rows = [w for w in rows if w.field != "Sentence"]
+    assert not any(w.default_checked for w in scene_rows)
     assert any("far-from-source" in w.badges for w in rows)
 
 
@@ -868,8 +870,11 @@ def test_expression_repair_rewrites_the_surface_form_to_the_furigana_base():
     assert "expression-repaired-from-furigana" in write.badges
 
 
-def test_expression_repair_is_off_by_default():
-    plan = build_plan([HITONIGIRI], CFG, scope_note_ids=[HITONIGIRI.note_id])
+def test_expression_repair_can_be_switched_off():
+    # The escape hatch: `batch_repair_expression: false` removes the tier
+    # without reporting an anomaly — the card simply stays untouched.
+    cfg = {**CFG, "batch_repair_expression": False}
+    plan = build_plan([HITONIGIRI], cfg, scope_note_ids=[HITONIGIRI.note_id])
     assert expression_rows(plan) == []
     # Not reported as a new anomaly either — the card simply stays untouched.
     assert plan.reasons.get(HITONIGIRI.note_id) == "no-parent-that-fills"

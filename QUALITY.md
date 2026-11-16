@@ -103,10 +103,12 @@ first, with the reason.
   different word, never a spelling) and be word-like (the Q-D3 gate). The
   write is deferred when a word-level write is queued for the note — those
   values come from the old spelling's word group and must not land in the
-  same run as the rewrite (F2 risk 4). Off by default
-  (`batch_repair_expression: false`) — the highest-guess-risk dimension
-  (BULK_FIX slice 4) — and every rewrite is previewed old → new and undone
-  from the run log like every other write.
+  same run as the rewrite (F2 risk 4). By owner decision (2026-11-16,
+  "I want things to be easy") it runs by default like every other
+  dimension — automatic mode, no options to tick;
+  `batch_repair_expression` remains the escape hatch to switch it off,
+  and every rewrite is previewed old → new and undone from the run log
+  like every other write.
 
 ## Correctness of decisions
 
@@ -143,8 +145,12 @@ first, with the reason.
 - **Q-C9 — Batch runs ask for no decisions.** A bulk run resolves its own
   guard policy and writes only what is provably safe:
   - **Source confidence** (`divergent-parents`, `far-from-source`) — if the
-    source is not trustworthy, nothing from it is written; the note is
-    *left alone* with the reason recorded.
+    source is not trustworthy, nothing from it is written: the rows it
+    proposed are dropped (the note is *left alone* with the reason when they
+    were its only rows). Because the guard is about the *source*, it does
+    not freeze the card's own work — a card whose scene siblings disagree
+    still gets its bold, its arrows stripped and its furigana rebuilt
+    (owner-visible decision, 2026-11-16).
   - **Text safety** (`fragment-not-recoverable`, `cloze-anchor-not-unique`,
     `stale-fragment-furigana-risk`, `paired-with-expansion`) — exactly the
     text unit is dropped; the note's independent scene fields (audio,
@@ -158,8 +164,9 @@ first, with the reason.
     mined fragment survives in `cloze-*`, the blob URL is written to the run
     log before the write. The subtitle-noise repair is an additional opt-in
     tier (`batch_repair_sentence`, default false); rows of a disabled tier
-    make the note count as excluded by policy. The Expression repair is
-    likewise opt-in (`batch_repair_expression`, default false, Q-D12).
+    make the note count as excluded by policy. The Expression repair
+    likewise runs by default (owner decision 2026-11-16;
+    `batch_repair_expression` is the escape hatch, Q-D12).
 
 ## Apply behaviour
 
