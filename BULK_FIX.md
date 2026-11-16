@@ -38,7 +38,7 @@ stays off by default until it is proven on a real collection**.
 | 1 | Source–child fixes (scene propagation) | **shipped** | `Sentence`, `Sentence (furigana)`, scene audio, picture, `Translation`, timestamped `Source` onto children | source-confidence (`divergent-parents`, `far-from-source`), text-safety (`fragment-not-recoverable`, `cloze-anchor-not-unique`, `stale-fragment-furigana-risk`) |
 | 2 | Sentence repair | **shipped, off by default** | remove line-tail continuation arrows (`➡` / `→`); `<br>` line breaks and spacing stay exactly as mined (owner decision 2026-11-15) | config-driven rule list (`strip-arrows`); `cloze-*` fragment anchor must still be found; old → new diff in the report |
 | 3 | Furigana generation | **shipped, off by default** | rebuild `Sentence (furigana)` from the note's own post-write sentence | runs *after* repair in one plan; `reading.mecab.reading` of Japanese Support (installed, id 3918629684) — never a home-grown generator; base-text guard + engine-failure reasons |
-| 4 | Expression repair | **future** | fix inflections; repair an expression written partly in kana when the kanji form exists | needs a per-expression oracle; ambiguity reported, never guessed |
+| 4 | Expression repair | **future** | fix inflections; repair an expression written partly in kana when the kanji form exists; **rewrite a kana-only expression to its kanji spelling** (owner ask 2026-11-16: いきなり → 行き成り, ときに → 時に) | needs an offline dictionary and a per-expression oracle; exactly one dictionary form, ambiguity reported, never guessed; a non-empty write on `Expression` — new approved write + opt-in tier (FUTURE_FEATURES.md §F2) |
 | 5 | Indentation / formatting | **future** | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
 | 6 | Bold from expression | **shipped (verbatim only)**; inflected matching future | on **non-listening** cards whose `Sentence` has no bold term, bold the expression's occurrence (including from a missing/junk `cloze-body`); an inflected surface (読む → 読め) is the open part | expression must look like a word (clause-like expressions such as 漢字は読めるようになりたいかな are rejected, never bolded); occurrence must be unique; ambiguity reported, never guessed; listening predicate mirrors the card template (see below) |
 
@@ -231,11 +231,22 @@ proof.
 ### Slice 4 — Expression repair (dimension 4)
 
 - **Goal.** Fix inflections and kana-only expressions where the kanji form
-  exists.
-- **Modules.** `normalize.py`, `plan.py`, word-group logic in `matching.py`.
-- **Acceptance.** Only unambiguous rewrites ship; every ambiguity is a
-  reason in the report; Ring 3 review.
+  exists. Includes the owner ask of 2026-11-16: rewrite a kana word to its
+  kanji spelling (いきなり → 行き成り, ときに → 時に), design in
+  [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) §F2.
+- **Modules.** `normalize.py`, `plan.py`, word-group logic in `matching.py`,
+  and a new dictionary seam (offline; the mining dictionaries or another
+  bundled lookup — never a hand-written kana→kanji table).
+- **Acceptance.** Only unambiguous rewrites ship — exactly one dictionary
+  form; every ambiguity is a reason in the report; the T14 word-like gate
+  also applies (ときに is 時 + に, not a word); the rewrite is opt-in and
+  Ring-3 reviewed. Before code, QUALITY Q-D2 gains the seventh approved
+  write (`Expression`) with its information-preservation rule.
 - **Risks.** Highest guess risk of every dimension — must stay opt-in.
+  The common spelling is often kana (いきなり), so "any attested kanji form"
+  versus "the dictionary's common form" is a decision to record, not an
+  accident. `Expression` also feeds `word_key`/scene grouping, so the
+  rewrite must not silently move a card between word groups.
 
 ### Slice 5 — Indentation / formatting (dimension 5)
 
@@ -306,12 +317,17 @@ proof.
   markup-only (`strip_renderable` equality); the Ring 3 battery adds two
   class cards (expression-verbatim, listening-shape).
 - **Risks.**
-  - **Inflection matching has no shipped oracle.** Options: (a) ask the
-    integrated Japanese Support MeCab for token lemmas (their bundled
-    binary with a lemma format — "its engine", but a second wrapper), or
-    (b) a conservative rule (strip the final okurigana from the
-    expression and require stem + kana to match exactly once), or (c)
-    ship class B only and report class C. Decide before coding.
+  - **Inflection matching has no shipped oracle.** The conservative
+    okurigana-stem rule was tried on the real class-C cards on 2026-11-16
+    and **rejected**: of 272 candidates it matched 82, but 32 of those sit
+    in the risky "kana run followed by kanji" shape and many over-bold —
+    Japanese kana runs do not respect word boundaries, so 甘い became
+    `<b>甘くておいしい</b>`, 好く became `<b>好いてくれてるって</b>`, and
+    取り留める swallowed `取り留めたしかしその`. A wrong bold changes the
+    tested word, which is exactly what this project refuses to guess.
+    Remaining options: (a) MeCab segmentation through Japanese Support's
+    engine (a lemma/token pass — the honest oracle), or (b) leave class C
+    alone and report it. The rule must not ship as-is.
   - **Clause detection is heuristic.** Length/space checks reject the
     known clause card but could reject long legitimate words
     (ベーコンチーズバーガー); a MeCab token-count check is the honest
@@ -344,8 +360,17 @@ proof.
   on a sample and compare.
 - Word vs clause: what oracle makes the expression gate honest — a
   length/space heuristic now, a MeCab token-count later (BULK_FIX dim 6)?
-- Inflection matching (dimension 6): MeCab lemma pass through Japanese
-  Support's engine, or the conservative okurigana-stem rule?
+- Inflection matching (dimension 6): **answered 2026-11-16** — the
+  okurigana-stem rule was tried on the 272 real class-C cards and rejected
+  (82 matches, 32 in the risky kana+kanji shape, many over-long bolds:
+  甘い → 甘くておいしい, 好く → 好いてくれてるって, 取り留める →
+  取り留めたしかしその). Kana runs do not respect word boundaries; only
+  MeCab segmentation (a token/lemma pass) can. Class C stays unfixed
+  until that oracle exists.
+- Kana → kanji spelling (dimension 4, F2): which offline dictionary, and
+  does a rare attested form qualify (いきなり → 行き成り) or only the
+  dictionary's common spelling? Does the rewrite run before scene planning
+  so `word_key` grouping sees the final word?
 - ~~Should the listening predicate (now gating the bold repair, T14) also
   gate the arrow repair and the furigana regeneration?~~ **Answered
   2026-11-16:** no — the back always renders the sentence (furigana when

@@ -117,6 +117,84 @@ imperfect — and asbplayer/Yomitan sources usually are:
    sources (the run logs say so) — that tells us how much migration the
    change implies.
 
+## F2 — Dictionary spelling for kana expressions
+
+Owner ask 2026-11-16: "いきなり should become 行き成り", and likewise
+"ときに → 時に". In plain terms: some cards carry a word in kana where a
+kanji spelling exists, and the author wants the card's word rewritten to
+the kanji form.
+
+This is **not** the shipped bold repair: that one never rewrites a word, it
+only wraps one unique existing occurrence in `<b>`. This feature writes a
+non-empty `Expression` — a new approved write (QUALITY Q-D2 today allows
+six, none of them `Expression`), so it needs a QUALITY amendment, its own
+opt-in policy tier and badge, a preview diff and the same run log/undo as
+every other write.
+
+### Design sketch
+
+```text
+1. Candidate forms come from an offline dictionary, never from a rule:
+   the card's own `reading` plus the installed Yomitan dictionaries the
+   deck was mined with (or another bundled lookup — no network).
+2. Rewrite only when the lookup yields exactly one kanji form for the word.
+   Several forms (はし → 橋 / 箸 / 端) or none → reported, never guessed.
+3. `Expression` changes; `reading` and `Sentence (furigana)` keep their
+   existing values. The rewrite is planned before furigana regeneration so
+   the ruby layer stays consistent with the final word.
+4. The same lookup supplies a bold-match candidate in the other direction:
+   an Expression written in kanji can be found in a kana-spelled Sentence
+   (and vice versa). The exactly-one-occurrence rule still applies.
+5. Off by default; preview shows the old → new word; the run log records it.
+```
+
+### Why it matters
+
+- A kana-only Expression is harder to recognise at review time; the kanji
+  form is what the author reads as "the word".
+- The bold repair (dimension 6) cannot find a kanji spelling in `Sentence`
+  when `Expression` is kana. Today `_mixed_form_candidates` only goes the
+  other way (kanji headword, kana spelling in the sentence, using the
+  reading), and it deliberately refuses pure-kana candidates because they
+  would match unrelated common words. A dictionary removes that guesswork.
+
+### Risks / hard parts
+
+1. **The common spelling is often kana.** いきなり is normally written in
+   kana; 行き成り is attested but rare. Either any attested kanji form
+   qualifies (what the owner asked for) or only the dictionary's common
+   spelling (safer, would skip いきなり). Decide explicitly and record it.
+2. **ときに is not a lexical unit** — it is 時 + に. The T14 word-like gate
+   must apply here too, or a grammar fragment becomes a fake "word".
+3. **Kana → kanji is ambiguous where readings merge.** The `reading` field
+   fixes pronunciation, not meaning; context is needed. Unique dictionary
+   entry only, or report.
+4. **`Expression` feeds `word_key` and scene grouping**, so changing it can
+   move a card between word groups. Plan the rewrite before children, or in
+   a separate pass — an open question.
+5. **Anki search and notes history treat the old spelling as the record.**
+   Undo comes from the run log, as with every other write.
+
+### Prerequisites / related backlog
+
+- Offline dictionary access (the Yomitan dictionaries installed for mining
+  are the obvious source; verify their format and licence before shipping).
+- A QUALITY Q-D2 amendment naming the seventh approved write, with its
+  information-preservation rule (the old spelling must be recoverable from
+  the run log or a sibling field).
+- B4 multi-note-type/profile work, since the dictionary and the "kana
+  spelling is valid" convention are Japanese-specific.
+- B8's MeCab/lemma work may resolve inflections at the same time.
+
+### Experiments to run before designing it
+
+1. Count cards in the configured deck whose `Expression` is kana-only and
+   which the dictionaries resolve to a kanji form (one read-only query).
+2. Sample 20 of them and ask the author whether the kanji spelling is what
+   they want — including the rare ones such as 行き成り.
+3. Check whether the dictionaries mark the kana form as the primary spelling
+   (いきなり likely is); that decides risk 1 above.
+
 ## Where each idea lives (traceability)
 
 Every ask from the author, and where it is written down so it can be built
@@ -129,6 +207,7 @@ later. Status is one of *shipped*, *documented* (no code yet).
 | Sentence repair: remove continuation arrows, fix spacing and line breaks so the text coheres with the audio | `BULK_FIX.md` dimension 2, this file §F1 | documented (slice 1) |
 | Generate furigana **after** the sentence is fixed, through the installed Japanese Support add-on | `BULK_FIX.md` dimension 3, this file §F1 | documented (slice 2) |
 | Fix the expression itself: inflections, expressions written partly in kana where the kanji form exists | `BULK_FIX.md` dimension 4 | documented (slice 4) |
+| Rewrite a kana expression to its kanji spelling (いきなり → 行き成り, ときに → 時に) | this file §F2, `BULK_FIX.md` dimension 4 / slice 4, `IMPLEMENTATION_PLAN.md` B9 | documented (no code yet) |
 | Cards with no bold term in `Sentence` (non-listening): bold the expression's inflected occurrence — 前人未到 is a valid target, 漢字は読めるようになりたいかな is not | `BULK_FIX.md` dimension 6 + slice 8 (census 2026-11-16) | documented |
 | Indentation / formatting | `BULK_FIX.md` dimension 5 | documented (slice 5) |
 | Apply to other decks when they are selected | `BULK_FIX.md` §Scope and profiles | targets shipped; sources still limited to the configured deck |

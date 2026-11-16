@@ -162,6 +162,18 @@ below, never as silent scope creep inside a coding session.
   glosses/no Frequency with `Sentence Audio`). Still open: inflected
   matching (278 census cards, e.g. 読む → 読め) and the MeCab
   token-count oracle for word-vs-clause.
+- **B9 — Dictionary spelling for kana expressions** (owner ask 2026-11-16;
+  text in [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) §F2, design in
+  [`BULK_FIX.md`](BULK_FIX.md) dimension 4 / slice 4). Rewrite a kana-only
+  `Expression` to its kanji spelling (いきなり → 行き成り, ときに → 時に)
+  using an offline dictionary — never a hand-written table. This is a new
+  non-empty write on `Expression` (QUALITY Q-D2 needs a seventh approved
+  write first), so it ships opt-in with a preview diff, its own badge and
+  the run log. Exactly one dictionary form, or the card is reported and left
+  alone; the T14 word-like gate applies (ときに is 時 + に). The same lookup
+  also supplies bold-match candidates in the other spelling direction.
+  Blocked on: dictionary source decision, QUALITY amendment, Ring 3 sample
+  review. Not started.
 - **B2 — Rendered card preview.** Render each row's real front/back HTML
   (Anki's card rendering API) in a side pane, so a reviewer sees the card as
   the template shows it rather than as field values.
