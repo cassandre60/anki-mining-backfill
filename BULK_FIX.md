@@ -37,17 +37,18 @@ stays off by default until it is proven on a real collection**.
 |---|---|---|---|---|
 | 1 | Source–child fixes (scene propagation) | **shipped** | `Sentence`, `Sentence (furigana)`, scene audio, picture, `Translation`, timestamped `Source` onto children | source-confidence (`divergent-parents`, `far-from-source`), text-safety (`fragment-not-recoverable`, `cloze-anchor-not-unique`, `stale-fragment-furigana-risk`) |
 | 2 | Sentence repair | **shipped, off by default** | remove line-tail continuation arrows (`➡` / `→`); `<br>` line breaks and spacing stay exactly as mined (owner decision 2026-11-15) | config-driven rule list (`strip-arrows`); `cloze-*` fragment anchor must still be found; old → new diff in the report |
-| 3 | Furigana generation | **future** | rebuild `Sentence (furigana)` from the repaired sentence | runs *after* repair; `bulkreading.regenerateReadings(nids)` / `reading.regenerateReading(note, src_field)` — Japanese Support (installed, id 3918629684); never a home-grown generator |
+| 3 | Furigana generation | **shipped, off by default** | rebuild `Sentence (furigana)` from the note's own post-write sentence | runs *after* repair in one plan; `reading.mecab.reading` of Japanese Support (installed, id 3918629684) — never a home-grown generator; base-text guard + engine-failure reasons |
 | 4 | Expression repair | **future** | fix inflections; repair an expression written partly in kana when the kanji form exists | needs a per-expression oracle; ambiguity reported, never guessed |
 | 5 | Indentation / formatting | **future** | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
 
 Dimension 1 is what `batch.py` + `collection_io.apply_batch` ship today.
-Dimension 2 has code (`normalize.repair_sentence`, the `repair_sentence`
-op) and ships **off by default** (`sentence_repair_rules: []`,
-`batch_repair_sentence: false`) until its Ring 3 run on a copy; the
+Dimensions 2 and 3 have code (`normalize.repair_sentence` /
+`normalize.furigana_base_matches`, the `repair_sentence` and
+`regenerate_furigana` ops) and ship **off by default**
+(`sentence_repair_rules: []` / `batch_repair_sentence: false`,
+`batch_regenerate_furigana: false`) until their Ring 3 battery on a copy; the
 remaining dimensions are on the backlog (B6 the source-first pipeline, B7
-this vision); none
-has code yet, and none will ship enabled by default.
+this vision); none has code yet, and none will ship enabled by default.
 
 ## Ordering (the DAG)
 
@@ -146,7 +147,10 @@ is **shipped** today in `collection_io.apply_batch`; new dimensions reuse it:
 Ordered slices. Each ships **independently** and stays **off by default**
 until proven on a real collection. "Tests" means the hermetic suite;
 "real-collection check" means the Ring 3 run on an existing snapshot, never
-the live profile (AGENTS.md §2 rules 2–3).
+the live profile (AGENTS.md §2 rules 2–3) — and it is a **curated battery,
+not a bulk 1000-note run** (owner guidance, 2026-11-16): a small set where
+each card pins one defect class, so a failure names the class it broke. The
+1000-note run of T8 stands as the one-off scale proof.
 
 ### Slice 1 — Sentence repair rules (dimension 2)
 
@@ -166,16 +170,24 @@ the live profile (AGENTS.md §2 rules 2–3).
 
 ### Slice 2 — Furigana regeneration (dimension 3)
 
-- **Goal.** Rebuild the source's `Sentence (furigana)` from the repaired
-  sentence through Japanese Support.
-- **Modules.** `collection_io.py` (the only Anki-facing caller), a new op in
-  `plan.py` / `batch.py`, config toggle.
-- **Acceptance.** Generation runs only after repair; a failed generation
-  leaves the field untouched (never half-written); ruby stored exactly as
-  the add-on produces it; fixture pins the stored value; Ring 3 confirms
+- **Goal.** Rebuild the note's `Sentence (furigana)` from its own
+  post-write Sentence through Japanese Support. Shipped as T12
+  (`PLAN_VERSION` 4), off by default (`batch_regenerate_furigana: false`).
+- **Modules.** `collection_io.py` (the only Anki-facing caller:
+  `japanese_support_furigana_generator`), the `regenerate_furigana` op in
+  `plan.py` / `batch.py`, the base-text guard in `normalize.py`
+  (`furigana_base_matches`), config toggle.
+- **Acceptance.** Generation runs only after repair (one plan, the
+  post-write sentence is the input); a failed generation leaves the field
+  untouched (never half-written — empty result or raised engine = reason,
+  not write); ruby stored exactly as the add-on's reading produces it
+  (entry point re-verified 2026-11-15); curated Ring 3 battery confirms
   children inherit the regenerated ruby.
 - **Risks.** Depends on an external add-on whose entry points may change —
-  re-verify against the installed source before depending on them.
+  re-verify against the installed source before depending on them
+  (`reading.mecab.reading` is the engine; the public
+  `regenerateReading` refuses non-empty destinations, so it cannot repair
+  a wrong value).
 
 ### Slice 3 — Source-changed-since-filled reconciliation
 

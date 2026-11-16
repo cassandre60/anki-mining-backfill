@@ -9,6 +9,7 @@
   "batch_replace_source": true,
   "batch_repair_sentence": false,
   "sentence_repair_rules": [],
+  "batch_regenerate_furigana": false,
   "min_sentence_len": 6,
   "min_nonspace_chars": 4,
   "scene_fill_fields": ["Sentence Audio", "Picture", "Sentence (furigana)", "Translation"],

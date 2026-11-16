@@ -11,6 +11,7 @@ read, and :func:`apply_decision` only after the user accepted rows.
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -129,6 +130,38 @@ def _record_for_note(note) -> NoteRecord:
     )
 
 
+def japanese_support_furigana_generator(col):
+    """The reading engine of the installed Japanese Support add-on, or None.
+
+    Bulk-fix dimension 3's bridge: returns ``sentence -> furigana`` backed
+    by the add-on's own MeCab/Kakasi subprocesses — the collection's oracle
+    for ruby, never a home-grown generator. Lazy and guarded: the add-on
+    module only exists inside a running Anki, so headless tooling and the
+    test suite get ``None`` and the planner reports the dimension as
+    unavailable instead of writing anything. Entry points re-verified
+    2026-11-15 against the installed source (`reading.mecab.reading` is
+    the string function `regenerateReading` itself uses; the add-on's own
+    public entry refuses non-empty destination fields).
+    """
+    try:
+        module = sys.modules.get("3918629684") or __import__("3918629684")
+    except Exception:
+        return None
+    mecab = getattr(module, "mecab", None)
+    if mecab is None:
+        return None
+    media_strip = col.media.strip
+
+    def generate(sentence: str) -> str | None:
+        try:
+            out = mecab.reading(media_strip(sentence or ""))
+        except Exception:
+            return None
+        return out or None
+
+    return generate
+
+
 def plan_preview(col, cfg: dict, scope_note_ids=None) -> Preview:
     """Build the plan for a Browser selection, or for the newest notes.
 
@@ -191,6 +224,7 @@ def plan_preview(col, cfg: dict, scope_note_ids=None) -> Preview:
         cfg,
         scope_note_ids=scope,
         media_exists=lambda name: _media_exists(col, name),
+        furigana_generator=japanese_support_furigana_generator(col),
     )
     return Preview(
         plan=plan,

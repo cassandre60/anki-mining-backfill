@@ -7,10 +7,12 @@ from test_golden_scene import CFG, CHILD, CHILD_ID, PARENT, PARENT_ID
 from mining_fixer.matching import NoteRecord
 from mining_fixer.normalize import strip_renderable
 from mining_fixer.plan import (
+    FURIGANA_FIELD,
     OP_ADD_TAGS,
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
+    OP_REGENERATE_FURIGANA,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     PLAN_VERSION,
@@ -52,6 +54,7 @@ def test_replaces_only_approved_ops():
                 OP_EXPAND_SENTENCE,
                 OP_BOLD_CLOZE_WORD,
                 OP_REPAIR_SENTENCE,
+                OP_REGENERATE_FURIGANA,
                 OP_ADD_TAGS,
             ), w.field
 
@@ -558,3 +561,157 @@ def test_unknown_repair_rules_warn_and_the_rest_still_runs():
     assert [w.op for w in plan.writes if w.op == OP_REPAIR_SENTENCE] == [OP_REPAIR_SENTENCE]
     write = next(w for w in plan.writes if w.op == OP_REPAIR_SENTENCE)
     assert write.new_value == "前<br>後"
+
+
+# --- furigana regeneration (bulk-fix dimension 3, QUALITY Q-D11) -------------
+
+REGEN_CFG = {**CFG, "batch_regenerate_furigana": True}
+
+
+def _regen_card(nid, sentence, furigana=""):
+    return rec(
+        nid,
+        {
+            "Expression": "",
+            "reading": "",
+            "furigana": "",
+            "Sentence": sentence,
+            "Sentence (furigana)": furigana,
+        },
+    )
+
+
+def _generator(value, calls=None):
+    def generate(sentence):
+        if calls is not None:
+            calls.append(sentence)
+        return value
+
+    return generate
+
+
+def test_regeneration_emits_a_checked_write_with_badges():
+    target = _regen_card(1, "見出しはこうニャ！", furigana="見出しはこうニャ！")
+    plan = build_plan(
+        [target],
+        REGEN_CFG,
+        scope_note_ids=[1],
+        furigana_generator=_generator("見出[みだ]しはこうニャ！"),
+    )
+    writes = [w for w in plan.writes if w.op == OP_REGENERATE_FURIGANA]
+    assert len(writes) == 1
+    write = writes[0]
+    assert write.field == FURIGANA_FIELD
+    assert write.old_value == "見出しはこうニャ！"
+    assert write.new_value == "見出[みだ]しはこうニャ！"
+    assert write.default_checked is True
+    assert write.badges == ("furigana-regenerated",)
+
+
+def test_regeneration_is_off_by_default():
+    target = _regen_card(1, "見出しはこうニャ！", furigana="見出しはこうニャ！")
+    plan = build_plan(
+        [target],
+        CFG,
+        scope_note_ids=[1],
+        furigana_generator=_generator("見出[みだ]しはこうニャ！"),
+    )
+    assert not any(w.op == OP_REGENERATE_FURIGANA for w in plan.writes)
+    assert not any("furigana" in warning for warning in plan.warnings)
+
+
+def test_regeneration_is_a_noop_when_the_ruby_already_matches():
+    target = _regen_card(1, "見出しはこうニャ！", furigana="見出[みだ]しはこうニャ！")
+    plan = build_plan(
+        [target],
+        REGEN_CFG,
+        scope_note_ids=[1],
+        furigana_generator=_generator("見出[みだ]しはこうニャ！"),
+    )
+    assert not any(w.op == OP_REGENERATE_FURIGANA for w in plan.writes)
+    assert not any("furigana" in warning for warning in plan.warnings)
+
+
+def test_regeneration_warns_once_when_no_generator_is_available():
+    plan = build_plan(
+        [_regen_card(1, "見出しはこうニャ！"), _regen_card(2, "見出しはこうニャ！")],
+        REGEN_CFG,
+        scope_note_ids=[1, 2],
+    )
+    assert not any(w.op == OP_REGENERATE_FURIGANA for w in plan.writes)
+    assert sum("no furigana generator" in w for w in plan.warnings) == 1
+
+
+def test_regeneration_runs_on_the_sentence_the_plan_leaves_behind():
+    # The repair removes the tail arrow; the ruby must describe THAT text
+    # (BULK_FIX.md: sentence repair precedes furigana generation).
+    calls: list[str] = []
+    target = _regen_card(1, "見出しはこうニャ！➡", furigana="見出しはこうニャ！")
+    cfg = {**REGEN_CFG, "sentence_repair_rules": ["strip-arrows"]}
+    plan = build_plan(
+        [target],
+        cfg,
+        scope_note_ids=[1],
+        furigana_generator=_generator("見出[みだ]しはこうニャ！", calls=calls),
+    )
+    assert calls == ["見出しはこうニャ！"]
+    assert any(w.op == OP_REPAIR_SENTENCE for w in plan.writes)
+    write = next(w for w in plan.writes if w.op == OP_REGENERATE_FURIGANA)
+    assert write.badges == ("furigana-regenerated", "after-sentence-write")
+
+
+def test_regeneration_defers_to_a_queued_scene_fill_of_the_same_field():
+    # The scene fill already owns Sentence (furigana) for this child.
+    parent = scene(
+        9,
+        "あしたの朝刊の見出しはこうニャ！",
+        furigana="あしたの朝刊の見出し[みだし]はこうニャ！",
+    )
+    child = rec(
+        1,
+        {
+            **scene(
+                1,
+                "見<br>出しはこうニャ！➡",
+                expr="見出し",
+                reading="みだし",
+                body="見出し",
+                audio="",
+                picture="",
+                source="asbplayer://blob",
+            ).fields,
+            "cloze-prefix": "",
+            "cloze-body": "見出し",
+            "cloze-suffix": "はこうニャ！",
+        },
+    )
+    plan = build_plan(
+        [parent, child],
+        REGEN_CFG,
+        scope_note_ids=[child.note_id],
+        furigana_generator=_generator("見出[みだ]しはこうニャ！"),
+    )
+    assert any(w.op == OP_FILL and w.field == FURIGANA_FIELD for w in plan.writes)
+    assert not any(w.op == OP_REGENERATE_FURIGANA for w in plan.writes)
+
+
+def test_regeneration_is_dropped_when_the_engine_mangles_the_text():
+    target = _regen_card(1, "見出しはこうニャ！", furigana="old")
+    plan = build_plan(
+        [target],
+        REGEN_CFG,
+        scope_note_ids=[1],
+        furigana_generator=_generator("全然違うテキスト"),
+    )
+    assert not any(w.op == OP_REGENERATE_FURIGANA for w in plan.writes)
+    assert any("furigana regeneration skipped" in warning for warning in plan.warnings)
+
+
+def test_regeneration_is_dropped_when_the_engine_raises():
+    def boom(_sentence):
+        raise RuntimeError("mecab is not running")
+
+    target = _regen_card(1, "見出しはこうニャ！", furigana="old")
+    plan = build_plan([target], REGEN_CFG, scope_note_ids=[1], furigana_generator=boom)
+    assert not any(w.op == OP_REGENERATE_FURIGANA for w in plan.writes)
+    assert any("reading engine raised" in warning for warning in plan.warnings)

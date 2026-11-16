@@ -32,6 +32,7 @@ __all__ = [
     "norm_reading",
     "reading_from_furigana",
     "repair_sentence",
+    "furigana_base_matches",
     "word_key",
     "strip_renderable",
     "kana_fold",
@@ -154,6 +155,7 @@ def norm_reading(text: str) -> str:
 
 _KANJI_RE = re.compile(r"[㐀-\u4dbf\u4e00-\u9fff\u3005\u3006]")
 _FURIGANA_BRACKET_RE = re.compile(r"\[([^\[\]]*)\]")
+_FURIGANA_ANNOTATION_RE = re.compile(r"\[[^\[\]]*\]")
 
 
 def reading_from_furigana(furigana: str) -> str | None:
@@ -208,6 +210,27 @@ def word_key(expression: str, reading: str, furigana: str = "") -> tuple[str, st
         read = reading_from_furigana(furigana) or ""
         read = kana_fold(read)
     return (expr, read)
+
+
+def furigana_base_matches(generated: str, sentence: str) -> bool:
+    """True when a generated furigana value carries exactly the sentence.
+
+    The deck's ruby convention is per-kanji bracket annotations
+    (``漢字[かんじ]``); Japanese Support's reading engine emits the same
+    shape. The guard: the generated value's base text — bracket readings
+    stripped, markup removed, whitespace squeezed — must equal the
+    sentence's plain text (square-bracket speaker tags such as ``[TEL]``
+    are stripped on the sentence side by the same convention). Unbalanced
+    brackets mean the engine mangled the text; that is a mismatch too.
+    Pure.
+    """
+    if (generated or "").count("[") != (generated or "").count("]"):
+        return False
+    base = _FURIGANA_ANNOTATION_RE.sub("", generated or "")
+    plain_sentence = _FURIGANA_ANNOTATION_RE.sub("", sentence or "")
+    return _WHITESPACE_RE.sub("", strip_renderable(base)) == _WHITESPACE_RE.sub(
+        "", strip_renderable(plain_sentence)
+    )
 
 
 # --- sentence repair (bulk-fix dimension 2: subtitle noise) -----------------

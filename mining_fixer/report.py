@@ -12,6 +12,7 @@ from .plan import (
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
+    OP_REGENERATE_FURIGANA,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     Plan,
@@ -25,6 +26,7 @@ OP_LABELS = {
     OP_EXPAND_SENTENCE: "expand to scene sentence",
     OP_BOLD_CLOZE_WORD: "bold markup (text unchanged)",
     OP_REPAIR_SENTENCE: "repair subtitle noise",
+    OP_REGENERATE_FURIGANA: "regenerate furigana",
     OP_ADD_TAGS: "add tags (never removes)",
 }
 
@@ -124,6 +126,8 @@ def _field_label(write) -> str:
         return "bold on the tested word"
     if write.op == OP_REPAIR_SENTENCE:
         return "sentence noise repair"
+    if write.op == OP_REGENERATE_FURIGANA:
+        return "furigana regenerated"
     return _LABELS_BY_FIELD.get(write.field, write.field)
 
 
@@ -179,7 +183,7 @@ def render_markdown(plan: Plan, records: dict[int, NoteRecord], run_meta: dict) 
         for w in by_note[note_id]:
             src = f" note {w.source_note_id}" if w.source_note_id else ""
             val = _plain(w.new_value)
-            if w.op in (OP_EXPAND_SENTENCE, OP_REPAIR_SENTENCE):
+            if w.op in (OP_EXPAND_SENTENCE, OP_REPAIR_SENTENCE, OP_REGENERATE_FURIGANA):
                 val = f"{_plain(w.old_value, 60)} → {_plain(w.new_value, 90)}"
             elif w.op == OP_ADD_TAGS:
                 added = " ".join(sorted(set(w.new_value.split()) - set(w.old_value.split())))

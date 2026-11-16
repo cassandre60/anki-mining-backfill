@@ -8,6 +8,7 @@ from mining_fixer.plan import (
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
+    OP_REGENERATE_FURIGANA,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     Plan,
@@ -181,6 +182,29 @@ def test_the_repair_tier_is_off_by_default_and_opt_in():
     assert OP_REPAIR_SENTENCE in allowed_ops(repair_sentence=True)
     assert OP_REPAIR_SENTENCE not in default_ops()
     assert OP_REPAIR_SENTENCE in default_ops({"batch_repair_sentence": True})
+
+
+def test_the_furigana_tier_is_off_by_default_and_opt_in():
+    assert OP_REGENERATE_FURIGANA not in allowed_ops()
+    assert OP_REGENERATE_FURIGANA in allowed_ops(regenerate_furigana=True)
+    assert OP_REGENERATE_FURIGANA not in default_ops()
+    assert OP_REGENERATE_FURIGANA in default_ops({"batch_regenerate_furigana": True})
+
+
+def test_furigana_rows_are_selected_only_when_the_tier_is_on():
+    plan = Plan(
+        writes=(
+            w(1, "Sentence (furigana)", OP_REGENERATE_FURIGANA, "old", "見出[みだ]し"),
+            w(1, "Sentence Audio", OP_FILL, "", "[sound:a.webm]"),
+        )
+    )
+    off = select(plan, allowed_ops())
+    assert [row.field for row in off.rows] == ["Sentence Audio"]
+    assert off.excluded_notes == 1
+
+    on = select(plan, allowed_ops(regenerate_furigana=True))
+    assert sorted(row.field for row in on.rows) == ["Sentence (furigana)", "Sentence Audio"]
+    assert on.excluded_notes == 0
 
 
 def test_repair_rows_are_selected_only_when_the_tier_is_on():

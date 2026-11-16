@@ -35,6 +35,7 @@ from .matching import (
 )
 from .normalize import (
     REPAIR_RULES,
+    furigana_base_matches,
     kana_fold,
     norm_sentence_match,
     repair_sentence,
@@ -44,7 +45,7 @@ from .normalize import (
 
 __all__ = ["PlannedWrite", "Plan", "build_plan", "PLAN_VERSION", "scope_from_selection"]
 
-PLAN_VERSION = 3
+PLAN_VERSION = 4
 
 OP_FILL = "fill"
 OP_REPLACE_SOURCE = "replace_source"
@@ -54,6 +55,12 @@ OP_BOLD_CLOZE_WORD = "bold_cloze_word"
 # Subtitle-noise repair: line-tail continuation arrows (bulk-fix dimension
 # 2; see QUALITY Q-D10 and normalize.repair_sentence).
 OP_REPAIR_SENTENCE = "repair_sentence"
+# Furigana regeneration (bulk-fix dimension 3): rebuild `Sentence
+# (furigana)` from the note's own post-write Sentence through the installed
+# Japanese Support add-on's reading engine (never a home-grown generator).
+OP_REGENERATE_FURIGANA = "regenerate_furigana"
+# The ruby layer this op rebuilds (the deck's own field name convention).
+FURIGANA_FIELD = "Sentence (furigana)"
 # Tag-set union from contributing sources; never removes a tag.
 OP_ADD_TAGS = "add_tags"
 OPS_TOUCHING_NONEMPTY = frozenset(
@@ -62,6 +69,7 @@ OPS_TOUCHING_NONEMPTY = frozenset(
         OP_EXPAND_SENTENCE,
         OP_BOLD_CLOZE_WORD,
         OP_REPAIR_SENTENCE,
+        OP_REGENERATE_FURIGANA,
         OP_ADD_TAGS,
     }
 )
@@ -71,13 +79,14 @@ OPS_TOUCHING_NONEMPTY = frozenset(
 class PlannedWrite:
     """One field change. ``old_value`` empty <=> OP_FILL in almost all cases.
 
-    Five ops may write a non-empty value, each guarded: the two approved
+    Six ops may write a non-empty value, each guarded: the two approved
     replaces (blob Source — the blob URL is recorded in the audit log;
     fragment Sentence — the fragment survives in cloze-*), the markup-only
     bold repair (``strip_renderable`` of both values must be equal), the
     subtitle-noise repair (only the configured noise classes change,
-    QUALITY Q-D10) and the tags union (``new_value`` is a superset of
-    ``old_value``). All carry badges.
+    QUALITY Q-D10), the furigana regeneration (the ruby layer must carry
+    exactly the sentence's characters, QUALITY Q-D11) and the tags union
+    (``new_value`` is a superset of ``old_value``). All carry badges.
     """
 
     note_id: int
@@ -339,6 +348,74 @@ def _sentence_repair_write(
             new_value=new_value,
             default_checked=True,
             badges=applied,
+        ),
+        None,
+        None,
+    )
+
+
+def _furigana_write_for(
+    target: NoteRecord,
+    generator,
+    target_writes: list[PlannedWrite],
+) -> tuple[PlannedWrite | None, str | None, str | None]:
+    """Rebuild the target's ``Sentence (furigana)`` from its own Sentence.
+
+    Bulk-fix dimension 3: the ruby layer must describe the sentence the
+    plan will leave behind, so the generator input is the *post-write*
+    Sentence — a queued repair/expansion/bold write feeds its new value
+    (the repair→furigana ordering rule of BULK_FIX.md, enforced in one
+    plan). The value itself comes from the installed Japanese Support
+    add-on's reading engine; this planner never generates ruby itself.
+
+    Guards (QUALITY Q-D11):
+    - the caller must not already queue another ``Sentence (furigana)``
+      write for this note — a scene fill owns the field first;
+    - the engine's output must be non-empty (an engine failure is a
+      reason, never a guessed write);
+    - the generated ruby's base text must carry exactly the sentence's
+      characters (:func:`normalize.furigana_base_matches`).
+
+    Returns ``(write, reason, detail)``.
+    """
+    sentence = target.get("Sentence")
+    if is_empty(sentence):
+        return None, None, None
+    for w in target_writes:
+        if w.field == "Sentence":
+            sentence = w.new_value
+            break
+    try:
+        generated = generator(sentence)
+    except Exception as exc:  # the engine subprocess is outside our control
+        return None, "furigana-generation-failed", f"reading engine raised: {exc}"
+    if not (generated or "").strip():
+        return (
+            None,
+            "furigana-generation-failed",
+            "the reading engine produced nothing for this sentence",
+        )
+    current = target.get(FURIGANA_FIELD) or ""
+    if generated == current:
+        return None, None, None
+    if not furigana_base_matches(generated, sentence):
+        return (
+            None,
+            "furigana-base-mismatch",
+            "generated ruby does not carry the sentence's characters",
+        )
+    badges = ["furigana-regenerated"]
+    if any(w.field == "Sentence" for w in target_writes):
+        badges.append("after-sentence-write")
+    return (
+        PlannedWrite(
+            note_id=target.note_id,
+            field=FURIGANA_FIELD,
+            op=OP_REGENERATE_FURIGANA,
+            old_value=current,
+            new_value=generated,
+            default_checked=True,
+            badges=tuple(badges),
         ),
         None,
         None,
@@ -671,6 +748,7 @@ def build_plan(
     cfg: dict,
     scope_note_ids: list[int] | None = None,
     media_exists=None,
+    furigana_generator=None,
 ) -> Plan:
     """Build the full plan.
 
@@ -678,6 +756,9 @@ def build_plan(
     notes to *fix* (targets); all records remain eligible as parents and
     word sources. ``media_exists(filename)``: optional gate — fills
     referencing missing media are dropped with a warning.
+    ``furigana_generator(sentence) -> furigana | None``: optional bridge to
+    the installed Japanese Support add-on's reading engine (dimension 3;
+    ``None`` makes the tier report itself unavailable instead of writing).
     """
     window_ms = min(int(cfg.get("window_days", 3)) * DAY_MS, MAX_WINDOW_MS)
     min_len = int(cfg.get("min_sentence_len", 6))
@@ -703,6 +784,7 @@ def build_plan(
     writes: list[PlannedWrite] = []
     reasons: dict[int, str] = {}
     warnings: list[str] = []
+    warned: set[str] = set()
     optout = cfg.get("optout_tag", "no-autofill")
 
     raw_repair_rules = tuple(cfg.get("sentence_repair_rules", ()))
@@ -710,6 +792,7 @@ def build_plan(
     if unknown_rules:
         warnings.append(f"unknown sentence_repair_rules ignored: {', '.join(unknown_rules)}")
     repair_rules = tuple(rule for rule in raw_repair_rules if rule in REPAIR_RULES)
+    furigana_tier = bool(cfg.get("batch_regenerate_furigana", False))
 
     groups = word_groups(records)
     parent_usage: dict[int, int] = {}
@@ -790,6 +873,31 @@ def build_plan(
                 warnings.append(
                     f"note {target.note_id} ({expr}): sentence repair skipped — {repair_detail}"
                 )
+        # Furigana regeneration (dimension 3). Runs after any queued
+        # Sentence write — the ruby layer must match the text the plan
+        # leaves behind (BULK_FIX.md ordering). Only when no other
+        # Sentence (furigana) write is queued: a scene fill owns the field.
+        if furigana_tier:
+            if furigana_generator is None:
+                if "furigana-generator-unavailable" not in warned:
+                    warned.add("furigana-generator-unavailable")
+                    warnings.append(
+                        "batch_regenerate_furigana is on but no furigana generator"
+                        " is available (Japanese Support unreachable) — dimension"
+                        " skipped"
+                    )
+            elif not any(w.field == FURIGANA_FIELD for w in target_writes):
+                furigana_write, furigana_reason, furigana_detail = _furigana_write_for(
+                    target, furigana_generator, target_writes
+                )
+                if furigana_write is not None:
+                    target_writes.append(furigana_write)
+                elif furigana_reason is not None:
+                    expr = target.get("Expression") or "(sentence card)"
+                    warnings.append(
+                        f"note {target.note_id} ({expr}): furigana regeneration"
+                        f" skipped — {furigana_detail}"
+                    )
         # Tags: union of the target's tags with every contributing source's.
         tags_write = _tags_write_for(target, target_writes, by_id, cfg)
         if tags_write is not None:

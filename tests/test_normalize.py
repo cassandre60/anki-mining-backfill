@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mining_fixer.normalize import (
     REPAIR_RULES,
+    furigana_base_matches,
     kana_fold,
     norm_reading,
     norm_sentence,
@@ -163,3 +164,30 @@ def test_repair_unknown_rules_are_ignored():
     new, applied = repair_sentence("前➡<br>後", ("strip-arrows", "nonsense"))
     assert applied == ("strip-arrows",)
     assert new == "前<br>後"
+
+
+# --- furigana_base_matches (bulk-fix dimension 3) ----------------------------
+
+
+def test_furigana_base_matches_the_sentence_it_annotates():
+    # Japanese Support's own format: per-kanji bracket ruby, <br> kept.
+    # mecab trims the shared tail, so 見出し[みだし] comes out 見出[みだ]し.
+    generated = "あしたの朝刊の 見出[みだ]しは<br>こうニャ！"
+    assert furigana_base_matches(generated, "あしたの朝刊の見出しは<br>こうニャ！")
+
+
+def test_furigana_base_ignores_whitespace_and_the_engines_spacing_quirks():
+    # mecab prefixes annotated groups with a space; the guard squeezes it.
+    assert furigana_base_matches(" 表面[ひょうめん]が  白い", "表面が白い")
+
+
+def test_furigana_base_masks_speaker_brackets_on_the_sentence_side():
+    # [TEL] is a speaker tag, not a reading: stripped on both sides.
+    generated = "[TEL]もしもし[もしもし]"
+    assert furigana_base_matches(generated, "[TEL]もしもし")
+
+
+def test_furigana_base_rejects_a_mangled_generation():
+    assert not furigana_base_matches("見[", "見出し")
+    assert not furigana_base_matches("全然違うテキスト", "見出しはこうニャ！")
+    assert not furigana_base_matches("", "見出し")

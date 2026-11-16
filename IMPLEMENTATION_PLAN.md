@@ -63,6 +63,21 @@ below, never as silent scope creep inside a coding session.
   (`sentence_repair_rules: []`, `batch_repair_sentence: false`). Pinned
   against real deck values; the Ring 3 old → new diff on a collection copy
   is still pending.
+- **T12 — Furigana regeneration (bulk-fix dimension 3, B7 slice 2).**
+  `regenerate_furigana` (`PLAN_VERSION` 4) rebuilds `Sentence (furigana)`
+  from the note's own post-write Sentence through the installed Japanese
+  Support add-on's MeCab/Kakasi reading (`reading.mecab.reading` — the
+  same engine its `regenerateReading` uses, which itself refuses non-empty
+  destinations; entry points re-verified 2026-11-15). Bridge:
+  `collection_io.japanese_support_furigana_generator` (lazy, `None`
+  headless). Guards (Q-D11): generated from the sentence the plan leaves
+  behind (repair precedes furigana, one plan), defers to a queued scene
+  fill of the field, `furigana-generation-failed` on an empty result or a
+  raised engine error, `furigana-base-mismatch` when the ruby's base text
+  no longer carries the sentence (pure
+  `normalize.furigana_base_matches`), one unavailable-engine warning per
+  run, off by default (`batch_regenerate_furigana: false`). Ring 3
+  battery pending (curated per-class cards, TEST_STRATEGY.md).
 - **T8 — Batch mode for hundreds/thousands of notes.** A counts-only dialog
   with a lossless-by-default policy (`batch.py`), opt-in Sentence/Source
   tiers, note- and group-atomic selection, and a review shortlist instead of
@@ -90,6 +105,7 @@ below, never as silent scope creep inside a coding session.
 | T9 | `test_divergent_scene_sources_*`, `test_a_far_scene_source_*`, `test_an_identical_sentence_*`; Ring 3 demotion count |
 | T10 | `test_batch.py` (defaults), `tests/test_report_summary.py` (readable preview); Ring 3 run |
 | T11 | `test_normalize.py` (repair rules), `test_plan.py` (guards, exclusivity), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 diff pending |
+| T12 | `test_normalize.py` (base-text guard), `test_plan.py` (guards, ordering, exclusivity, engine failures), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 battery pending |
 
 ## Backlog
 
@@ -99,9 +115,9 @@ below, never as silent scope creep inside a coding session.
   generation after the sentence is repaired, later expression repair and
   formatting), press apply. Includes multi-deck selection and, later, other
   note types and languages behind a language/note-type profile. Slice 1 (the
-  sentence-repair dimension) shipped as T11, off by default; the single-window
-  dimension picker, dimension 3 (furigana) and the repair→propagate DAG
-  sequencing are still open.
+  sentence-repair dimension) shipped as T11 and slice 2 (furigana
+  regeneration) as T12, both off by default; the single-window dimension
+  picker and the repair→propagate DAG sequencing are still open.
 - **B6 — Source-first pipeline** (author's idea, text in
   [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md)): normalise a source card before
   its children — strip continuation arrows (line breaks stay as mined; see

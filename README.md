@@ -21,7 +21,7 @@ and covered by tests, not just intended:
 1. **Fills only touch empty fields.** A field with any non-whitespace
    content is never written. Markup-only values like `<hr>` count as
    occupied and are never overwritten.
-2. **Only five approved non-empty writes, each information-preserving.**
+2. **Only six approved non-empty writes, each information-preserving.**
    - `Source`: the asbplayer blob URL is replaced with the timestamped
      source — the blob URL is recorded in the run log, so nothing is lost.
    - `Sentence`: the mined fragment is replaced with the full scene text —
@@ -46,6 +46,15 @@ and covered by tests, not just intended:
      queued for expansion or bold is skipped, and the repair must not
      change how often the tested word occurs. Off by default
      (`sentence_repair_rules` / `batch_repair_sentence`).
+   - Furigana regeneration (`regenerate_furigana`): an opt-in rebuild of
+     `Sentence (furigana)` from the card's own sentence, through the
+     Japanese Support add-on you already have (its MeCab/Kakasi reading —
+     never a home-grown generator). The ruby is generated from the
+     sentence as the plan will leave it (after a queued repair or
+     expansion), is skipped when a scene fill already owns that field, and
+     is dropped when the engine produces nothing, raises, or returns ruby
+     whose base text no longer matches the sentence. Off by default
+     (`batch_regenerate_furigana`).
    - Tags (`add_tags`): the target keeps its tags and gains every
      contributing source card's tags — a pure union that never removes;
      Anki control tags (`marked`, `leech`) and this tool's own tags
@@ -137,6 +146,12 @@ you press Apply.
   (0.4% of this deck's `Sentence` fields); line breaks (`<br>`) and
   spacing stay exactly as mined. It replaces content that is already
   there, so it stays off until you turn it on.
+  The **furigana regeneration** is another opt-in tier: set
+  `"batch_regenerate_furigana": true` and the tool rebuilds
+  `Sentence (furigana)` for every card through Japanese Support's reading
+  engine, from the sentence the run will leave behind. It rewrites
+  non-empty ruby, so it also stays off until you turn it on; without the
+  Japanese Support add-on it reports itself unavailable and writes nothing.
   **Preview report** saves a one-page human-readable summary (word, note, what
   changes, what was left alone) without touching your collection. A real run
   takes an **Anki backup** first, writes its **undo log before the first

@@ -97,10 +97,10 @@ the first write, chunked apply, post-write verification.
 - `NoteState`, `ApplyDecision` (`applier.py`) — the live values read back at
   apply time and the resulting writes/skips.
 
-`PLAN_VERSION` (currently **2**) is bumped whenever the plan's meaning changes;
+`PLAN_VERSION` (currently **4**) is bumped whenever the plan's meaning changes;
 it is recorded in every audit log so old and new plans are distinguishable.
 
-## The five ops
+## The six ops
 
 | op | may write non-empty? | guard |
 |---|---|---|
@@ -108,6 +108,8 @@ it is recorded in every audit log so old and new plans are distinguishable.
 | `replace_source` | yes | old value is an asbplayer blob URL; the URL is kept in the run log |
 | `expand_sentence` | yes | fragment recoverable from `cloze-prefix + body + suffix`; the cloze anchor occurs exactly once in the new sentence; furigana ships in the same row or the row is unchecked |
 | `bold_cloze_word` | yes (markup only) | `strip_renderable(new) == strip_renderable(old)`; the word occurs exactly once |
+| `repair_sentence` | yes (configured noise only) | only the configured rules change the value; no other `Sentence` write queued; tested-word occurrence count unchanged |
+| `regenerate_furigana` | yes | generated from the post-write sentence; no other `Sentence (furigana)` write queued; ruby base text must equal the sentence (`furigana_base_matches`) |
 | `add_tags` | yes | `new_value` tags ⊇ `old_value` tags; reserved tags excluded |
 
 `OPS_TOUCHING_NONEMPTY` in `plan.py` is the single list of ops allowed to

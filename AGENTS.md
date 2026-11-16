@@ -53,8 +53,9 @@ enriched siblings. Two halves:
    `batch_dialog.py` may touch Anki.
 5. **Never guess.** Ambiguity is reported (`plan.reasons`, `plan.warnings`),
    never resolved by picking one of several plausible values.
-6. **Fills only; five approved non-empty writes** (`Source`, `Sentence`,
-   `bold_cloze_word`, `repair_sentence`, `add_tags`) — each must preserve
+6. **Fills only; six approved non-empty writes** (`Source`, `Sentence`,
+   `bold_cloze_word`, `repair_sentence`, `regenerate_furigana`, `add_tags`)
+   — each must preserve
    its information, and each carries badges. See `QUALITY.md`.
 7. **Tags are never removed** and bookkeeping tags are never added: the audit
    deck is the container, the note carries only the target's and its sources'
@@ -192,6 +193,14 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   mined (they are the pause structure), and the replacement direction is
   audio-aligned line breaks recorded in `BULK_FIX.md`.
   Verified by: the rollback commit's diff + `tests/test_normalize.py`.
+- [2026-11-16, OpenCode] Japanese Support's public `regenerateReading`
+  refuses non-empty destination fields, so it cannot repair stale ruby; the
+  shipped furigana dimension (T12) calls its engine directly
+  (`reading.mecab.reading`, the same function) through an injected
+  generator, keeping `plan.py` pure and the suite independent of a live
+  MeCab. Feed it the post-write Sentence (repair first), not the mined one.
+  Verified by: reading the installed add-on's `reading.py` and the regen
+  tests in `tests/test_plan.py`.
 
 ## Lessons Learned
 

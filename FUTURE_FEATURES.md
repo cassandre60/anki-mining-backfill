@@ -45,10 +45,12 @@ imperfect — and asbplayer/Yomitan sources usually are:
      - (optional) drop speaker/stage tags such as [TEL] (受付)
 3. Rebuild the source's Sentence (furigana) from the normalised text.
      Japanese Support (the installed `Japanese Support` add-on, id
-     3918629684) already exposes `bulkreading.regenerateReadings(nids)` and
-     `reading.regenerateReading(note, src_field)`; use its MeCab/Kakasi
-     reading instead of writing our own generator. Verify the entry point
-     against the installed source before depending on it.
+     3918629684) exposes `bulkreading.regenerateReadings(nids)` and
+     `reading.regenerateReading(note, src_field)`; its public entry refuses
+     non-empty destination fields, so the shipped dimension (T12) calls the
+     same engine directly — `reading.mecab.reading(text)` — instead of
+     writing our own generator. Verify the entry point against the
+     installed source before depending on it (re-verified 2026-11-15).
 4. Write those two fields on the source card — previewed, checked, logged,
    undoable, exactly like every other write.
 5. Only then plan the children, so they inherit the clean sentence and

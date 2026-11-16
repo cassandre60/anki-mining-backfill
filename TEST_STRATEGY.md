@@ -45,6 +45,17 @@ not have and must never be given.
   with rule badges, off without rules, exclusivity with expansion/bold,
   tested-word occurrence guard, unknown-rule warning) and
   `tests/test_batch.py` (the opt-in `batch_repair_sentence` tier).
+- **Furigana regeneration** (bulk-fix dimension 3) is pinned in
+  `tests/test_normalize.py` (`furigana_base_matches`: whitespace and the
+  engine's spacing quirks, speaker brackets, mangled/unbalanced output
+  rejected), `tests/test_plan.py` (checked write with badges, off by
+  default, noop when the ruby already matches, generator unreachable →
+  one warning per run, generated from the post-repair sentence, defers to
+  a queued scene fill of the field, dropped on a mangled or raising
+  engine) and `tests/test_batch.py` (the opt-in `batch_regenerate_furigana`
+  tier). The engine itself is never faked into the suite's core paths: it
+  is an injected callable, so a broken MeCab degrades to a skip, not a
+  wrong write — **never run it inside Anki from the suite**.
 - **Write timing** is pinned in the same file with fake editors: writes wait
   for `call_after_note_saved`, a doubled editor callback writes once, a lost
   callback is covered by the scheduler safety net, and a raising or missing
@@ -65,6 +76,13 @@ not have and must never be given.
   collection — plan 2.2 s, apply 1.5 s with a backup, verification clean, the
   793 untouched notes byte-identical, re-run a no-op, undo restoring all 1000
   exactly.
+- **Acceptance runs use a curated battery, not bulk 1000-note runs** (owner
+  guidance, 2026-11-16). Future Ring 3 runs pick a small set where each card
+  pins one defect class — a line-tail arrow, an anchor-risk fragment, a
+  divergent-parents note, a stale-furigana card, a blob Source, a note with
+  nothing to fix — so a failure names the class it broke instead of hiding in
+  aggregate counts. The 1000-note run above stands as the one-off scale proof;
+  it does not need repeating per dimension.
 - The **UI** (`preview_dialog.py`) is not unit-tested; its import is checked
   in Ring 2 and its behaviour is exercised by Ring 3's apply run. Anything
   decision-shaped in it is delegated to `applier.py`/`plan.py` precisely so it

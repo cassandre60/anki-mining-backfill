@@ -10,11 +10,13 @@ first, with the reason.
 - **Q-D1 — Fills only touch empty fields.** A field with any non-whitespace
   content is never written by a `fill`; markup-only values like `<hr>` count
   as occupied.
-- **Q-D2 — Five approved non-empty writes, each information-preserving.**
+- **Q-D2 — Six approved non-empty writes, each information-preserving.**
   `replace_source` (blob URL is logged), `expand_sentence` (fragment survives
   in `cloze-*`), `bold_cloze_word` (rendered text unchanged),
   `repair_sentence` (only configured noise classes change, Q-D10),
-  `add_tags` (superset only). `OPS_TOUCHING_NONEMPTY` is the single source of
+  `regenerate_furigana` (the ruby layer must still carry the sentence's
+  characters, Q-D11), `add_tags` (superset only).
+  `OPS_TOUCHING_NONEMPTY` is the single source of
   truth and a test asserts no other op writes a non-empty value.
 - **Q-D3 — Bold is markup-only.** A bold write is emitted only when
   `strip_renderable(new) == strip_renderable(old)`; verified per write.
@@ -52,6 +54,23 @@ first, with the reason.
   (`cloze-body`) occurs. The transformation is idempotent, and the
   dimension ships off by default (`sentence_repair_rules: []`,
   `batch_repair_sentence: false`) until proven on a real collection.
+- **Q-D11 — Furigana regeneration uses Japanese Support as the only
+  oracle.** The `regenerate_furigana` op rewrites `Sentence (furigana)`
+  from the note's own Sentence through the installed Japanese Support
+  add-on's reading engine; the planner never generates ruby itself and the
+  add-on's public entry (which refuses non-empty destinations) is bypassed
+  only to reach its MeCab/Kakasi reading, which is the same engine that
+  entry uses. Guards: the generator input is the Sentence the plan will
+  leave behind (a queued repair/expansion/bold write feeds its new value —
+  repair precedes furigana, BULK_FIX.md); no other `Sentence (furigana)`
+  write may be queued for the note (a scene fill owns the field first); an
+  empty engine result or a raised engine error becomes a reported
+  `furigana-generation-failed` reason, never a write; and the generated
+  ruby's base text must carry exactly the sentence's characters
+  (`normalize.furigana_base_matches`), else `furigana-base-mismatch` and no
+  write. Unreachable engine (headless, add-on missing) is reported once per
+  run. It ships off by default (`batch_regenerate_furigana: false`) until
+  proven on a real collection.
 
 ## Correctness of decisions
 

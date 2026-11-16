@@ -10,6 +10,7 @@ from mining_fixer.plan import (
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
+    OP_REGENERATE_FURIGANA,
     OP_REPAIR_SENTENCE,
     Plan,
     PlannedWrite,
@@ -138,3 +139,27 @@ def test_repair_rows_are_labelled_for_a_human():
     )
     assert "sentence noise repair" in text
     assert "repair_sentence" not in text
+
+
+def test_furigana_rows_are_labelled_for_a_human():
+    plan = Plan(
+        writes=(
+            PlannedWrite(
+                note_id=7,
+                field="Sentence (furigana)",
+                op=OP_REGENERATE_FURIGANA,
+                old_value="見出しはこうニャ!",
+                new_value="見出[みだ]しはこうニャ!",
+                default_checked=True,
+                badges=("furigana-regenerated",),
+            ),
+        )
+    )
+    text = render_batch_summary(
+        plan,
+        {7: note(7, "見出し", "みだし")},
+        select(plan, default_ops({"batch_regenerate_furigana": True})),
+        {"scope": 1},
+    )
+    assert "furigana regenerated" in text
+    assert "regenerate_furigana" not in text

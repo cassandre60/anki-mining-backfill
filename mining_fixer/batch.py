@@ -39,6 +39,7 @@ from .plan import (
     OP_BOLD_CLOZE_WORD,
     OP_EXPAND_SENTENCE,
     OP_FILL,
+    OP_REGENERATE_FURIGANA,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     Plan,
@@ -60,7 +61,9 @@ __all__ = [
 SAFE_OPS = frozenset({OP_FILL, OP_BOLD_CLOZE_WORD, OP_ADD_TAGS})
 
 #: Information-preserving replaces, each opt-in for a batch run.
-OPTIONAL_OPS = frozenset({OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE, OP_REPAIR_SENTENCE})
+OPTIONAL_OPS = frozenset(
+    {OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE, OP_REPAIR_SENTENCE, OP_REGENERATE_FURIGANA}
+)
 
 #: The text unit: a sentence and its ruby are atomic (QUALITY Q-D4). Audio,
 #: picture, translation and source do not depend on the sentence text, so
@@ -142,6 +145,7 @@ def allowed_ops(
     expand_sentence: bool = False,
     replace_source: bool = False,
     repair_sentence: bool = False,
+    regenerate_furigana: bool = False,
 ) -> frozenset[str]:
     """The op set for the chosen batch options (the default is lossless)."""
     ops = set(SAFE_OPS)
@@ -151,6 +155,8 @@ def allowed_ops(
         ops.add(OP_REPLACE_SOURCE)
     if repair_sentence:
         ops.add(OP_REPAIR_SENTENCE)
+    if regenerate_furigana:
+        ops.add(OP_REGENERATE_FURIGANA)
     return frozenset(ops)
 
 
@@ -164,13 +170,17 @@ def default_ops(cfg: dict | None = None) -> frozenset[str]:
     default and configurable without a UI (``batch_expand_sentence`` /
     ``batch_replace_source``). The subtitle-noise repair rewrites non-empty
     text with no oracle beyond its own rule list, so it stays OFF by
-    default (``batch_repair_sentence``) until proven on a real collection.
+    default (``batch_repair_sentence``) until proven on a real collection;
+    the furigana regeneration rewrites non-empty ruby with the external
+    reading engine as its oracle (``batch_regenerate_furigana``), also off
+    by default.
     """
     cfg = cfg or {}
     return allowed_ops(
         expand_sentence=bool(cfg.get("batch_expand_sentence", True)),
         replace_source=bool(cfg.get("batch_replace_source", True)),
         repair_sentence=bool(cfg.get("batch_repair_sentence", False)),
+        regenerate_furigana=bool(cfg.get("batch_regenerate_furigana", False)),
     )
 
 
