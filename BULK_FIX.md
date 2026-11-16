@@ -40,7 +40,7 @@ stays off by default until it is proven on a real collection**.
 | 3 | Furigana generation | **shipped, off by default** | rebuild `Sentence (furigana)` from the note's own post-write sentence | runs *after* repair in one plan; `reading.mecab.reading` of Japanese Support (installed, id 3918629684) — never a home-grown generator; base-text guard + engine-failure reasons |
 | 4 | Expression repair | **future** | fix inflections; repair an expression written partly in kana when the kanji form exists | needs a per-expression oracle; ambiguity reported, never guessed |
 | 5 | Indentation / formatting | **future** | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
-| 6 | Bold from expression | **future** | on **non-listening** cards whose `Sentence` has no bold term, bold the expression's occurrence — including an inflected surface (読む → 読め, 寒い → 寒くなかった) | expression must look like a word (clause-like expressions such as 漢字は読めるようになりたいかな are rejected); occurrence must be unique; ambiguity reported, never guessed; listening predicate mirrors the card template (see below) |
+| 6 | Bold from expression | **shipped (verbatim only)**; inflected matching future | on **non-listening** cards whose `Sentence` has no bold term, bold the expression's occurrence (including from a missing/junk `cloze-body`); an inflected surface (読む → 読め) is the open part | expression must look like a word (clause-like expressions such as 漢字は読めるようになりたいかな are rejected, never bolded); occurrence must be unique; ambiguity reported, never guessed; listening predicate mirrors the card template (see below) |
 
 Dimension 1 is what `batch.py` + `collection_io.apply_batch` ship today.
 Dimensions 2 and 3 have code (`normalize.repair_sentence` /
@@ -69,8 +69,9 @@ against the template's own HTML/JS on 2026-11-16:
    deliberately shows the normal sentence for those.
 
 Dimensions that only matter for a visible sentence (bold repair, arrows)
-must skip both paths; the furigana dimension likewise rebuilds ruby nothing
-displays on a listening front.
+should skip both paths. The bold repair shipped that skip (T14); whether the
+arrow repair and the furigana regeneration should skip too is an open
+question (their writes are harmless but pointless on an audio-only front).
 
 ## Ordering (the DAG)
 
@@ -315,6 +316,13 @@ proof.
   - Does the listening exclusion also apply to the shipped bold repair
     and the arrow repair? Recorded as an open question below.
 
+  **Shipped so far (T14):** the verbatim-Expression tier, the word-like
+  gate on both expression-derived tiers (over-long words are skipped too —
+  conservative, reported when verbatim), and the listening predicate on
+  the bold repair (both paths; Frequency-without-glosses stays repaired).
+  **Still open:** class C (inflected/mis-mined, 278 cards — silent when
+  nothing was mined, so no warning flood) and the MeCab oracles above.
+
 ## Open questions (answer before each slice)
 
 - How many source cards actually contain arrows / `<br>` / padding — a 50%
@@ -334,8 +342,8 @@ proof.
   length/space heuristic now, a MeCab token-count later (BULK_FIX dim 6)?
 - Inflection matching (dimension 6): MeCab lemma pass through Japanese
   Support's engine, or the conservative okurigana-stem rule?
-- Should the listening predicate (dimension 6's exclusion) also gate the
-  shipped bold repair, the arrow repair and the furigana regeneration?
+- Should the listening predicate (now gating the bold repair, T14) also
+  gate the arrow repair and the furigana regeneration?
 - How do we detect "this child was already filled from that source and the
   source has since changed" when the run was not performed by this tool?
 - Where does the source set stop being the configured deck, and what breaks

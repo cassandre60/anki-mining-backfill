@@ -18,8 +18,23 @@ first, with the reason.
   characters, Q-D11), `add_tags` (superset only).
   `OPS_TOUCHING_NONEMPTY` is the single source of
   truth and a test asserts no other op writes a non-empty value.
-- **Q-D3 — Bold is markup-only.** A bold write is emitted only when
-  `strip_renderable(new) == strip_renderable(old)`; verified per write.
+- **Q-D3 — Bold is markup-only, word-like and unique.** A bold write is
+  emitted only when `strip_renderable(new) == strip_renderable(old)`;
+  verified per write. The word is found in three tiers, each requiring
+  exactly one occurrence: the `cloze-body` (the mined word), the
+  `Expression` verbatim, or a reading-derived mixed-kana surface form
+  (鬱病 → うつ病). Expression-derived tiers require the Expression to be
+  *word-like* — no whitespace, no sentence punctuation, at most
+  `MAX_EXPRESSION_CHARS` (10) characters; a clause-like value
+  (漢字は読めるようになりたいかな) is reported
+  (`expression-not-word-like`), never bolded, and MeCab tokenization is
+  the recorded future oracle (BULK_FIX.md dimension 6). Cards whose
+  template front is audio-only are skipped entirely — the sentence is not
+  displayed: either a `listening` tag with usable audio, or no
+  `Definition`/`Extended definition`/`Frequency` with `Sentence Audio`
+  present (`plan._is_listening`, verified against the template). Ambiguity
+  — several occurrences or several candidates — is never resolved by
+  guessing.
 - **Q-D4 — Sentence and Sentence (furigana) are atomic.** Both come from the
   same parent; a furigana fill paired with a guarded expansion ships
   unchecked (`stale-fragment-furigana-risk`). This *text unit* is also the

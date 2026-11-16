@@ -107,6 +107,7 @@ below, never as silent scope creep inside a coding session.
 | T11 | `test_normalize.py` (repair rules), `test_plan.py` (guards, exclusivity), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 diff pending |
 | T12 | `test_normalize.py` (base-text guard), `test_plan.py` (guards, ordering, exclusivity, engine failures), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 battery pending |
 | T13 | `test_batch.py` (flags, overlay keys, no-op tick), `test_plan.py` (scene-off gate); Ring 3 battery pending |
+| T14 | `test_plan.py` (expression tier, word-like gate, listening predicate incl. the Frequency exception); Ring 3 battery pending |
 
 - **T13 — Dimension picker in the batch window (B7).** Three checkboxes
   (scene propagation / line-end arrows / furigana regeneration) initialised
@@ -119,6 +120,18 @@ below, never as silent scope creep inside a coding session.
   no fill can slip through selection; the lossless core (word fills, bold
   repair, tag unions) is not a dimension and always stays eligible. The
   picker can enable only documented, guarded writes. Ring 3 battery
+  pending.
+- **T14 — Bold from expression (B8 slice 1).** `plan._bold_repair_for`
+  gained a verbatim-Expression tier (`bold-added-to-expression` badge)
+  for cards whose `cloze-body` is missing or junk, the word-like gate
+  (`plan._expression_is_word_like`: no whitespace/punctuation, at most 10
+  characters — clause-like Expressions reported as
+  `expression-not-word-like`, never bolded; over-long words skipped
+  conservatively) applied to both expression-derived tiers, and the
+  template's listening predicate (`plan._is_listening`: tag + usable
+  audio, or no Definition/Extended definition/Frequency with Sentence
+  Audio — Frequency-without-glosses stays repaired). Inflected matching
+  stays open (BULK_FIX slice 8; 278 census cards). Ring 3 battery
   pending.
 
 ## Backlog
@@ -141,15 +154,14 @@ below, never as silent scope creep inside a coding session.
   "source changed since this card was filled" check for already-filled
   children.
 - **B8 — Bold from expression** (owner ask 2026-11-16; design in
-  [`BULK_FIX.md`](BULK_FIX.md) dimension 6 / slice 8): non-listening cards
-  whose `Sentence` has no bold term get the expression's occurrence bolded,
-  including an inflected surface (読む → 読め). The listening predicate is
-  template-defined (tag + usable audio, or no glosses/no Frequency with
-  `Sentence Audio`). Two oracles need a decision first: clause-vs-word
-  detection for the Expression (the card whose Expression is
-  漢字は読めるようになりたいかな must stay invalid) and inflection matching.
-  Note the shipped `bold_cloze_word` surface-form tier can still bold a
-  clause-like expression today — the same gate must close that gap.
+  [`BULK_FIX.md`](BULK_FIX.md) dimension 6 / slice 8). **Shipped portion
+  (T14):** the bold repair gained a verbatim-Expression tier (前人未到
+  shaped cards), the word-like gate that refuses clause-like Expressions
+  (漢字は読めるようになりたいかな) for every expression-derived tier, and
+  the template's own listening predicate (tag + usable audio, or no
+  glosses/no Frequency with `Sentence Audio`). Still open: inflected
+  matching (278 census cards, e.g. 読む → 読め) and the MeCab
+  token-count oracle for word-vs-clause.
 - **B2 — Rendered card preview.** Render each row's real front/back HTML
   (Anki's card rendering API) in a side pane, so a reviewer sees the card as
   the template shows it rather than as field values.

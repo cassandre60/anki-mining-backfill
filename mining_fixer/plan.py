@@ -228,6 +228,57 @@ def _wrap_first_occurrence(sentence: str, word: str) -> str | None:
 
 _BOLD_TAG_RE = re.compile(r"<b[\s>]|<strong")
 
+#: Conservative word-vs-clause gate for expression-derived bold repair
+#: (QUALITY Q-D3). The honest oracle is MeCab tokenization of the Expression
+#: (BULK_FIX.md dimension 6); until then a clause-like Expression is
+#: reported, never bolded — a false skip loses nothing, a wrong bold hides
+#: the sentence's structure.
+MAX_EXPRESSION_CHARS = 10
+_CLAUSE_PUNCT_RE = re.compile(r"[。、，．,.!?！？…]")
+
+
+def _expression_is_word_like(expression: str) -> bool:
+    """Could this Expression be a single mined word?
+
+    Rejects whitespace, sentence punctuation and anything longer than
+    ``MAX_EXPRESSION_CHARS`` (the deck's clause-mined cards, e.g.
+    漢字は読めるようになりたいかな). Long legitimate words (ベーコン
+    チーズバーガー, 11 chars) are skipped too — reported downstream, never
+    guessed.
+    """
+    text = (expression or "").strip()
+    if not text:
+        return False
+    if any(ch.isspace() for ch in text):
+        return False
+    if _CLAUSE_PUNCT_RE.search(text):
+        return False
+    return len(text) <= MAX_EXPRESSION_CHARS
+
+
+def _is_listening(target: NoteRecord) -> bool:
+    """The template's audio-only front — both paths (BULK_FIX.md).
+
+    Verified against the card template 2026-11-16: the front removes the
+    sentence views when (a) a ``listening`` tag token comes with usable
+    audio (``Sentence Audio`` or ``Word Audio``), or (b) ``Definition``,
+    ``Extended definition`` and ``Frequency`` are all empty while
+    ``Sentence Audio`` is present (the legacy audio-only shape). Frequency
+    without glosses is deliberately NOT listening — the template shows the
+    normal sentence there.
+    """
+    tag = "listening" in {t.lower() for t in target.tags}
+    sentence_audio = target.get("Sentence Audio")
+    word_audio = target.get("Word Audio")
+    if tag and not (is_empty(sentence_audio) and is_empty(word_audio)):
+        return True
+    return (
+        is_empty(target.get("Definition"))
+        and is_empty(target.get("Extended definition"))
+        and is_empty(target.get("Frequency"))
+        and not is_empty(sentence_audio)
+    )
+
 
 def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | None, str | None]:
     """Locate the tested word in a bold-less ``Sentence``; markup-only fix.
@@ -236,12 +287,17 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
     template keys on it (accent highlight — and its cloze-fallback rebuilds
     the front from cloze-* exactly when no bold term exists). Cards whose
     cloze-* hold dictionary-entry text (mining bug) have no bold; the word
-    may still occur as a different surface form.
+    may still occur as a different surface form. Listening cards (audio-only
+    front) are skipped: nothing displays the sentence.
 
-    Tier 1: the cloze body occurs exactly once. Tier 2 (only when the body
-    never occurs): a mixed-kana spelling derived from (Expression, reading)
-    occurs exactly once. Ambiguity — more than one occurrence, or several
-    candidates — is never resolved by guessing.
+    Tier 1: the cloze body occurs exactly once. Tier 2: the Expression
+    itself occurs verbatim exactly once (the mined word is missing from
+    cloze-*). Tier 3: a mixed-kana spelling derived from (Expression,
+    reading) occurs exactly once (鬱病 -> うつ病). Tiers 2–3 require a
+    word-like Expression (:func:`_expression_is_word_like`): a clause-like
+    value such as 漢字は読めるようになりたいかな is reported
+    (``expression-looks-like-a-clause``), never bolded. Ambiguity — more
+    than one occurrence — is never resolved by guessing.
 
     Returns ``(write, reason, detail)``: the write is markup-only
     (``strip_renderable`` equality is verified before it is returned);
@@ -251,14 +307,54 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
     # <br> must not read as a bold tag: match <b>/<b attrs>/<strong only.
     if is_empty(sentence) or _BOLD_TAG_RE.search(sentence):
         return None, None, None
+    if _is_listening(target):
+        return None, None, None
     body = strip_renderable(target.get("cloze-body")).strip()
-    if not body:
-        return None, None, None  # nothing was mined: the convention cannot apply
-    count = sentence.count(body)
-    if count > 1:
-        return None, "cloze-word-ambiguous", f"cloze word '{body}' occurs {count} times"
-    if count == 1:
-        new_value = _wrap_first_occurrence(sentence, body)
+    expr = strip_renderable(target.get("Expression")).strip()
+
+    # Tier 1: the mined word (cloze body) occurs exactly once.
+    if body:
+        count = sentence.count(body)
+        if count > 1:
+            return None, "cloze-word-ambiguous", f"cloze word '{body}' occurs {count} times"
+        if count == 1:
+            new_value = _wrap_first_occurrence(sentence, body)
+            if new_value is not None and strip_renderable(new_value) == strip_renderable(sentence):
+                write = PlannedWrite(
+                    note_id=target.note_id,
+                    field="Sentence",
+                    op=OP_BOLD_CLOZE_WORD,
+                    old_value=sentence,
+                    new_value=new_value,
+                    default_checked=True,
+                    badges=("bold-added-to-cloze-word",),
+                )
+                return write, None, None
+            return (
+                None,
+                "cloze-word-not-in-sentence",
+                f"cloze word '{body}' has no anchor outside HTML markup",
+            )
+
+    # Tiers 2–3 speak for the Expression and must never bold a clause.
+    if not expr:
+        return None, None, None
+    if not _expression_is_word_like(expr):
+        if sentence.count(expr) == 1:
+            return (
+                None,
+                "expression-not-word-like",
+                f"expression '{expr}' is not word-like enough to bold"
+                " (a clause or over-long) — left alone",
+            )
+        return None, None, None
+
+    # Tier 2: the Expression itself occurs verbatim exactly once.
+    verbatim = sentence.count(expr)
+    if verbatim > 1:
+        return None, "cloze-word-ambiguous", f"expression '{expr}' occurs {verbatim} times"
+    if verbatim == 1:
+        new_value = _wrap_first_occurrence(sentence, expr)
         if new_value is not None and strip_renderable(new_value) == strip_renderable(sentence):
             write = PlannedWrite(
                 note_id=target.note_id,
@@ -267,16 +363,11 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
                 old_value=sentence,
                 new_value=new_value,
                 default_checked=True,
-                badges=("bold-added-to-cloze-word",),
+                badges=("bold-added-to-expression",),
             )
             return write, None, None
-        return (
-            None,
-            "cloze-word-not-in-sentence",
-            f"cloze word '{body}' has no anchor outside HTML markup",
-        )
-    # The cloze body never occurs (dictionary-entry junk): try the
-    # reading-derived surface forms.
+
+    # Tier 3: reading-derived mixed-kana surface forms.
     hits = [
         (cand, sentence.count(cand))
         for cand in _mixed_form_candidates(target.get("Expression"), target.get("reading"))
@@ -297,14 +388,19 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
                 badges=("bold-added-to-surface-form",),
             )
             return write, None, None
-    if not hits:
-        return (
-            None,
-            "cloze-word-not-in-sentence",
-            f"cloze word '{body}' and its reading-derived forms never occur in it",
-        )
-    listed = ", ".join(f"'{cand}' ×{n}" for cand, n in sorted(hits))
-    return None, "cloze-word-ambiguous", f"surface-form candidates: {listed}"
+    if hits:
+        listed = ", ".join(f"'{cand}' ×{n}" for cand, n in sorted(hits))
+        return None, "cloze-word-ambiguous", f"surface-form candidates: {listed}"
+    # Expression absent (inflected or a mis-mine): silent when nothing was
+    # mined — the expected, documented class-C outcome (BULK_FIX slice 8) —
+    # and a reported anomaly when the cloze body was present but junk.
+    if not body:
+        return None, None, None
+    return (
+        None,
+        "cloze-word-not-in-sentence",
+        f"cloze word '{body}' and its reading-derived forms never occur in it",
+    )
 
 
 def _sentence_repair_write(

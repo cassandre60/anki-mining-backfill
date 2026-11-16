@@ -329,6 +329,100 @@ def test_bold_repair_skipped_when_expansion_queued():
     assert not any("no bold in Sentence" in w for w in plan.warnings)
 
 
+# --- bold from expression (BULK_FIX.md dimension 6, slice shipped part) ------
+
+
+def test_bold_repair_uses_the_expression_when_the_cloze_body_is_missing():
+    # The mined fragment is junk or missing; the Expression itself occurs
+    # once in the sentence — bold it (前人未到-shaped card).
+    f = dict(CHILD.fields)
+    f["Expression"] = "前人未到"
+    f["reading"] = "ぜんじんみとう"
+    f["furigana"] = ""
+    f["cloze-prefix"] = ""
+    f["cloze-body"] = ""
+    f["cloze-suffix"] = ""
+    f["Sentence"] = "ついに 前人未到の世界一周を<br>達成した。"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(bold) == 1
+    assert "<b>前人未到</b>" in bold[0].new_value
+    assert "bold-added-to-expression" in bold[0].badges
+    assert strip_renderable(bold[0].new_value) == strip_renderable(bold[0].old_value)
+
+
+def test_bold_repair_refuses_a_clause_like_expression():
+    # The invalid card: the Expression field holds a whole clause that also
+    # occurs verbatim in the sentence — bolding it would mask the sentence.
+    f = dict(CHILD.fields)
+    f["Expression"] = "漢字は読めるようになりたいかな"
+    f["reading"] = ""
+    f["furigana"] = ""
+    f["cloze-prefix"] = ""
+    f["cloze-body"] = ""
+    f["cloze-suffix"] = ""
+    f["Sentence"] = "漢字は読めるようになりたいかな<br>漢字読めないの?"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert any("not word-like enough" in w for w in plan.warnings)
+
+
+def test_bold_repair_skips_an_over_long_word_expression():
+    # The gate is conservative: a long legitimate word is skipped too, not
+    # guessed (reported only when it occurs verbatim).
+    f = dict(CHILD.fields)
+    f["Expression"] = "ベーコンチーズバーガー"
+    f["reading"] = ""
+    f["furigana"] = ""
+    f["cloze-prefix"] = ""
+    f["cloze-body"] = ""
+    f["cloze-suffix"] = ""
+    f["Sentence"] = "ベーコンチーズバーガーをください"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert any("not word-like enough" in w for w in plan.warnings)
+
+
+def test_bold_repair_skips_a_listening_tag_card():
+    # The template's tag path: listening + usable audio hides the sentence.
+    f = dict(CHILD.fields)
+    f["Sentence"] = "先生は今 診察中ですので"
+    f["Sentence Audio"] = " [sound:scene.webm] "
+    c = rec(CHILD.note_id, f, tags=("yomitan", "listening"))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+
+
+def test_bold_repair_skips_the_no_gloss_listening_shape():
+    # The template's shape path: no Definition/Extended definition/Frequency
+    # and Sentence Audio present -> audio-only front, nothing to bold.
+    f = dict(CHILD.fields)
+    f["Sentence"] = "先生は今 診察中ですので"
+    f["Definition"] = ""
+    f["Extended definition"] = ""
+    f["Frequency"] = ""
+    f["Sentence Audio"] = " [sound:scene.webm] "
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+
+
+def test_frequency_without_glosses_is_not_listening():
+    # The template deliberately shows the normal sentence for those cards.
+    f = dict(CHILD.fields)
+    f["Sentence"] = "先生は今 診察中ですので"
+    f["Definition"] = ""
+    f["Extended definition"] = ""
+    f["Sentence Audio"] = " [sound:scene.webm] "
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(bold) == 1
+
+
 def test_scope_from_selection_preserves_order_and_dedupes():
     # The Browser selection is a list of note ids; its order is the user's.
     scope, unknown = scope_from_selection([3, 1, 3, 9], {1, 2, 3})
@@ -455,16 +549,17 @@ def test_a_configured_repair_emits_a_checked_write_with_rule_badges():
             "reading": "みだし",
             "furigana": "",
             "cloze-body": "",
-            "Sentence": "あしたの朝刊の見出しは<br>こうニャ！➡",
+            "Sentence": "あしたの朝刊の<b>見出し</b>は<br>こうニャ！➡",
         },
     )
     plan = build_plan([target], REPAIR_CFG, scope_note_ids=[1])
-    assert len(plan.writes) == 1
-    write = plan.writes[0]
+    repair_writes = [w for w in plan.writes if w.op == OP_REPAIR_SENTENCE]
+    assert len(repair_writes) == 1
+    write = repair_writes[0]
     assert write.op == OP_REPAIR_SENTENCE
     assert write.field == "Sentence"
-    assert write.new_value == "あしたの朝刊の見出しは<br>こうニャ！"
-    assert write.old_value == "あしたの朝刊の見出しは<br>こうニャ！➡"
+    assert write.new_value == "あしたの朝刊の<b>見出し</b>は<br>こうニャ！"
+    assert write.old_value == "あしたの朝刊の<b>見出し</b>は<br>こうニャ！➡"
     assert write.default_checked is True
     assert write.badges == ("strip-arrows",)
 

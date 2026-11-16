@@ -32,10 +32,14 @@ and covered by tests, not just intended:
    - Bold markup repair (`bold_cloze_word`): when a card's `Sentence` has
      no bold term at all (its cloze-* hold dictionary-entry text instead
      of the subtitle span), the tested word is wrapped in `<b>` — but only
-     when it occurs exactly once, either verbatim or as a reading-derived
+     when it occurs exactly once, either verbatim from `cloze-body`,
+     verbatim from the `Expression` itself, or as a reading-derived
      surface form (鬱病 + うつびょう → うつ病). Markup-only: the rendered
      text is identical, verified per write. Two occurrences = never
-     guessed, reported as a warning instead.
+     guessed, reported as a warning instead. Expressions that look like a
+     whole clause (漢字は読めるようになりたいかな) are refused with a
+     reason — never bolded — and audio-only listening cards are skipped
+     (their front hides the sentence).
    - Sentence noise repair (`repair_sentence`): an opt-in rewrite of the
      card's own `Sentence` that removes the subtitle's line-tail
      continuation arrows (`➡`). Line breaks (`<br>`) and spacing are kept

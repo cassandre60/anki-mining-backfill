@@ -45,6 +45,15 @@ not have and must never be given.
   with rule badges, off without rules, exclusivity with expansion/bold,
   tested-word occurrence guard, unknown-rule warning) and
   `tests/test_batch.py` (the opt-in `batch_repair_sentence` tier).
+- **Bold repair** (template contract) is pinned in `tests/test_plan.py`:
+  the three tiers (cloze-body, Expression verbatim, reading-derived
+  surface form), exactly-one occurrence, markup-only verification,
+  ambiguity reported, the word-like gate (a clause-like Expression such
+  as 漢字は読めるようになりたいかな is refused with
+  `expression-not-word-like`; an over-long word is skipped too), and the
+  listening predicate (tag + audio; no-gloss/no-frequency/audio shape;
+  Frequency-without-glosses still repaired). The shipped-class/left-alone
+  split comes from the 2026-11-16 census (BULK_FIX slice 8).
 - **Furigana regeneration** (bulk-fix dimension 3) is pinned in
   `tests/test_normalize.py` (`furigana_base_matches`: whitespace and the
   engine's spacing quirks, speaker brackets, mangled/unbalanced output

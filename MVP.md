@@ -17,7 +17,7 @@ the collection never touched by anything the dialog did not show.
 |---|---|---|
 | Scene completion (full sentence, furigana, audio, picture, timestamped source) | `matching.find_scene_parents`, `plan._scene_writes_for` | golden fixture, byte-exact |
 | Word backfill (`Definition`, `Extended definition`, `Pitch Accent`, `Frequency`, `Word Audio`, `furigana`, `reading`) | `matching.word_groups`, `plan._word_writes_for` | unit tests + real-collection run |
-| Bold repair when `Sentence` has no bold term | `plan._bold_repair_for` | 鬱病 verified end to end |
+| Bold repair when `Sentence` has no bold term (cloze-body → Expression verbatim → surface form; clause-like Expressions refused, listening cards skipped) | `plan._bold_repair_for`, `plan._expression_is_word_like`, `plan._is_listening` | 鬱病 verified end to end; 2026-11-16 census classified 2,136 no-bold cards |
 | Subtitle-noise repair (line-tail arrows; `<br>`/padding kept as mined) — off by default | `normalize.repair_sentence`, `plan._sentence_repair_write`, `batch.py` tier | `tests/test_normalize.py`, `test_plan.py`, `test_batch.py`; Ring 3 diff pending |
 | Furigana regeneration through Japanese Support — off by default | `normalize.furigana_base_matches`, `plan._furigana_write_for`, `collection_io.japanese_support_furigana_generator`, `batch.py` tier | `tests/test_normalize.py`, `test_plan.py`, `test_batch.py`; Ring 3 battery pending |
 | Dimension picker in the batch window (scene / arrows / furigana checkboxes) | `batch.dimension_flags`, `batch.cfg_for_dimensions`, `batch_dialog.BatchDialog` | `tests/test_batch.py`, `test_plan.py` (scene-off gate); Ring 3 battery pending |

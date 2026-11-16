@@ -219,6 +219,15 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   4 with an empty `Expression`. Recorded in BULK_FIX.md dimension 6 /
   slice 8.
   Verified by: the census query's per-class counts.
+- [2026-11-16, OpenCode] Bold repair now has three tiers — cloze-body,
+  Expression verbatim, reading-derived surface form — each requiring one
+  occurrence; expression-derived tiers are gated by a word-like check
+  (whitespace/punctuation/length ≤ 10) and by the template's listening
+  predicate (`plan._is_listening`). Clause-like Expressions are reported
+  as `expression-not-word-like`, never bolded; class-C cards
+  (inflected/mis-mined, 278) stay silent when nothing was mined.
+  Verified by: `tests/test_plan.py` bold-repair tests + the 2026-11-16
+  census.
 
 ## Lessons Learned
 
