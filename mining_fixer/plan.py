@@ -604,20 +604,26 @@ def _expression_repair_for(
     )
 
 
-def _empty_glossary_writes(target: NoteRecord, cfg: dict) -> list[PlannedWrite]:
+def _empty_glossary_writes(
+    target: NoteRecord, cfg: dict, filled_fields: set[str]
+) -> list[PlannedWrite]:
     """Clear definition fields holding nothing but empty container markup.
 
     Owner ask 2026-11-16: `Definition` / `Extended definition` show shells
     like ``<div class="yomitan-glossary"><ol></ol></div>`` when the mined
-    dictionary entry had no body. The guard is pure and absolute
+    dictionary entry had no body. When a sibling value exists the *fill*
+    handles the field in the same run (it writes through the shell); this op
+    is the fallback for a shell with nothing to fill it with.
+
+    The guard is pure and absolute
     (:func:`normalize.is_empty_glossary_shell`): any media or visible text
-    means no write, so a real definition is never touched. Clearing also
-    unblocks the word-fill, which treats markup-only content as occupied
-    (QUALITY Q-D1) — that fill lands on the next run.
+    means no write, so a real definition is never touched.
     """
     fields = tuple(cfg.get("definition_fields", ("Definition", "Extended definition")))
     out: list[PlannedWrite] = []
     for name in fields:
+        if name in filled_fields:
+            continue
         value = target.get(name)
         if not is_empty_glossary_shell(value):
             continue
@@ -737,6 +743,19 @@ def _scene_writes_for(
             )
             if bold_badge:
                 badges.append(bold_badge)
+            # Repair the text the expansion writes: the parent's subtitle dump
+            # may carry line-tail arrows, and leaving them in means the very
+            # next run has work to do — a card must be fixed in one run
+            # (owner critique 2026-11-16). Same rules, same guard as the
+            # in-place repair.
+            repair_rules = tuple(
+                rule for rule in cfg.get("sentence_repair_rules", ()) if rule in REPAIR_RULES
+            )
+            if repair_rules:
+                repaired, applied_rules = repair_sentence(new_sentence, repair_rules)
+                if applied_rules:
+                    new_sentence = repaired
+                    badges += tuple(f"expanded-{rule}" for rule in applied_rules)
             child_furigana = candidate.get("Sentence (furigana)")
             if not is_empty(child_furigana):
                 if not is_empty(parent_furigana):
@@ -838,8 +857,17 @@ def _word_writes_for(
     writes: list[PlannedWrite] = []
     guard = singleton_kanji_guard(candidate, groups)
     sense_fields = {"Definition", "Extended definition"}
+    definition_fields = set(cfg.get("definition_fields", ("Definition", "Extended definition")))
     for fname in cfg.get("word_fill_fields", ()):
-        if fname in FIELD_NEVER_COPY or not is_empty(candidate.get(fname)):
+        if fname in FIELD_NEVER_COPY:
+            continue
+        current = candidate.get(fname)
+        # A definition field holding only empty container markup renders as
+        # nothing (the Yomitan `<ol></ol>` shell): the fill goes *through* it
+        # in the same run, so one run fixes the card and a second run is a
+        # no-op (the check below proves it).
+        through_shell = fname in definition_fields and is_empty_glossary_shell(current)
+        if not is_empty(current) and not through_shell:
             continue
         src = best_word_source(fname, candidate, group)
         if src is None:
@@ -850,6 +878,8 @@ def _word_writes_for(
             continue
         if fname in ("Pitch Accent", "Frequency"):
             badges.append("dictionary-version-may-differ")
+        if through_shell:
+            badges.append("filled-through-empty-shell")
         if src.provenance:
             badges.append("yomitan-gloss")
         elif src.consensus >= 2:
@@ -867,7 +897,7 @@ def _word_writes_for(
                 note_id=candidate.note_id,
                 field=fname,
                 op=OP_FILL,
-                old_value="",
+                old_value=current if through_shell else "",
                 new_value=src.value,
                 source_note_id=src.record.note_id,
                 default_checked=default_checked,
@@ -1020,9 +1050,6 @@ def build_plan(
             reasons[target.note_id] = "opted-out"
             continue
         target_writes: list[PlannedWrite] = []
-        # Empty-glossary cleanup first: it removes invisible shells that
-        # would otherwise count as occupied and block a later word-fill.
-        target_writes.extend(_empty_glossary_writes(target, cfg))
         scene_writes, reason = [], None
         has_scene_gap = scene_dimension and (
             any(
@@ -1067,10 +1094,19 @@ def build_plan(
             group = groups.get(key, [])
             if len(group) > 1:
                 target_writes.extend(_word_writes_for(target, group, groups, cfg))
+        # Empty-glossary shells with nothing to fill them are cleared; a shell
+        # that a word-fill already wrote through is skipped (one field, one
+        # applied row, one run).
+        target_writes.extend(
+            _empty_glossary_writes(
+                target, cfg, {w.field for w in target_writes if w.default_checked}
+            )
+        )
         # Expression spelling repair (dimension 4, self-oracled). Deferred
         # while a word-level write is queued: those values come from the old
         # spelling's word group, and the rewrite must not land in the same
-        # run as them (F2 risk 4) — the next run picks it up.
+        # run as them (F2 risk 4) — a deliberate second-run step for that pair
+        # (the only remaining one: everything else here is single-run).
         if expression_tier and not any(w.field in word_fields for w in target_writes):
             repair_expr_write, repair_expr_reason, repair_expr_detail = _expression_repair_for(
                 target

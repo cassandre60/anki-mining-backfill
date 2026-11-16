@@ -5,7 +5,7 @@ from __future__ import annotations
 from test_golden_scene import CFG, CHILD, CHILD_ID, PARENT, PARENT_ID
 
 from mining_fixer.matching import NoteRecord
-from mining_fixer.normalize import strip_renderable
+from mining_fixer.normalize import is_empty_glossary_shell, strip_renderable
 from mining_fixer.plan import (
     FURIGANA_FIELD,
     OP_ADD_TAGS,
@@ -41,10 +41,15 @@ def test_plan_version_and_determinism():
 
 
 def test_never_overwrite_invariant():
+    # A fill writes into a field that renders as nothing: empty, or only
+    # empty container markup (the Yomitan shell, QUALITY Q-D13).
     plan = build_plan([PARENT, CHILD], CFG, scope_note_ids=[CHILD_ID])
     for w in plan.writes:
         if w.op == OP_FILL:
-            assert w.old_value == "", (w.field, w.new_value)
+            assert w.old_value == "" or is_empty_glossary_shell(w.old_value), (
+                w.field,
+                w.new_value,
+            )
 
 
 def test_replaces_only_approved_ops():
@@ -820,6 +825,81 @@ def test_regeneration_is_dropped_when_the_engine_raises():
 # --- empty-definition cleanup (QUALITY Q-D12, owner ask 2026-11-16) ----------
 
 JUNK_SHELL = '<div style="text-align: left;" class="yomitan-glossary"><ol></ol></div>'
+
+
+def test_expansion_cleans_the_copied_sentence_in_the_same_write():
+    # One run, one fix: the parent's dump may carry a tail arrow, so the
+    # expansion cleans what it writes. A second run must find nothing.
+    cfg = {**CFG, "sentence_repair_rules": ["strip-arrows"]}
+    child = scene(10_000_000, "先生は今 診察中ですので", **CHILD_SCENE)
+    parent = scene(10_000_000 + 60_000, "それでは 先生は今 診察中ですので お待ちください➡")
+    plan = build_plan([child, parent], cfg, scope_note_ids=[child.note_id])
+    rows = [w for w in plan.writes if w.note_id == child.note_id and w.op == OP_EXPAND_SENTENCE]
+    assert rows
+    assert "➡" not in rows[0].new_value
+    assert "expanded-strip-arrows" in rows[0].badges
+
+    applied = dict(child.fields)
+    applied["Sentence"] = rows[0].new_value
+    again = build_plan(
+        [rec(child.note_id, applied, tags=("asbplayer",)), parent],
+        cfg,
+        scope_note_ids=[child.note_id],
+    )
+    assert not [
+        w for w in again.writes if w.note_id == child.note_id and w.op == OP_EXPAND_SENTENCE
+    ]
+
+
+def test_a_shell_definition_is_filled_in_the_same_run_and_then_is_a_noop():
+    # One run fixes the card: the fill writes *through* the junk shell. A
+    # second run must have nothing left to do.
+    shell = '<div class="yomitan-glossary"><ol></ol></div>'
+    good = '<div class="yomitan-glossary"><ol><li>いっぱく【一白】しろい着物</li></ol></div>'
+    target = rec(
+        1,
+        {
+            **scene(1, "先生は今 診察中ですので", body="一白").fields,
+            "Definition": shell,
+            "cloze-body": "一白",
+        },
+    )
+    sibling = rec(
+        2,
+        {
+            **scene(2, "先生は今 診察中ですので", body="一白").fields,
+            "Definition": good,
+            "cloze-body": "一白",
+        },
+        tags=("yomitan",),
+    )
+    cfg = {**CFG, "definition_fields": ["Definition", "Extended definition"]}
+    plan = build_plan([target, sibling], cfg, scope_note_ids=[1])
+    fills = [
+        w for w in plan.writes if w.note_id == 1 and w.op == OP_FILL and w.field == "Definition"
+    ]
+    assert len(fills) == 1
+    assert fills[0].old_value == shell
+    assert fills[0].new_value == good
+    assert "filled-through-empty-shell" in fills[0].badges
+    assert not [w for w in plan.writes if w.note_id == 1 and w.op == OP_STRIP_EMPTY_GLOSSARY]
+
+    # Idempotence: the card the plan leaves behind has nothing left to fix.
+    applied = dict(target.fields)
+    applied["Definition"] = good
+    second = build_plan([rec(1, applied), sibling], cfg, scope_note_ids=[1])
+    assert not [w for w in second.writes if w.note_id == 1 and w.field == "Definition"]
+
+
+def test_a_shell_with_nothing_to_fill_is_cleared():
+    shell = '<div class="yomitan-glossary"><ol></ol></div>'
+    f = dict(CHILD.fields)
+    f["Definition"] = shell
+    f["Sentence"] = "先生は今 診察中ですので"
+    plan = build_plan([rec(1, f)], CFG, scope_note_ids=[1])
+    clears = [w for w in plan.writes if w.op == OP_STRIP_EMPTY_GLOSSARY and w.field == "Definition"]
+    assert len(clears) == 1
+    assert clears[0].new_value == ""
 
 
 def test_an_empty_definition_shell_is_cleared():

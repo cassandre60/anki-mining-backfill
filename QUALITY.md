@@ -7,9 +7,12 @@ first, with the reason.
 
 ## Data safety
 
-- **Q-D1 — Fills only touch empty fields.** A field with any non-whitespace
-  content is never written by a `fill`; markup-only values like `<hr>` count
-  as occupied.
+- **Q-D1 — Fills only touch fields that render as nothing.** A field with
+  visible content is never written by a `fill`; markup-only values like
+  `<hr>` count as occupied. One exception, guarded by a pure predicate
+  (Q-D13): a *definition* field holding only empty container markup — the
+  Yomitan `<ol></ol>` shell — is treated as empty, so the fill replaces the
+  shell in one run.
 - **Q-D2 — Eight approved non-empty writes, each information-preserving.**
   `replace_source` (blob URL is logged), `expand_sentence` (fragment survives
   in `cloze-*`), `bold_cloze_word` (rendered text unchanged),
@@ -111,15 +114,21 @@ first, with the reason.
   and every rewrite is previewed old → new and undone from the run log
   like every other write.
 
-- **Q-D13 — An empty definition shell may be cleared.** The
+- **Q-D13 — A definition that renders as nothing may be rewritten.** The
   `strip_empty_glossary` op clears a definition field only when it holds
   nothing but empty container markup (the Yomitan `<ol></ol>` shell) — the
   rendered text is empty before and after, so nothing is lost. Any media
   (`[sound:...]`, `<img>`, `[anki:...]`) or any visible character means no
   write: a real definition is never touched
-  (`normalize.is_empty_glossary_shell`, pure). Clearing also unblocks the
-  word-fill, which treats markup-only content as occupied (Q-D1) — that
-  fill lands on the next run.
+  (`normalize.is_empty_glossary_shell`, pure).
+
+  A definition field in that state is also **fillable in the same run**: the
+  word-fill writes *through* the shell (`old_value` = the shell,
+  `filled-through-empty-shell` badge), so one run fixes the card — the shell
+  is gone and the real definition is in — and a second run is a no-op
+  (owner requirement, 2026-11-16: "it should run on a card once, fix it").
+  `strip_empty_glossary` remains the fallback for a shell with no sibling
+  value to fill it with, and leaves the field empty for a later fill.
 
 ## Correctness of decisions
 

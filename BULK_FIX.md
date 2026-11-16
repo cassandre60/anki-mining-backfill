@@ -90,8 +90,9 @@ dimensions read the output of earlier ones:
 ```text
 discover source cards          (audio + picture + full sentence + timestamped Source)
    │
-repair source Sentence         (dimension 2 — deterministic text rules)
-   │
+repair source Sentence         (dimension 2 — deterministic text rules; a scene
+   │                            expansion also cleans the text it copies, so the
+   │                            arrow never travels from parent to child)
 regenerate source furigana     (dimension 3 — Japanese Support, on repaired text)
    │
 propagate source → children    (dimension 1 — the shipped scene matcher)
