@@ -115,7 +115,8 @@ def main() -> int:
         return reason_text(str(plan.reasons.get(note_id, "already complete")))
 
     print(
-        f"newest {len(newest)} cards: {len(fixed)} fixed by a run, {len(newest) - len(fixed)} not"
+        f"newest {len(newest)} cards: a run would change {len(fixed)}, "
+        f"leave {len(newest) - len(fixed)} (complete or explained below)"
     )
     print("(furigana regeneration runs only inside Anki and is not counted here)\n")
     for note in newest:
