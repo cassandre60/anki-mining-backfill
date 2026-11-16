@@ -140,6 +140,16 @@ below, never as silent scope creep inside a coding session.
   a new opt-in policy tier (it rewrites a non-empty source field) and a
   "source changed since this card was filled" check for already-filled
   children.
+- **B8 — Bold from expression** (owner ask 2026-11-16; design in
+  [`BULK_FIX.md`](BULK_FIX.md) dimension 6 / slice 8): non-listening cards
+  whose `Sentence` has no bold term get the expression's occurrence bolded,
+  including an inflected surface (読む → 読め). The listening predicate is
+  template-defined (tag + usable audio, or no glosses/no Frequency with
+  `Sentence Audio`). Two oracles need a decision first: clause-vs-word
+  detection for the Expression (the card whose Expression is
+  漢字は読めるようになりたいかな must stay invalid) and inflection matching.
+  Note the shipped `bold_cloze_word` surface-form tier can still bold a
+  clause-like expression today — the same gate must close that gap.
 - **B2 — Rendered card preview.** Render each row's real front/back HTML
   (Anki's card rendering API) in a side pane, so a reviewer sees the card as
   the template shows it rather than as field values.

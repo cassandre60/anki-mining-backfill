@@ -129,6 +129,7 @@ later. Status is one of *shipped*, *documented* (no code yet).
 | Sentence repair: remove continuation arrows, fix spacing and line breaks so the text coheres with the audio | `BULK_FIX.md` dimension 2, this file §F1 | documented (slice 1) |
 | Generate furigana **after** the sentence is fixed, through the installed Japanese Support add-on | `BULK_FIX.md` dimension 3, this file §F1 | documented (slice 2) |
 | Fix the expression itself: inflections, expressions written partly in kana where the kanji form exists | `BULK_FIX.md` dimension 4 | documented (slice 4) |
+| Cards with no bold term in `Sentence` (non-listening): bold the expression's inflected occurrence — 前人未到 is a valid target, 漢字は読めるようになりたいかな is not | `BULK_FIX.md` dimension 6 + slice 8 (census 2026-11-16) | documented |
 | Indentation / formatting | `BULK_FIX.md` dimension 5 | documented (slice 5) |
 | Apply to other decks when they are selected | `BULK_FIX.md` §Scope and profiles | targets shipped; sources still limited to the configured deck |
 | Apply to other languages (Chinese, …) and other note types | `BULK_FIX.md` §Scope and profiles, slice 6 | documented (profile abstraction) |

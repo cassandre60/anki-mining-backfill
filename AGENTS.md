@@ -201,6 +201,24 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   MeCab. Feed it the post-write Sentence (repair first), not the mined one.
   Verified by: reading the installed add-on's `reading.py` and the regen
   tests in `tests/test_plan.py`.
+- [2026-11-16, OpenCode] "Listening card" is template behaviour, not a
+  template: the mining note type has one template (`Card 1`) whose front
+  goes audio-only (sentence views removed) when either path fires —
+  (a) a `listening` tag token AND usable audio (`Sentence Audio` or
+  `Word Audio`), or (b) no `Definition`, no `Extended definition`, no
+  `Frequency`, and `Sentence Audio` present. `Frequency` without glosses is
+  deliberately NOT listening (the template shows the normal sentence).
+  Verified by: the template's qfmt HTML/JS read from the collection
+  (read-only) on 2026-11-16.
+- [2026-11-16, OpenCode] No-bold census (mining note type, 17,642 notes,
+  one read-only query): 2,136 `Sentence` fields have no `<b>` — 307 empty
+  (kanji-only cards), 3 tag-listening + 240 no-gloss listening shape,
+  828 fixable by the shipped bold repair today (`cloze-body` occurs once),
+  475 expression-verbatim word-like, 1 clause-like expression (must stay
+  invalid), 278 inflection/mis-mine cases (読む→読め, 寒い→寒くなかった),
+  4 with an empty `Expression`. Recorded in BULK_FIX.md dimension 6 /
+  slice 8.
+  Verified by: the census query's per-class counts.
 
 ## Lessons Learned
 

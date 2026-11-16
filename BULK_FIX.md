@@ -40,6 +40,7 @@ stays off by default until it is proven on a real collection**.
 | 3 | Furigana generation | **shipped, off by default** | rebuild `Sentence (furigana)` from the note's own post-write sentence | runs *after* repair in one plan; `reading.mecab.reading` of Japanese Support (installed, id 3918629684) — never a home-grown generator; base-text guard + engine-failure reasons |
 | 4 | Expression repair | **future** | fix inflections; repair an expression written partly in kana when the kanji form exists | needs a per-expression oracle; ambiguity reported, never guessed |
 | 5 | Indentation / formatting | **future** | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
+| 6 | Bold from expression | **future** | on **non-listening** cards whose `Sentence` has no bold term, bold the expression's occurrence — including an inflected surface (読む → 読め, 寒い → 寒くなかった) | expression must look like a word (clause-like expressions such as 漢字は読めるようになりたいかな are rejected); occurrence must be unique; ambiguity reported, never guessed; listening predicate mirrors the card template (see below) |
 
 Dimension 1 is what `batch.py` + `collection_io.apply_batch` ship today.
 Dimensions 2 and 3 have code (`normalize.repair_sentence` /
@@ -49,6 +50,27 @@ Dimensions 2 and 3 have code (`normalize.repair_sentence` /
 `batch_regenerate_furigana: false`) until their Ring 3 battery on a copy; the
 remaining dimensions are on the backlog (B6 the source-first pipeline, B7
 this vision); none has code yet, and none will ship enabled by default.
+
+## Listening cards (template-defined)
+
+"Listening card" is behaviour, not a card template: the configured note type
+has one template (`Card 1`), and the template renders an audio-only front
+(removing the sentence views) under **either** of two paths — verified
+against the template's own HTML/JS on 2026-11-16:
+
+1. **Tag path** — a `listening` tag (matched as a token, case-insensitive)
+   **and** usable audio (a non-empty `Sentence Audio` or `Word Audio`
+   reference). No audio → the tag falls back to the normal sentence front.
+2. **Shape path** — `Definition` empty **and** `Extended definition` empty
+   **and** `Frequency` empty **and** `Sentence Audio` non-empty (the
+   template's "legacy audio-only shape"; 240 cards in the no-bold set are
+   this shape, e.g. subtitle-mined cards with audio and no glosses).
+   `Frequency` present without glosses is **not** listening — the template
+   deliberately shows the normal sentence for those.
+
+Dimensions that only matter for a visible sentence (bold repair, arrows)
+must skip both paths; the furigana dimension likewise rebuilds ruby nothing
+displays on a listening front.
 
 ## Ordering (the DAG)
 
@@ -248,6 +270,51 @@ proof.
   (thousands of notes); a million-card selection would need a cheaper
   filter instead of a rebuild.
 
+### Slice 8 — Bold from expression (dimension 6)
+
+- **Goal.** On non-listening cards whose `Sentence` carries no bold term,
+  bold the expression's occurrence — including an inflected surface — so
+  the template's bold contract holds (a bold-less card falls back to
+  rebuilding the front from `cloze-*`, which is often dictionary junk).
+  Valid target: 前人未到 (note 1765488893499). Invalid: 漢字は読めるように
+  なりたいかな (note 1765827911573 — a whole clause sat in the Expression
+  field; card is also suspended).
+- **Evidence (census 2026-11-16, the mining note type, 17,642 notes).**
+  2,136 notes have no bold term. Of those: 307 have an empty `Sentence`
+  (kanji-only cards — nothing to bold), 3 are tag-listening and 240 are the
+  template's no-gloss/no-frequency/audio shape (excluded), **828 are
+  fixable by the existing `bold_cloze_word` repair today** (the
+  `cloze-body` occurs exactly once), **475 are class B** (the expression
+  itself occurs verbatim, word-like — the safe new core), 1 is a
+  clause-like expression that occurs verbatim (must stay invalid; today's
+  surface-form tier could bold it — a guard gap in the shipped repair),
+  and **278 are class C** (expression absent verbatim — real inflections
+  such as 読む→読め, 寒い→寒くなかった, 甘い→甘くて, 知る→知り, plus
+  mis-mined cards like 三人→3人).
+- **Modules.** `normalize.py` (a clause-vs-word gate), `plan.py`
+  (expression-based bold pass, plus the clause guard on the existing bold
+  repair), the listening predicate (tag-or-shape, both paths from the
+  template), `batch.py` tier.
+- **Acceptance.** Pinned fixture: 前人未到 gets its expression bolded;
+  the clause card is rejected with a reason; listening cards (either path)
+  are skipped; exactly-one-occurrence is required; every write stays
+  markup-only (`strip_renderable` equality); the Ring 3 battery adds two
+  class cards (expression-verbatim, listening-shape).
+- **Risks.**
+  - **Inflection matching has no shipped oracle.** Options: (a) ask the
+    integrated Japanese Support MeCab for token lemmas (their bundled
+    binary with a lemma format — "its engine", but a second wrapper), or
+    (b) a conservative rule (strip the final okurigana from the
+    expression and require stem + kana to match exactly once), or (c)
+    ship class B only and report class C. Decide before coding.
+  - **Clause detection is heuristic.** Length/space checks reject the
+    known clause card but could reject long legitimate words
+    (ベーコンチーズバーガー); a MeCab token-count check is the honest
+    oracle once the engine is wired in. Skips are reported, never
+    guessed.
+  - Does the listening exclusion also apply to the shipped bold repair
+    and the arrow repair? Recorded as an open question below.
+
 ## Open questions (answer before each slice)
 
 - How many source cards actually contain arrows / `<br>` / padding — a 50%
@@ -263,6 +330,12 @@ proof.
   without dominating the design.
 - Does Japanese Support's reading beat what Yomitan already stored? Run it
   on a sample and compare.
+- Word vs clause: what oracle makes the expression gate honest — a
+  length/space heuristic now, a MeCab token-count later (BULK_FIX dim 6)?
+- Inflection matching (dimension 6): MeCab lemma pass through Japanese
+  Support's engine, or the conservative okurigana-stem rule?
+- Should the listening predicate (dimension 6's exclusion) also gate the
+  shipped bold repair, the arrow repair and the furigana regeneration?
 - How do we detect "this child was already filled from that source and the
   source has since changed" when the run was not performed by this tool?
 - Where does the source set stop being the configured deck, and what breaks
