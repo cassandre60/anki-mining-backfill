@@ -34,7 +34,7 @@ from pathlib import Path
 
 from mining_fixer.batch import default_ops, select
 from mining_fixer.matching import NoteRecord
-from mining_fixer.normalize import is_empty_glossary_shell, strip_renderable
+from mining_fixer.normalize import is_empty_glossary_shell, kana_fold, strip_renderable
 from mining_fixer.plan import OP_BOLD_CLOZE_WORD, OP_STRIP_EMPTY_GLOSSARY, build_plan
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "real_cards.json.gz"
@@ -178,8 +178,37 @@ def test_junk_data_is_reported_not_guessed():
                 continue
             assert write.op != OP_STRIP_EMPTY_GLOSSARY or write.new_value == ""
             if write.op == OP_BOLD_CLOZE_WORD:
-                body = strip_renderable(note.get("cloze-body")).strip()
-                assert body and body in write.new_value, (note.note_id, body)
+                # The bolded span must be one of the card's own forms: the
+                # mined word, the Expression, or its reading written in kana.
+                reading = (note.get("reading") or "").strip()
+                forms = {
+                    strip_renderable(note.get("cloze-body")).strip(),
+                    strip_renderable(note.get("Expression")).strip(),
+                    reading,
+                    kana_fold(reading),
+                }
+                forms.discard("")
+                match = re.search(r"<b>(.*?)</b>", write.new_value, re.S)
+                assert match and match.group(1).strip() in forms, (
+                    note.note_id,
+                    match.group(1) if match else None,
+                    forms,
+                )
+
+
+def test_no_field_ever_gets_two_rows_in_one_plan():
+    # One field, one applied row: two rows for the same field fight at apply
+    # time (found on the real cards: the generic scene fill and the sentence
+    # block both wrote the ruby).
+    plan = plan_for(list(ALL), [note.note_id for note in ALL])
+    seen: dict[tuple[int, str], int] = {}
+    for write in plan.writes:
+        if not write.default_checked:
+            continue
+        key = (write.note_id, write.field)
+        seen[key] = seen.get(key, 0) + 1
+    duplicates = {key: n for key, n in seen.items() if n > 1}
+    assert duplicates == {}
 
 
 def test_the_default_policy_selects_the_same_rows_for_the_real_cards():

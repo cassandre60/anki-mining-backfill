@@ -407,6 +407,32 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
     if hits:
         listed = ", ".join(f"'{cand}' ×{n}" for cand, n in sorted(hits))
         return None, "cloze-word-ambiguous", f"surface-form candidates: {listed}"
+
+    # Tier 4: the word written entirely in kana — the note's own reading is
+    # the oracle (予て, reading かねて, appears as かねて in the sentence;
+    # the author's own card). Only readings of three kana or more are used:
+    # shorter readings (して, から) match too much to bold without a guess.
+    # Ambiguity is reported, never resolved.
+    reading = kana_fold(norm_reading(target.get("reading") or ""))
+    if len(reading) < 3:
+        reading = kana_fold(reading_from_furigana(target.get("furigana")) or "")
+    if len(reading) >= 3:
+        count = sentence.count(reading)
+        if count > 1:
+            return None, "cloze-word-ambiguous", f"reading '{reading}' occurs {count} times"
+        if count == 1:
+            new_value = _wrap_first_occurrence(sentence, reading)
+            if new_value is not None and strip_renderable(new_value) == strip_renderable(sentence):
+                write = PlannedWrite(
+                    note_id=target.note_id,
+                    field="Sentence",
+                    op=OP_BOLD_CLOZE_WORD,
+                    old_value=sentence,
+                    new_value=new_value,
+                    default_checked=True,
+                    badges=("bold-added-to-reading-form",),
+                )
+                return write, None, None
     # Expression absent (inflected or a mis-mine): silent when nothing was
     # mined — the expected, documented class-C outcome (BULK_FIX slice 8) —
     # and a reported anomaly when the cloze body was present but junk.
@@ -682,6 +708,12 @@ def _scene_writes_for(
     cfg: dict,
 ) -> tuple[list[PlannedWrite], str | None]:
     """Emit scene-op writes for one candidate, or a reason string."""
+    # The repair rules apply to the text this function *copies* (the parent's
+    # sentence and ruby carry the subtitle's tail arrows), so the fill loop
+    # and the sentence block share one definition.
+    repair_rules = tuple(
+        rule for rule in cfg.get("sentence_repair_rules", ()) if rule in REPAIR_RULES
+    )
     ranked = rank_scene_parents(
         matches,
         candidate,
@@ -700,12 +732,35 @@ def _scene_writes_for(
     writes: list[PlannedWrite] = []
     group_id = f"scene-{candidate.note_id}-{parent.note_id}"
     gap_hours = gap_ms / 3_600_000
-    # Confidence of the chosen source. A unique, close source is trusted; a
-    # source that other parents disagree with, or one far outside the mining
-    # session, stays visible but ships unchecked — the child's fields would be
-    # wrong in a way no later check could notice. Sentence-identical parents
-    # are self-verifying, so distance does not matter for them.
-    divergent = len(groups) > 1
+    # Confidence of the chosen source. A source that other parents disagree
+    # with, or one far outside the mining session, stays visible but ships
+    # unchecked — the child's fields would be wrong in a way no later check
+    # could notice. Two exceptions, both from the author's own cards:
+    # sentence-identical parents are self-verifying (distance does not
+    # matter), and a group of **two or more parents writing byte-identical
+    # payloads** is corroborated — refusing it left 自閉症-shaped cards
+    # unfinished while the parent (自負) was plain to see. A divergent parent
+    # therefore only demotes a *unique* source.
+    corroborated = agree >= 2
+    if not corroborated and len(groups) > 1:
+        # Same scene, different clip: the author's 自閉症 card has parents
+        # 自負 and 類い希 whose sentences are the *same subtitle block*, one a
+        # prefix of the other — a divergence of clipping, not of source. When
+        # every competing group is nested with the chosen one, the tighter
+        # (highest-ranked) pick is trusted; genuinely different scenes still
+        # demote to unchecked.
+        best_text = norm_sentence_match(parent.get("Sentence"))
+        nested = True
+        for _payload, members in groups.items():
+            if members is best_members:
+                continue
+            other_text = norm_sentence_match(members[0].parent.get("Sentence"))
+            if not (best_text in other_text or other_text in best_text):
+                nested = False
+                break
+        if nested:
+            corroborated = True
+    divergent = len(groups) > 1 and not corroborated
     exact = best_members[0].exact_equal
     auto_gap_hours = float(cfg.get("scene_auto_gap_hours") or 6)
     far = gap_ms > auto_gap_hours * 3_600_000
@@ -713,6 +768,10 @@ def _scene_writes_for(
     context_badges = [f"source-note:{parent.note_id}", f"added-gap:{gap_hours:.1f}h"]
     if agree > 1:
         context_badges.append(f"{agree}-siblings-agree")
+        if len(groups) > 1:
+            context_badges.append("corroborated-against-divergence")
+    elif corroborated and len(groups) > 1:
+        context_badges.append("same-scene-tighter-clip")
     if divergent:
         context_badges.append("divergent-parents")
     elif far and not exact:
@@ -745,13 +804,24 @@ def _scene_writes_for(
         default_checked = trusted
         if fname in ("Notes", "context", "Kanji Notes"):
             default_checked = False
+        # Sentence fields get the same cleanup as the expansion's copy: the
+        # parent's subtitle dump carries line-tail arrows, and writing them
+        # means the next run has work (one run fixes a card). The sentence
+        # block below owns the paired ruby; a plain fill here would be a
+        # second row for one field.
+        fill_value = value
+        if fname in ("Sentence", "Sentence (furigana)"):
+            if any(w.field == fname for w in writes):
+                continue
+            if repair_rules:
+                fill_value, _applied = repair_sentence(value, repair_rules)
         writes.append(
             PlannedWrite(
                 note_id=candidate.note_id,
                 field=fname,
                 op=OP_FILL,
                 old_value="",
-                new_value=value,
+                new_value=fill_value,
                 source_note_id=parent.note_id,
                 default_checked=default_checked,
                 badges=tuple(context_badges),
@@ -783,9 +853,6 @@ def _scene_writes_for(
             # next run has work to do — a card must be fixed in one run
             # (owner critique 2026-11-16). Same rules, same guard as the
             # in-place repair.
-            repair_rules = tuple(
-                rule for rule in cfg.get("sentence_repair_rules", ()) if rule in REPAIR_RULES
-            )
             if repair_rules:
                 repaired, applied_rules = repair_sentence(new_sentence, repair_rules)
                 if applied_rules:
@@ -820,36 +887,38 @@ def _scene_writes_for(
             parent_ruby = parent_furigana
             if repair_rules:
                 parent_ruby, _applied_ruby = repair_sentence(parent_furigana, repair_rules)
-            if not is_empty(parent_ruby) and is_empty(child_furigana):
-                writes.append(
-                    PlannedWrite(
-                        note_id=candidate.note_id,
-                        field="Sentence (furigana)",
-                        op=OP_FILL,
-                        old_value="",
-                        new_value=parent_ruby,
-                        source_note_id=parent.note_id,
-                        default_checked=checked,
-                        badges=tuple(["scene-furigana", *context_badges]),
-                        window_ms=gap_ms,
-                        group_id=group_id,
+            already_queued = any(w.field == "Sentence (furigana)" for w in writes)
+            if not already_queued and not is_empty(parent_ruby):
+                if is_empty(child_furigana):
+                    writes.append(
+                        PlannedWrite(
+                            note_id=candidate.note_id,
+                            field="Sentence (furigana)",
+                            op=OP_FILL,
+                            old_value="",
+                            new_value=parent_ruby,
+                            source_note_id=parent.note_id,
+                            default_checked=checked,
+                            badges=tuple(["scene-furigana", *context_badges]),
+                            window_ms=gap_ms,
+                            group_id=group_id,
+                        )
                     )
-                )
-            elif not is_empty(parent_ruby) and not is_empty(child_furigana):
-                writes.append(
-                    PlannedWrite(
-                        note_id=candidate.note_id,
-                        field="Sentence (furigana)",
-                        op=OP_EXPAND_SENTENCE,
-                        old_value=child_furigana,
-                        new_value=parent_ruby,
-                        source_note_id=parent.note_id,
-                        default_checked=checked,
-                        badges=tuple(["replaces-fragment-furigana", *context_badges]),
-                        window_ms=gap_ms,
-                        group_id=group_id,
+                else:
+                    writes.append(
+                        PlannedWrite(
+                            note_id=candidate.note_id,
+                            field="Sentence (furigana)",
+                            op=OP_EXPAND_SENTENCE,
+                            old_value=child_furigana,
+                            new_value=parent_ruby,
+                            source_note_id=parent.note_id,
+                            default_checked=checked,
+                            badges=tuple(["replaces-fragment-furigana", *context_badges]),
+                            window_ms=gap_ms,
+                            group_id=group_id,
+                        )
                     )
-                )
         else:
             writes.append(
                 PlannedWrite(

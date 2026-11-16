@@ -431,6 +431,135 @@ def test_frequency_without_glosses_is_not_listening():
     assert len(bold) == 1
 
 
+def test_bold_repair_uses_the_reading_when_the_sentence_is_all_kana():
+    # The author's 予て card: expression 予て, reading かねて, sentence
+    # 私は かねてより… — the kana spelling must be bolded.
+    target = rec(
+        1,
+        {
+            "Expression": "予て",
+            "reading": "かねて",
+            "furigana": "予[かね]て",
+            "cloze-body": "",
+            "Sentence": "私は かねてより<br>精神疾患と脳との関係について<br>研究してまいりました。",
+        },
+    )
+    plan = build_plan([target], CFG, scope_note_ids=[1])
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(bold) == 1
+    assert "<b>かねて</b>" in bold[0].new_value
+    assert "bold-added-to-reading-form" in bold[0].badges
+    assert strip_renderable(bold[0].new_value) == strip_renderable(bold[0].old_value)
+
+
+def test_a_short_reading_is_never_bolded():
+    # Two-kana readings match too much to bold without guessing.
+    target = rec(
+        1,
+        {
+            "Expression": "為る",
+            "reading": "する",
+            "furigana": "",
+            "cloze-body": "",
+            "Sentence": "それをするつもりです。",
+        },
+    )
+    plan = build_plan([target], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+
+
+def test_an_ambiguous_reading_is_reported_not_bolded():
+    target = rec(
+        1,
+        {
+            "Expression": "予て",
+            "reading": "かねて",
+            "furigana": "",
+            "cloze-body": "",
+            "Sentence": "かねてから かねてより",
+        },
+    )
+    plan = build_plan([target], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert any("occurs 2 times" in warning for warning in plan.warnings)
+
+
+def test_two_agreeing_parents_beat_a_divergent_one():
+    # The author's 自閉症 ← 自負 case: two parents write byte-identical
+    # payloads while a third differs. The agreement is corroborated, so the
+    # rows are trusted (they used to ship unchecked and the card stayed
+    # unfinished).
+    child = scene(10_000_000, "先生は今 診察中ですので", **CHILD_SCENE)
+    first = scene(
+        10_000_000 + 60_000,
+        "先生は今 診察中ですので 次の患者さんが",
+        picture='<img src="a.jpeg">',
+        audio=" [sound:a.webm] ",
+    )
+    twin = scene(
+        10_000_000 + 61_000,
+        "先生は今 診察中ですので 次の患者さんが",
+        picture='<img src="a.jpeg">',
+        audio=" [sound:a.webm] ",
+    )
+    other = scene(
+        10_000_000 + 120_000,
+        "先生は今 診察中ですので お待ちください",
+        picture='<img src="b.jpeg">',
+        audio=" [sound:b.webm] ",
+    )
+    plan = build_plan([child, first, twin, other], CFG, scope_note_ids=[child.note_id])
+    rows = [w for w in plan.writes if w.note_id == child.note_id]
+    assert rows
+    assert any(w.default_checked for w in rows), [w.badges for w in rows]
+    assert any("2-siblings-agree" in w.badges for w in rows)
+    assert any("corroborated-against-divergence" in w.badges for w in rows)
+    assert not any("divergent-parents" in w.badges for w in rows)
+
+
+def test_nested_scene_clips_are_trusted():
+    # The author's 自閉症 case: two parents hold the same subtitle block, one
+    # clipped shorter. That is a clip difference, not a different source, so
+    # the tighter pick is trusted.
+    child = scene(10_000_000, "先生は今 診察中ですので", **CHILD_SCENE)
+    tight = scene(10_000_000 + 60_000, "先生は今 診察中ですので")
+    wide = scene(
+        10_000_000 + 61_000,
+        "それでは 先生は今 診察中ですので お待ちください",
+        picture='<img src="b.jpeg">',
+        audio=" [sound:b.webm] ",
+    )
+    plan = build_plan([child, tight, wide], CFG, scope_note_ids=[child.note_id])
+    rows = [w for w in plan.writes if w.note_id == child.note_id]
+    assert rows
+    assert any(w.default_checked for w in rows), [w.badges for w in rows]
+    badges = {badge for w in rows for badge in w.badges}
+    assert badges & {"same-scene-tighter-clip", "corroborated-against-divergence"}
+    assert "divergent-parents" not in badges
+
+
+def test_a_short_fragment_still_finds_its_parent():
+    # 親御-shaped: a five-character fragment. The length floor belongs to the
+    # parent's scene sentence, not to the fragment.
+    child = scene(
+        10_000_000,
+        "親御さんは",
+        expr="親御",
+        reading="おやご",
+        body="親御",
+        audio="",
+        picture="",
+        source="blob:https://asbplayer/xyz",
+    )
+    parent = scene(
+        10_000_000 + 60_000,
+        "とにかく 親御さんは<br>心配でたまらないようです。<br>もっと信じてあげてください。",
+    )
+    plan = build_plan([child, parent], CFG, scope_note_ids=[child.note_id])
+    rows = [w for w in plan.writes if w.note_id == child.note_id]
+    assert rows, plan.reasons.get(child.note_id)
+
+
 def test_scope_from_selection_preserves_order_and_dedupes():
     # The Browser selection is a list of note ids; its order is the user's.
     scope, unknown = scope_from_selection([3, 1, 3, 9], {1, 2, 3})

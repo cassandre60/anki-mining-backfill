@@ -45,6 +45,8 @@ __all__ = [
     "best_word_source",
 ]
 
+#: A fragment shorter than this cannot identify a scene ("は", "です").
+MIN_FRAGMENT_CHARS = 3
 DAY_MS = 86_400_000
 # Never widen silently past this; user must change config explicitly.
 MAX_WINDOW_MS = 14 * DAY_MS
@@ -125,13 +127,19 @@ def find_scene_parents(
     """Parents within the temporal window whose Sentence contains the candidate's.
 
     ``parents_by_id`` must contain only audio-bearing enriched notes.
-    The window is symmetric around the candidate's note id (creation
-    timestamp) and a hard cap; callers widen only by re-running with a
-    larger config value.
+    ``min_len`` is the **parent's** minimum sentence length (a real scene
+    block); the candidate only has to be a non-trivial fragment
+    (:data:`MIN_FRAGMENT_CHARS`). The window is symmetric around the
+    candidate's note id (creation timestamp) and a hard cap; callers widen
+    only by re-running with a larger config value.
     """
     cache = cache if cache is not None else {}
     ctext = _normalized(candidate, cache)
-    if len(ctext) < min_len:
+    # A fragment only needs to be non-trivial to identify a scene; the
+    # parent's sentence must be a real scene block (``min_len``). The author's
+    # 親御 card is a five-character fragment ("親御さんは") and was skipped
+    # entirely by the old candidate-side floor.
+    if len(ctext) < MIN_FRAGMENT_CHARS:
         return []
     ids = sorted(parents_by_id)
     lo = bisect.bisect_left(ids, candidate.note_id - window_ms)
@@ -140,6 +148,8 @@ def find_scene_parents(
     for nid in ids[lo:hi]:
         parent = parents_by_id[nid]
         ptext = _normalized(parent, cache)
+        if len(ptext) < min_len:
+            continue
         start = ptext.find(ctext)
         if start < 0:
             continue

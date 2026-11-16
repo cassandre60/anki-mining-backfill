@@ -251,6 +251,23 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   Verified by: `test_a_shell_definition_is_filled_in_the_same_run_and_then_is_a_noop`,
   `test_expansion_cleans_the_copied_sentence_in_the_same_write`,
   `tests/test_real_cards.py`, and the Ring 3 replay.
+- [2026-11-16, OpenCode] Two corroboration rules lift the source-confidence
+  demotion, both from the author's cards: two or more parents writing
+  byte-identical payloads (badge `corroborated-against-divergence`), and
+  competing parents whose sentences are nested — the same subtitle block at
+  different clips (badge `same-scene-tighter-clip`, tighter pick wins).
+  Genuinely different scenes still demote. Also: `min_sentence_len` is the
+  **parent's** floor; a fragment only needs ≥3 chars
+  (`matching.MIN_FRAGMENT_CHARS`, 親御 was a 5-char fragment and was
+  skipped). Bold gained a reading tier: the note's own reading in kana of
+  ≥3 kana occurring exactly once is bolded (予て → かねて,
+  `bold-added-to-reading-form`) — shorter readings and ambiguity are
+  reported, never guessed.
+  Verified by: `test_two_agreeing_parents_beat_a_divergent_one`,
+  `test_nested_scene_clips_are_trusted`,
+  `test_a_short_fragment_still_finds_its_parent`,
+  `test_bold_repair_uses_the_reading_when_the_sentence_is_all_kana`, and the
+  replayed real cards (予て, 自閉症, 造形, 親御 all fixed in one run).
 - [2026-11-16, OpenCode] Real cards, not synthetic fixtures, are what catch
   these bugs: the arrows the author still saw lived in `Sentence (furigana)`
   (the repair only cleaned `Sentence`), and a scene fill copied the parent's

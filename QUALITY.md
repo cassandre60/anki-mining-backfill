@@ -164,13 +164,18 @@ first, with the reason.
   Apply.
 - **Q-C9 — Batch runs ask for no decisions.** A bulk run resolves its own
   guard policy and writes only what is provably safe:
-  - **Source confidence** (`divergent-parents`, `far-from-source`) — if the
-    source is not trustworthy, nothing from it is written: the rows it
-    proposed are dropped (the note is *left alone* with the reason when they
-    were its only rows). Because the guard is about the *source*, it does
-    not freeze the card's own work — a card whose scene siblings disagree
-    still gets its bold, its arrows stripped and its furigana rebuilt
-    (owner-visible decision, 2026-11-16).
+  - **Source confidence** (`divergent-parents`, `far-from-source`) — a
+    source that other parents disagree with is not written: the rows it
+    proposed are dropped (the note is *left alone* with the reason when
+    they were its only rows). Two corroborations lift the demotion, both
+    taken from the author's own cards: **two or more parents writing
+    byte-identical payloads** (自閉症 ← 自負 plus a second agreeing sibling),
+    and **nested sentences** — competing parents whose sentences are the
+    same subtitle block at different clips (one contains the other), where
+    the tighter pick wins. Genuinely different scenes still demote.
+    Because the guard is about the *source*, it does not freeze the card's
+    own work — a card whose scene siblings disagree still gets its bold,
+    its arrows stripped and its furigana rebuilt.
   - **Text safety** (`fragment-not-recoverable`, `cloze-anchor-not-unique`,
     `stale-fragment-furigana-risk`, `paired-with-expansion`) — exactly the
     text unit is dropped; the note's independent scene fields (audio,
