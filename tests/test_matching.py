@@ -122,15 +122,31 @@ def test_ranking_prefills_and_tightest():
     assert ranked[0].fillable >= 3
 
 
-def test_ranking_drops_parents_that_fill_nothing():
-    cand = candidate(2_000_000, "診察中ですので➡")
+def test_ranking_keeps_a_parent_that_only_brings_the_sentence():
+    # An audio-less parent cannot fill scene fields, but its sentence is a
+    # longer block containing the fragment: the expansion is a write, so the
+    # parent is kept (author's 校 card takes ぜひ's block).
+    cand = candidate(2_000_000, "診察中ですので")
     empty_parent = parent(
-        2_000_000 - 1_000, "先生は今 診察中ですので", audio="", picture="", source="asbplayerblob"
+        2_000_000 - 1_000,
+        "先生は今 診察中ですので 次の患者さんが",
+        audio="",
+        picture="",
+        source="asbplayerblob",
     )
+    ranked = rank_scene_parents(
+        find_scene_parents(cand, {empty_parent.note_id: empty_parent}, window_ms=DAY_MS), cand
+    )
+    assert ranked, "the longer sentence is itself a fill"
+    assert ranked[0].fillable >= 1
+
+
+def test_ranking_drops_a_parent_that_changes_nothing():
+    # Same sentence, no gap, nothing to fill: the parent is dropped.
+    cand = candidate(2_000_000, "診察中ですので")
+    twin = parent(2_000_000 - 1_000, "診察中ですので", audio="", picture="", source="asbplayerblob")
     assert (
-        rank_scene_parents(
-            find_scene_parents(cand, {empty_parent.note_id: empty_parent}, window_ms=DAY_MS), cand
-        )
+        rank_scene_parents(find_scene_parents(cand, {twin.note_id: twin}, window_ms=DAY_MS), cand)
         == []
     )
 

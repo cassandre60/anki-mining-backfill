@@ -185,6 +185,14 @@ def _fillable_and_payload(
     if is_blob_source(candidate.get("Source")) and not is_blob_source(parent.get("Source")):
         payload.append(("Source", parent.get("Source")))
         count += 1
+    # The sentence expansion is a write too: a card whose fragment is much
+    # shorter than the same-episode block gains the full sentence (and its
+    # bold), even when every scene field is already present — the author's
+    # 校 card should take the long block from ぜひ's scene.
+    if norm_sentence_match(parent.get("Sentence")) != norm_sentence_match(
+        candidate.get("Sentence")
+    ):
+        count += 1
     return count, tuple(payload)
 
 

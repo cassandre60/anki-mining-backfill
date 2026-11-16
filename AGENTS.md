@@ -290,6 +290,21 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   the only このたび occurrences are a different scene.
   Verified by: `test_a_mismined_sentence_is_recovered_from_the_word_in_the_same_episode`,
   the two refusal tests, and the captured 類い希 card in the real-card suite.
+- [2026-11-16, OpenCode] Owner round on live cards after a run — four
+  more gaps closed, each verified against the cards named: 類い希's bold
+  (the sentence writes 類いまれ; bold now uses the furigana's per-kanji
+  spellings, badge `bold-added-to-kana-mix`); 此の度's scene (a blob target
+  is recovered when every candidate card agrees on ONE episode — the
+  美術/受賞 block — with all fields); 校's expansion (the expansion counts
+  as a fill in the ranker, and the word is bolded inside the child's own
+  fragment when it repeats in the block); へったくれ's `(荒木)<br>` (new
+  repair rule `join-speaker-lines`). Convergence: once a sentence contains
+  its own fragment, no run expands it again — run two stays a no-op.
+  Verified by: `test_bold_repair_uses_the_furigana_spellings_of_the_word`,
+  `test_word_recovery_accepts_a_blob_source_when_the_candidates_agree_on_one_episode`,
+  `test_a_completed_sentence_is_never_expanded_again`,
+  `test_repair_joins_a_line_break_after_a_speaker_tag`, and the real-card
+  suite.
 - [2026-11-16, OpenCode] Source-confidence guards (divergent/far scene
   siblings) now drop the *scene rows* only; a guarded (unchecked) row no
   longer suppresses the note's own repairs (bold/arrows/furigana) nor

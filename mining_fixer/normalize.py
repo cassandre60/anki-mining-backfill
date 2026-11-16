@@ -306,7 +306,7 @@ def is_empty_glossary_shell(value: str) -> bool:
 # bold markup, sound tags, images, brackets and every spoken character pass
 # through untouched.
 
-REPAIR_RULES = ("strip-arrows",)
+REPAIR_RULES = ("strip-arrows", "join-speaker-lines")
 
 # A continuation arrow only ever marks "the line continues", so it is
 # stripped only at a line tail — immediately before a <br>, a newline or the
@@ -314,6 +314,13 @@ REPAIR_RULES = ("strip-arrows",)
 # (関数f:X→Y) and are never touched.
 _ARROW_TAIL_RE = re.compile(
     "[\u2192\u21d2\u27a1]+\ufe0f?(?=[ \t]*(?:<br\\s*/?>|\n|$))", re.IGNORECASE
+)
+# A speaker/stage tag alone on a line — ``(荒木)``, ``（葉子）`` — followed by
+# a line break: the break is the subtitle's wrapping, not the speech (owner
+# report: "(荒木)<br>相手が あなたなら…"). Only short parenthesised tags are
+# joined, so a real parenthetical sentence keeps its break.
+_SPEAKER_LINE_BREAK_RE = re.compile(
+    r"(\([^()\n]{1,12}\)|（[^（）\n]{1,12}）)[ \t]*<br\s*/?>", re.IGNORECASE
 )
 
 
@@ -340,6 +347,11 @@ def repair_sentence(text: str, rules: Iterable[str]) -> tuple[str, tuple[str, ..
         if stripped != s:
             applied.append("strip-arrows")
             s = stripped
+    if "join-speaker-lines" in wanted:
+        joined = _SPEAKER_LINE_BREAK_RE.sub(r"\1", s)
+        if joined != s:
+            applied.append("join-speaker-lines")
+            s = joined
     if not applied:
         return text, ()
     return s, tuple(applied)

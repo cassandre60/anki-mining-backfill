@@ -64,8 +64,11 @@ first, with the reason.
 - **Q-D10 — Sentence repair touches only configured noise.** The
   `repair_sentence` op rewrites a note's own `Sentence` and nothing else,
   and only through the rules configured in `sentence_repair_rules`. The
-  shipped rule set is exactly `strip-arrows` (continuation arrows at line
-  tails; mid-line glyphs such as `f:X→Y` are real notation and stay).
+  shipped rule set is `strip-arrows` (continuation arrows at line tails;
+  mid-line glyphs such as `f:X→Y` are real notation and stay) and
+  `join-speaker-lines` (a short speaker/stage tag alone on a line —
+  ``(荒木)``, ``（葉子）`` — loses the line break that follows it; longer
+  parenthesised text keeps its break, so a real aside is never joined).
   `<br>` line breaks and spacing are deliberately NOT rewritten — they are
   the sentence's pause structure (owner decision 2026-11-15; the recorded
   future direction is deriving breaks from the audio, BULK_FIX.md). Unknown

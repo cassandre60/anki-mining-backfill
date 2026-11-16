@@ -162,6 +162,18 @@ def test_repair_noop_on_clean_or_empty_text():
     assert repair_sentence("   ", ALL_RULES) == ("   ", ())
 
 
+def test_repair_joins_a_line_break_after_a_speaker_tag():
+    # Owner report: "(荒木)<br>相手が あなたなら…" — the break is the
+    # subtitle's wrapping, not the speech.
+    text = "日野君も ここに来てるんだ?<br>(荒木)<br>相手が あなたなら守秘義務も<br>もありませんよ。"
+    new, applied = repair_sentence(text, ALL_RULES)
+    assert applied == ("join-speaker-lines",)
+    assert "(荒木)相手が" in new
+    # A parenthesised sentence is not a tag: its break survives.
+    long_line = "これは(とても長い補足の文章でここはタグではない)<br>続き。"
+    assert repair_sentence(long_line, ALL_RULES) == (long_line, ())
+
+
 def test_repair_unknown_rules_are_ignored():
     new, applied = repair_sentence("前➡<br>後", ("strip-arrows", "nonsense"))
     assert applied == ("strip-arrows",)

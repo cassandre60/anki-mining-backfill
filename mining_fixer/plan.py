@@ -447,6 +447,36 @@ def _bold_repair_for(
                     badges=("bold-added-to-reading-form", *noise_rules),
                 )
                 return write, None, None
+
+    # Tier 3b: the note's own furigana, spelled with some kanji written in
+    # kana (類い希 -> 類いまれ — the author's card). Every per-kanji mix is a
+    # candidate; exactly one occurrence is required, as everywhere else.
+    for candidate in kana_spelling_candidates(
+        target.get("Expression") or "", target.get("furigana") or ""
+    ):
+        if candidate == expr or len(candidate) < 2:
+            continue
+        count = sentence.count(candidate)
+        if count == 1:
+            new_value = _wrap_first_occurrence(sentence, candidate)
+            if new_value is not None and strip_renderable(new_value) == strip_renderable(sentence):
+                write = PlannedWrite(
+                    note_id=target.note_id,
+                    field="Sentence",
+                    op=OP_BOLD_CLOZE_WORD,
+                    old_value=sentence,
+                    new_value=new_value,
+                    default_checked=True,
+                    badges=("bold-added-to-kana-mix", *noise_rules),
+                )
+                return write, None, None
+        elif count > 1:
+            return (
+                None,
+                "cloze-word-ambiguous",
+                f"spelling '{candidate}' occurs {count} times",
+            )
+
     # Expression absent (inflected or a mis-mine): silent when nothing was
     # mined — the expected, documented class-C outcome (BULK_FIX slice 8) —
     # and a reported anomaly when the cloze body was present but junk.
@@ -760,8 +790,14 @@ def _word_recovered_scene_writes(
     ``recovered-sentence``.
     """
     episode = _episode_key(target.get("Source"))
-    if episode is None:
-        return [], "no-parent-that-fills"
+    if episode is not None:
+        pools = episodes.get(episode, [])
+    else:
+        # The target names no episode (a bare blob link). The candidates must
+        # still agree on ONE episode themselves — the same scene was mined
+        # into several cards of a single video — or the recovery is refused
+        # (author's 此の度: the 美術/受賞 block, all from Episode 7).
+        pools = [record for group in episodes.values() for record in group]
     candidates: list[str] = []
     for cand in kana_spelling_candidates(
         target.get("Expression") or "", target.get("furigana") or ""
@@ -775,7 +811,15 @@ def _word_recovered_scene_writes(
     if len(reading) >= 2 and reading not in candidates:
         candidates.append(reading)
 
-    pools = episodes.get(episode, [])
+    # Recovery is only for a *mis-mine*: the card's own sentence must not
+    # already contain the word (or must be a dictionary-entry line, the
+    # author's 此の度 — この‐たび【×此の度】). Otherwise a completed card
+    # would be re-expanded on every run, and "run twice = no-op" breaks.
+    sentence = target.get("Sentence") or ""
+    looks_like_dictionary = bool(re.search(r"[【】]|‐|〔|⦅", sentence))
+    if not looks_like_dictionary and any(cand and cand in sentence for cand in candidates):
+        return [], "no-parent-that-fills"
+
     # Group by the spelling that matched, not by the whole sentence: the
     # same episode's blocks are clipped differently (診断 vs 今回), and the
     # tighter clip is the right one — nesting is the agreement signal.
@@ -791,17 +835,37 @@ def _word_recovered_scene_writes(
             break
     if not hits:
         return [], "no-parent-that-fills"
-    best_cand, members = max(hits.items(), key=lambda kv: (len(kv[1]), -len(kv[1][0][1])))
-    if len(members) < 2:
+    # Agreement is identity first, nested clips second: several cards that
+    # mined the same subtitle block carry byte-identical Sentences (the
+    # strong signal); cards that clipped the same block differently nest.
+    # A word that also appears in a genuinely different scene is refused.
+    best_cand: str | None = None
+    members: list[tuple[NoteRecord, str]] = []
+    for cand, cand_members in hits.items():
+        by_text: dict[str, list[tuple[NoteRecord, str]]] = {}
+        for record, sentence in cand_members:
+            by_text.setdefault(norm_sentence_match(sentence), []).append((record, sentence))
+        for _text, same in by_text.items():
+            if len(same) > len(members):
+                best_cand, members = cand, same
+    if best_cand is None or len(members) < 2:
+        # No byte-identical pair: accept nested clips of one block instead.
+        for cand, cand_members in hits.items():
+            if len(cand_members) < 2:
+                continue
+            texts = [norm_sentence_match(sentence) for _, sentence in cand_members]
+            if all(left in right or right in left for left in texts for right in texts):
+                best_cand, members = cand, cand_members
+                break
+    if best_cand is None or len(members) < 2:
         return [], "no-parent-that-fills"
-    # The candidates must be the same scene at different clips: every pair of
-    # sentences nested (one contains the other). A genuinely different scene
-    # is refused — that is the wrong-source protection.
-    texts = [norm_sentence_match(sentence) for _, sentence in members]
-    for left in texts:
-        for right in texts:
-            if left not in right and right not in left:
-                return [], "no-parent-that-fills"
+    # Every matched card must come from ONE identifiable episode; a word that
+    # also occurs in another show's subtitles would otherwise pull the wrong
+    # scene onto the card.
+    member_episodes = {_episode_key(record.get("Source")) for record, _ in members}
+    member_episodes.discard(None)
+    if len(member_episodes) != 1:
+        return [], "no-parent-that-fills"
     representative, best_sentence = min(members, key=lambda item: len(item[1]))
     written = best_cand
     new_sentence, bold_badge = _retarget_bold(
@@ -872,6 +936,38 @@ def _word_recovered_scene_writes(
             )
         )
     return writes, None
+
+
+def _fragment_anchored_sentence(
+    parent_sentence: str, candidate: NoteRecord, rules: tuple[str, ...] = ()
+) -> str | None:
+    """The parent's sentence with the word bolded inside the child's fragment.
+
+    Used when the word itself occurs several times in the block (校 appears in
+    校, 医学校, 精神医学校…): the child's own fragment — ``cloze-prefix + body
+    + cloze-suffix`` — is unique by construction, so bolding the body inside
+    that occurrence is unambiguous. Both sides get the configured repair
+    rules first (the child's fragment carries the subtitle's tail arrow, the
+    parent's may not), so one write fixes the sentence and the bold together.
+    Returns ``None`` when the fragment is not found exactly once.
+    """
+    prefix = strip_renderable(candidate.get("cloze-prefix"))
+    body = strip_renderable(candidate.get("cloze-body"))
+    suffix = strip_renderable(candidate.get("cloze-suffix"))
+    if not body:
+        return None
+    parent = parent_sentence
+    if rules:
+        parent, _applied = repair_sentence(parent, rules)
+    fragment = prefix + body + suffix
+    if rules:
+        fragment, _applied = repair_sentence(fragment, rules)
+    if not fragment or parent.count(fragment) != 1:
+        return None
+    bolded = prefix + f"<b>{body}</b>" + suffix
+    if rules:
+        bolded, _applied = repair_sentence(bolded, rules)
+    return parent.replace(fragment, bolded, 1)
 
 
 def _scene_writes_for(
@@ -1009,15 +1105,41 @@ def _scene_writes_for(
     cand_norm = norm_sentence_match(candidate.get("Sentence"))
     parent_sentence = parent.get("Sentence")
     parent_furigana = parent.get("Sentence (furigana)")
+    fragment_norm = norm_sentence_match(
+        strip_renderable(candidate.get("cloze-prefix"))
+        + strip_renderable(candidate.get("cloze-body"))
+        + strip_renderable(candidate.get("cloze-suffix"))
+    )
+    already_complete = bool(
+        fragment_norm and cand_norm and cand_norm != fragment_norm and fragment_norm in cand_norm
+    )
+    if already_complete:
+        # The card's sentence already contains its own fragment (a previous
+        # run completed it, or the mining kept the whole line): expanding
+        # again would only chase longer neighbouring blocks and the next run
+        # would never be a no-op.
+        return writes, None
     if cand_norm and cand_norm != norm_sentence_match(parent_sentence):
-        if _fragment_recoverable(candidate, cand_norm) and _unique_anchor(
-            parent_sentence, candidate.get("cloze-body")
+        unique_anchor = _unique_anchor(parent_sentence, candidate.get("cloze-body"))
+        fragment_bold = (
+            None
+            if unique_anchor
+            else _fragment_anchored_sentence(parent_sentence, candidate, repair_rules)
+        )
+        if _fragment_recoverable(candidate, cand_norm) and (
+            unique_anchor or fragment_bold is not None
         ):
             checked = bool(cfg.get("replaces_autocheck", True)) and trusted
             badges = ["expands-sentence", "fragment-kept-in-cloze", *context_badges]
-            new_sentence, bold_badge = _retarget_bold(
-                parent_sentence, parent.get("cloze-body"), candidate.get("cloze-body")
-            )
+            if unique_anchor:
+                new_sentence, bold_badge = _retarget_bold(
+                    parent_sentence, parent.get("cloze-body"), candidate.get("cloze-body")
+                )
+            else:
+                # The word occurs more than once in the block (校 in 精神医学
+                # 校, 医学校, …): bold the occurrence inside the child's own
+                # fragment, which is unique by definition.
+                new_sentence, bold_badge = fragment_bold, "bold-added-to-cloze-word"
             if bold_badge:
                 badges.append(bold_badge)
             # Repair the text the expansion writes: the parent's subtitle dump

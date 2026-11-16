@@ -612,6 +612,66 @@ def test_nested_scene_clips_are_trusted():
     assert "divergent-parents" not in badges
 
 
+def test_bold_repair_uses_the_furigana_spellings_of_the_word():
+    # 類い希's sentence spells it 類いまれ (kanji kept, rest in kana): the
+    # note's own furigana gives that spelling.
+    target = rec(
+        1,
+        {
+            "Expression": "類い希",
+            "reading": "たぐいまれ",
+            "furigana": "類[たぐ]い 希[まれ]",
+            "cloze-body": "類い希",
+            "Sentence": "その立体造形に<br>類いまれなる才能を持ち<br>グランプリを受賞されました。",
+        },
+    )
+    plan = build_plan([target], CFG, scope_note_ids=[1])
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(bold) == 1
+    assert "<b>類いまれ</b>" in bold[0].new_value
+    assert "bold-added-to-kana-mix" in bold[0].badges
+
+
+def test_a_full_kana_sentence_keeps_the_reading_badge():
+    # 予て -> かねて is the reading tier's case (no kanji in the matched span).
+    target = rec(
+        1,
+        {
+            "Expression": "予て",
+            "reading": "かねて",
+            "furigana": "予[かね]て",
+            "cloze-body": "",
+            "Sentence": "私は かねてより<br>研究してまいりました。",
+        },
+    )
+    plan = build_plan([target], CFG, scope_note_ids=[1])
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert bold and "bold-added-to-reading-form" in bold[0].badges
+
+
+def test_a_completed_sentence_is_never_expanded_again():
+    # Convergence: once the fragment sits inside a longer sentence, no parent
+    # can expand it further — otherwise run two would never be a no-op.
+    child = rec(
+        1,
+        {
+            "Expression": "校",
+            "reading": "こう",
+            "furigana": "校[こう]",
+            "Sentence": "それでは わが<b>校</b>での研究に興味があれば",
+            "Sentence Audio": " [sound:x.webm] ",
+            "Picture": '<img src="x.jpg">',
+            "Source": "Show.mp4 (10m00s)",
+            "cloze-prefix": "わが",
+            "cloze-body": "校",
+            "cloze-suffix": "での研究に興味があれば",
+        },
+    )
+    parent = scene(10_000_000 + 60_000, "それでは わが校での研究に興味があれば ぜひ ご紹介ください")
+    plan = build_plan([child, parent], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if w.note_id == 1 and w.op == OP_EXPAND_SENTENCE]
+
+
 def test_a_mismined_sentence_is_recovered_from_the_word_in_the_same_episode():
     # The author's 類い希 card: its Sentence is the wrong subtitle block, so it
     # matches no parent, yet the word (written 類いまれ) is in the scene the
@@ -673,8 +733,9 @@ def test_a_mismined_sentence_is_recovered_from_the_word_in_the_same_episode():
     assert "word-in-sentence" in recovered[0].badges
 
 
-def test_word_recovery_is_refused_without_an_episode():
-    # A blob link names no episode: attaching a scene would be a guess.
+def test_word_recovery_accepts_a_blob_source_when_the_candidates_agree_on_one_episode():
+    # The author's 此の度: no episode in its own Source, but every card that
+    # contains このたび is from the same episode — so the scene is adopted.
     target = rec(
         1,
         {
@@ -719,9 +780,61 @@ def test_word_recovery_is_refused_without_an_episode():
         },
     )
     plan = build_plan([target, other, third], CFG, scope_note_ids=[1])
-    assert not [w for w in plan.writes if "recovered-sentence" in w.badges], (
-        "a blob source must never anchor a recovered scene"
+    recovered = [w for w in plan.writes if "recovered-sentence" in w.badges]
+    assert recovered, plan.reasons.get(1)
+    sentence = next(w for w in recovered if w.field == "Sentence")
+    assert "<b>このたび</b>" in sentence.new_value
+    assert any(w.field == "Picture" for w in recovered)
+
+
+def test_word_recovery_refuses_candidates_from_different_episodes():
+    # The same word in two different shows must not pick a scene: the
+    # candidates disagree on the episode, so nothing is recovered.
+    target = rec(
+        1,
+        {
+            "Expression": "此の度",
+            "reading": "このたび",
+            "furigana": "此[こ]の 度[たび]",
+            "Sentence": "この‐たび【×此の度】",
+            "Sentence Audio": "",
+            "Picture": "",
+            "Source": "asbplayer blob:https://x",
+            "cloze-prefix": "この‐たび【×",
+            "cloze-body": "此の度",
+            "cloze-suffix": "】",
+        },
     )
+    first = rec(
+        2,
+        {
+            "Expression": "甲",
+            "reading": "こう",
+            "Sentence": "このたび こども美術展において",
+            "Sentence Audio": " [sound:a.webm] ",
+            "Picture": '<img src="a.jpg">',
+            "Source": "Show A.mp4 (10m00s)",
+            "cloze-prefix": "",
+            "cloze-body": "甲",
+            "cloze-suffix": "",
+        },
+    )
+    second = rec(
+        3,
+        {
+            "Expression": "乙",
+            "reading": "おつ",
+            "Sentence": "このたび お招きいただきまして",
+            "Sentence Audio": " [sound:b.webm] ",
+            "Picture": '<img src="b.jpg">',
+            "Source": "Show B.mp4 (10m00s)",
+            "cloze-prefix": "",
+            "cloze-body": "乙",
+            "cloze-suffix": "",
+        },
+    )
+    plan = build_plan([target, first, second], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if "recovered-sentence" in w.badges]
 
 
 def test_word_recovery_refuses_two_different_scenes():

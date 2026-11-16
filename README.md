@@ -169,8 +169,8 @@ you press Apply.
   fills into empty fields, completes sentences from scene sources (the
   mined fragment stays in `cloze-*`), replaces blob `Source` with the
   timestamped source (the URL stays in the run log), strips the
-  line-end arrows subtitle exports leave behind (line breaks and spacing
-  stay exactly as mined), rebuilds `Sentence (furigana)` through the
+  line-end arrows and the stray line break after a speaker tag such as
+  ``(荒木)`` (other line breaks and spacing stay exactly as mined), rebuilds `Sentence (furigana)` through the
   installed Japanese Support add-on — always from the sentence the run
   leaves behind, so cleaning happens before the ruby — and unions tags.
   **There are no options to tick.** One button, one pass.

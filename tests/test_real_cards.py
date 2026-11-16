@@ -33,7 +33,7 @@ import re
 from pathlib import Path
 
 from mining_fixer.batch import default_ops, select
-from mining_fixer.matching import NoteRecord
+from mining_fixer.matching import NoteRecord, kana_spelling_candidates
 from mining_fixer.normalize import is_empty_glossary_shell, kana_fold, strip_renderable
 from mining_fixer.plan import OP_BOLD_CLOZE_WORD, OP_STRIP_EMPTY_GLOSSARY, build_plan
 
@@ -186,6 +186,9 @@ def test_junk_data_is_reported_not_guessed():
                     strip_renderable(note.get("Expression")).strip(),
                     reading,
                     kana_fold(reading),
+                    *kana_spelling_candidates(
+                        note.get("Expression") or "", note.get("furigana") or ""
+                    ),
                 }
                 forms.discard("")
                 match = re.search(r"<b>(.*?)</b>", write.new_value, re.S)

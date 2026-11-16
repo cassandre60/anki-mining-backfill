@@ -55,6 +55,11 @@ not have and must never be given.
   listening predicate (tag + audio; no-gloss/no-frequency/audio shape;
   Frequency-without-glosses still repaired). The shipped-class/left-alone
   split comes from the 2026-11-16 census (BULK_FIX slice 8).
+- **The expanded rule set and convergence** are pinned in
+  `tests/test_normalize.py` (a speaker tag's line break joins; a long
+  parenthetical keeps its break) and `tests/test_plan.py` (bold via the
+  furigana's per-kanji spellings — 類い希 → 類いまれ; an already-completed
+  sentence is never expanded again, so a second run stays a no-op).
 - **The empty-definition cleanup** is pinned in `tests/test_normalize.py`
   (the Yomitan shell, variants, and every refusal: real text, media, blank)
   and `tests/test_plan.py` (a checked write per shell field, never on real
