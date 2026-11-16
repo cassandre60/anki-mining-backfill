@@ -16,6 +16,7 @@ from mining_fixer.plan import (
     OP_REPAIR_EXPRESSION,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
+    OP_STRIP_EMPTY_GLOSSARY,
     PLAN_VERSION,
     _retarget_bold,
     build_plan,
@@ -814,6 +815,47 @@ def test_regeneration_is_dropped_when_the_engine_raises():
     plan = build_plan([target], REGEN_CFG, scope_note_ids=[1], furigana_generator=boom)
     assert not any(w.op == OP_REGENERATE_FURIGANA for w in plan.writes)
     assert any("reading engine raised" in warning for warning in plan.warnings)
+
+
+# --- empty-definition cleanup (QUALITY Q-D12, owner ask 2026-11-16) ----------
+
+JUNK_SHELL = '<div style="text-align: left;" class="yomitan-glossary"><ol></ol></div>'
+
+
+def test_an_empty_definition_shell_is_cleared():
+    f = dict(CHILD.fields)
+    f["Definition"] = JUNK_SHELL
+    f["Sentence"] = "先生は今 診察中ですので"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    clears = [w for w in plan.writes if w.op == OP_STRIP_EMPTY_GLOSSARY]
+    assert len(clears) == 1
+    write = clears[0]
+    assert write.field == "Definition"
+    assert write.old_value == JUNK_SHELL
+    assert write.new_value == ""
+    assert write.default_checked is True
+    assert write.badges == ("cleared-empty-glossary",)
+
+
+def test_a_real_definition_is_never_cleared():
+    f = dict(CHILD.fields)
+    f["Definition"] = '<div class="yomitan-glossary"><ol><li>しんさつ</li></ol></div>'
+    f["Sentence"] = "先生は今 診察中ですので"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    assert not [w for w in plan.writes if w.op == OP_STRIP_EMPTY_GLOSSARY]
+
+
+def test_both_definition_fields_are_cleaned_when_both_are_shells():
+    f = dict(CHILD.fields)
+    f["Definition"] = JUNK_SHELL
+    f["Extended definition"] = '<div class="yomitan-glossary"><ol></ol></div>'
+    f["Sentence"] = "先生は今 診察中ですので"
+    c = rec(CHILD.note_id, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
+    fields = sorted(w.field for w in plan.writes if w.op == OP_STRIP_EMPTY_GLOSSARY)
+    assert fields == ["Definition", "Extended definition"]
 
 
 # --- dimension picker: scene propagation off (BULK_FIX.md B7) -----------------

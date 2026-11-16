@@ -45,6 +45,7 @@ from .plan import (
     OP_REPAIR_EXPRESSION,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
+    OP_STRIP_EMPTY_GLOSSARY,
     Plan,
     PlannedWrite,
 )
@@ -61,7 +62,7 @@ __all__ = [
 
 #: Writes that cannot lose information: empty-field fills, markup-only bold,
 #: and tag additions.
-SAFE_OPS = frozenset({OP_FILL, OP_BOLD_CLOZE_WORD, OP_ADD_TAGS})
+SAFE_OPS = frozenset({OP_FILL, OP_BOLD_CLOZE_WORD, OP_STRIP_EMPTY_GLOSSARY, OP_ADD_TAGS})
 
 #: Information-preserving replaces, each opt-in for a batch run.
 OPTIONAL_OPS = frozenset(

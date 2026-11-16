@@ -70,6 +70,10 @@ and covered by tests, not just intended:
      else is a reported reason, never a guess; the rewrite is deferred while
      word-level fills are queued for the same card. On by default
      (`batch_repair_expression` is the escape hatch to switch it off).
+   - Empty definitions (`strip_empty_glossary`): a definition field that
+     holds nothing but empty markup (the Yomitan `<ol></ol>` shell) is
+     cleared — it renders as nothing either way, so no information is lost.
+     Any media or visible text means the field is never touched.
    - Tags (`add_tags`): the target keeps its tags and gains every
      contributing source card's tags — a pure union that never removes;
      Anki control tags (`marked`, `leech`) and this tool's own tags

@@ -53,8 +53,9 @@ enriched siblings. Two halves:
    `batch_dialog.py` may touch Anki.
 5. **Never guess.** Ambiguity is reported (`plan.reasons`, `plan.warnings`),
    never resolved by picking one of several plausible values.
-6. **Fills only; six approved non-empty writes** (`Source`, `Sentence`,
-   `bold_cloze_word`, `repair_sentence`, `regenerate_furigana`, `add_tags`)
+6. **Fills only; eight approved non-empty writes** (`Source`, `Sentence`,
+   `bold_cloze_word`, `repair_sentence`, `regenerate_furigana`,
+   `repair_expression`, `strip_empty_glossary`, `add_tags`)
    — each must preserve
    its information, and each carries badges. See `QUALITY.md`.
 7. **Tags are never removed** and bookkeeping tags are never added: the audit

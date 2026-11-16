@@ -55,6 +55,10 @@ not have and must never be given.
   listening predicate (tag + audio; no-gloss/no-frequency/audio shape;
   Frequency-without-glosses still repaired). The shipped-class/left-alone
   split comes from the 2026-11-16 census (BULK_FIX slice 8).
+- **The empty-definition cleanup** is pinned in `tests/test_normalize.py`
+  (the Yomitan shell, variants, and every refusal: real text, media, blank)
+  and `tests/test_plan.py` (a checked write per shell field, never on real
+  content).
 - **Furigana regeneration** (bulk-fix dimension 3) is pinned in
   `tests/test_normalize.py` (`furigana_base_matches`: whitespace and the
   engine's spacing quirks, speaker brackets, mangled/unbalanced output

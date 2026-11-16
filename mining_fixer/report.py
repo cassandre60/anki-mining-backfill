@@ -13,8 +13,10 @@ from .plan import (
     OP_EXPAND_SENTENCE,
     OP_FILL,
     OP_REGENERATE_FURIGANA,
+    OP_REPAIR_EXPRESSION,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
+    OP_STRIP_EMPTY_GLOSSARY,
     Plan,
 )
 
@@ -34,6 +36,8 @@ OP_LABELS = {
     OP_BOLD_CLOZE_WORD: "bold markup (text unchanged)",
     OP_REPAIR_SENTENCE: "repair subtitle noise",
     OP_REGENERATE_FURIGANA: "regenerate furigana",
+    OP_REPAIR_EXPRESSION: "repair Expression spelling",
+    OP_STRIP_EMPTY_GLOSSARY: "clear empty definition",
     OP_ADD_TAGS: "add tags (never removes)",
 }
 
@@ -175,6 +179,10 @@ def field_label(write) -> str:
         return "sentence noise repair"
     if write.op == OP_REGENERATE_FURIGANA:
         return "furigana regenerated"
+    if write.op == OP_REPAIR_EXPRESSION:
+        return f"Expression → {write.new_value}"
+    if write.op == OP_STRIP_EMPTY_GLOSSARY:
+        return "empty definition cleared"
     return _LABELS_BY_FIELD.get(write.field, write.field)
 
 
@@ -230,7 +238,13 @@ def render_markdown(plan: Plan, records: dict[int, NoteRecord], run_meta: dict) 
         for w in by_note[note_id]:
             src = f" note {w.source_note_id}" if w.source_note_id else ""
             val = _plain(w.new_value)
-            if w.op in (OP_EXPAND_SENTENCE, OP_REPAIR_SENTENCE, OP_REGENERATE_FURIGANA):
+            if w.op in (
+                OP_EXPAND_SENTENCE,
+                OP_REPAIR_SENTENCE,
+                OP_REGENERATE_FURIGANA,
+                OP_REPAIR_EXPRESSION,
+                OP_STRIP_EMPTY_GLOSSARY,
+            ):
                 val = f"{_plain(w.old_value, 60)} → {_plain(w.new_value, 90)}"
             elif w.op == OP_ADD_TAGS:
                 added = " ".join(sorted(set(w.new_value.split()) - set(w.old_value.split())))

@@ -10,14 +10,15 @@ first, with the reason.
 - **Q-D1 — Fills only touch empty fields.** A field with any non-whitespace
   content is never written by a `fill`; markup-only values like `<hr>` count
   as occupied.
-- **Q-D2 — Seven approved non-empty writes, each information-preserving.**
+- **Q-D2 — Eight approved non-empty writes, each information-preserving.**
   `replace_source` (blob URL is logged), `expand_sentence` (fragment survives
   in `cloze-*`), `bold_cloze_word` (rendered text unchanged),
   `repair_sentence` (only configured noise classes change, Q-D10),
   `regenerate_furigana` (the ruby layer must still carry the sentence's
   characters, Q-D11), `repair_expression` (the new spelling is the note's own
   furigana base, cross-checked against its reading field, Q-D12; the old
-  spelling survives in the run log, Q-D7), `add_tags` (superset only).
+  spelling survives in the run log, Q-D7), `strip_empty_glossary` (only a
+  definition that renders as nothing, Q-D13), `add_tags` (superset only).
   `OPS_TOUCHING_NONEMPTY` is the single source of
   truth and a test asserts no other op writes a non-empty value.
 - **Q-D3 — Bold is markup-only, word-like and unique.** A bold write is
@@ -109,6 +110,16 @@ first, with the reason.
   `batch_repair_expression` remains the escape hatch to switch it off,
   and every rewrite is previewed old → new and undone from the run log
   like every other write.
+
+- **Q-D13 — An empty definition shell may be cleared.** The
+  `strip_empty_glossary` op clears a definition field only when it holds
+  nothing but empty container markup (the Yomitan `<ol></ol>` shell) — the
+  rendered text is empty before and after, so nothing is lost. Any media
+  (`[sound:...]`, `<img>`, `[anki:...]`) or any visible character means no
+  write: a real definition is never touched
+  (`normalize.is_empty_glossary_shell`, pure). Clearing also unblocks the
+  word-fill, which treats markup-only content as occupied (Q-D1) — that
+  fill lands on the next run.
 
 ## Correctness of decisions
 

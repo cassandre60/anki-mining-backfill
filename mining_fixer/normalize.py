@@ -27,6 +27,7 @@ from collections.abc import Iterable
 __all__ = [
     "REPAIR_RULES",
     "furigana_base",
+    "is_empty_glossary_shell",
     "norm_sentence",
     "norm_sentence_match",
     "norm_word_text",
@@ -249,6 +250,38 @@ def furigana_base_matches(generated: str, sentence: str) -> bool:
     return _WHITESPACE_RE.sub("", strip_renderable(base)) == _WHITESPACE_RE.sub(
         "", strip_renderable(plain_sentence)
     )
+
+
+#: Tags whose presence alone carries no information: a field holding only
+#: these (the Yomitan glossary shell `<div class="yomitan-glossary"><ol></ol>
+#: </div>` and its variants) renders nothing.
+_CONTAINER_TAG_RE = re.compile(
+    r"</?(?:div|ol|ul|li|span|p|br|table|tbody|thead|tr|td|th|b|i|u|s|em|strong"
+    r"|font|small|big|sub|sup|h[1-6]|dl|dt|dd)\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+def is_empty_glossary_shell(value: str) -> bool:
+    """True when a definition field holds only empty container markup.
+
+    The deck's Yomitan exports leave shells such as
+    ``<div class="yomitan-glossary"><ol></ol></div>`` when a dictionary
+    entry had no body — invisible on the card, but they count as *occupied*
+    (QUALITY Q-D1), so they also block the word-fill. Clearing one loses
+    nothing: the rendered text is empty before and after.
+
+    Never true when the value is already blank (nothing to clean) or when it
+    holds media (``[sound:...]``, ``<img>``, ``[anki:...]``) or any visible
+    text — a real definition is never touched. Pure.
+    """
+    text = value or ""
+    if not text.strip():
+        return False
+    if _SOUND_RE.search(text) or _ANKI_REF_RE.search(text) or _IMG_RE.search(text):
+        return False
+    residue = html.unescape(_CONTAINER_TAG_RE.sub("", text))
+    return not residue.replace("\u00a0", " ").strip()
 
 
 # --- sentence repair (bulk-fix dimension 2: subtitle noise) -----------------

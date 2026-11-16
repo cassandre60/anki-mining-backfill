@@ -16,6 +16,7 @@ from mining_fixer.plan import (
     OP_REPAIR_EXPRESSION,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
+    OP_STRIP_EMPTY_GLOSSARY,
     Plan,
     PlannedWrite,
 )
@@ -39,6 +40,7 @@ def test_the_default_policy_is_lossless():
     assert allowed_ops() == {
         OP_FILL,
         OP_BOLD_CLOZE_WORD,
+        OP_STRIP_EMPTY_GLOSSARY,
         OP_ADD_TAGS,
     }
     assert OP_EXPAND_SENTENCE not in allowed_ops()
@@ -181,6 +183,7 @@ def test_default_batch_fixes_everything_fixable():
         OP_REPAIR_SENTENCE,
         OP_REGENERATE_FURIGANA,
         OP_REPAIR_EXPRESSION,
+        OP_STRIP_EMPTY_GLOSSARY,
     }
     assert OP_EXPAND_SENTENCE not in default_ops({"batch_expand_sentence": False})
     assert OP_REPLACE_SOURCE not in default_ops({"batch_replace_source": False})

@@ -37,6 +37,7 @@ from .normalize import (
     REPAIR_RULES,
     furigana_base,
     furigana_base_matches,
+    is_empty_glossary_shell,
     kana_fold,
     norm_reading,
     norm_sentence_match,
@@ -62,6 +63,10 @@ OP_REPAIR_SENTENCE = "repair_sentence"
 # (furigana)` from the note's own post-write Sentence through the installed
 # Japanese Support add-on's reading engine (never a home-grown generator).
 OP_REGENERATE_FURIGANA = "regenerate_furigana"
+# Empty-glossary cleanup (QUALITY Q-D12, owner ask 2026-11-16): a definition
+# field holding only empty container markup (the Youtan `<ol></ol>` shell)
+# is cleared — the rendered text is empty either way.
+OP_STRIP_EMPTY_GLOSSARY = "strip_empty_glossary"
 # The ruby layer this op rebuilds (the deck's own field name convention).
 FURIGANA_FIELD = "Sentence (furigana)"
 # Expression spelling repair (bulk-fix dimension 4, self-oracled variant):
@@ -78,6 +83,7 @@ OPS_TOUCHING_NONEMPTY = frozenset(
         OP_REPAIR_SENTENCE,
         OP_REGENERATE_FURIGANA,
         OP_REPAIR_EXPRESSION,
+        OP_STRIP_EMPTY_GLOSSARY,
         OP_ADD_TAGS,
     }
 )
@@ -598,6 +604,37 @@ def _expression_repair_for(
     )
 
 
+def _empty_glossary_writes(target: NoteRecord, cfg: dict) -> list[PlannedWrite]:
+    """Clear definition fields holding nothing but empty container markup.
+
+    Owner ask 2026-11-16: `Definition` / `Extended definition` show shells
+    like ``<div class="yomitan-glossary"><ol></ol></div>`` when the mined
+    dictionary entry had no body. The guard is pure and absolute
+    (:func:`normalize.is_empty_glossary_shell`): any media or visible text
+    means no write, so a real definition is never touched. Clearing also
+    unblocks the word-fill, which treats markup-only content as occupied
+    (QUALITY Q-D1) — that fill lands on the next run.
+    """
+    fields = tuple(cfg.get("definition_fields", ("Definition", "Extended definition")))
+    out: list[PlannedWrite] = []
+    for name in fields:
+        value = target.get(name)
+        if not is_empty_glossary_shell(value):
+            continue
+        out.append(
+            PlannedWrite(
+                note_id=target.note_id,
+                field=name,
+                op=OP_STRIP_EMPTY_GLOSSARY,
+                old_value=value,
+                new_value="",
+                default_checked=True,
+                badges=("cleared-empty-glossary",),
+            )
+        )
+    return out
+
+
 def _scene_writes_for(
     candidate: NoteRecord,
     matches: list[SceneMatch],
@@ -983,6 +1020,9 @@ def build_plan(
             reasons[target.note_id] = "opted-out"
             continue
         target_writes: list[PlannedWrite] = []
+        # Empty-glossary cleanup first: it removes invisible shells that
+        # would otherwise count as occupied and block a later word-fill.
+        target_writes.extend(_empty_glossary_writes(target, cfg))
         scene_writes, reason = [], None
         has_scene_gap = scene_dimension and (
             any(

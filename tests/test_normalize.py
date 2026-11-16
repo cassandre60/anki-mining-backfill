@@ -6,6 +6,7 @@ from mining_fixer.normalize import (
     REPAIR_RULES,
     furigana_base,
     furigana_base_matches,
+    is_empty_glossary_shell,
     kana_fold,
     norm_reading,
     norm_sentence,
@@ -192,6 +193,30 @@ def test_furigana_base_rejects_a_mangled_generation():
     assert not furigana_base_matches("見[", "見出し")
     assert not furigana_base_matches("全然違うテキスト", "見出しはこうニャ！")
     assert not furigana_base_matches("", "見出し")
+
+
+# --- is_empty_glossary_shell (empty-definition cleanup) ----------------------
+
+JUNK_SHELL = '<div style="text-align: left;" class="yomitan-glossary"><ol></ol></div>'
+
+
+def test_empty_glossary_shell_detects_the_yomitan_shell():
+    assert is_empty_glossary_shell(JUNK_SHELL)
+    assert is_empty_glossary_shell("<div class='g'><ol><li>&nbsp;</li></ol></div>")
+
+
+def test_empty_glossary_shell_never_matches_real_content():
+    # A real definition, however wrapped, is never touched.
+    assert not is_empty_glossary_shell(
+        '<div class="yomitan-glossary"><ol><li>しんさつ【診察】医者が調べること</li></ol></div>'
+    )
+    assert not is_empty_glossary_shell("しんさつ【診察】")
+    # Media inside the shell is information: never cleared.
+    assert not is_empty_glossary_shell("[sound:def.webm]")
+    assert not is_empty_glossary_shell('<div class="g"><img src="x.jpg"></div>')
+    # An already-empty value is nothing to clean.
+    assert not is_empty_glossary_shell("")
+    assert not is_empty_glossary_shell("   ")
 
 
 # --- furigana_base (bulk-fix dimension 4: the Expression-repair oracle) -------

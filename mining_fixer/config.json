@@ -11,7 +11,7 @@
   "batch_repair_sentence": true,
   "sentence_repair_rules": ["strip-arrows"],
   "batch_regenerate_furigana": true,
-  "batch_repair_expression": false,
+  "batch_repair_expression": true,
   "min_sentence_len": 6,
   "min_nonspace_chars": 4,
   "scene_fill_fields": ["Sentence Audio", "Picture", "Sentence (furigana)", "Translation"],
@@ -27,6 +27,7 @@
     "reading"
   ],
   "never_copy_fields": ["cloze-prefix", "cloze-body", "cloze-suffix"],
+  "definition_fields": ["Definition", "Extended definition"],
   "translation_autocheck": true,
   "notes_autocheck": false,
   "replaces_autocheck": true,
