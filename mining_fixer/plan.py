@@ -466,6 +466,41 @@ def _sentence_repair_write(
     )
 
 
+def _ruby_repair_write(
+    target: NoteRecord, rules: tuple[str, ...]
+) -> tuple[PlannedWrite | None, str | None, str | None]:
+    """Strip subtitle noise from the target's own ``Sentence (furigana)``.
+
+    Owner bug report 2026-11-16: the arrows also sit in the ruby field — the
+    card shows them even after the Sentence is cleaned. Same rule set, same
+    determinism; the ruby's annotations pass through untouched (the arrow
+    rule only removes line-tail arrows).
+
+    Guards: the field must be non-empty and actually change; a queued
+    furigana regeneration or scene fill of the field wins (it replaces the
+    whole value). Returns ``(write, reason, detail)``.
+    """
+    value = target.get(FURIGANA_FIELD)
+    if is_empty(value):
+        return None, None, None
+    new_value, applied = repair_sentence(value, rules)
+    if new_value == value:
+        return None, None, None
+    return (
+        PlannedWrite(
+            note_id=target.note_id,
+            field=FURIGANA_FIELD,
+            op=OP_REPAIR_SENTENCE,
+            old_value=value,
+            new_value=new_value,
+            default_checked=True,
+            badges=(*applied, "ruby"),
+        ),
+        None,
+        None,
+    )
+
+
 def _furigana_write_for(
     target: NoteRecord,
     generator,
@@ -778,14 +813,21 @@ def _scene_writes_for(
                     group_id=group_id,
                 )
             )
-            if not is_empty(parent_furigana) and is_empty(child_furigana):
+            # The copied ruby gets the same cleanup as the copied sentence: a
+            # parent's dump carries arrows in both fields, and leaving them
+            # means the next run has work to do (owner rule: one run fixes a
+            # card). The arrow rule is deterministic and annotation-safe.
+            parent_ruby = parent_furigana
+            if repair_rules:
+                parent_ruby, _applied_ruby = repair_sentence(parent_furigana, repair_rules)
+            if not is_empty(parent_ruby) and is_empty(child_furigana):
                 writes.append(
                     PlannedWrite(
                         note_id=candidate.note_id,
                         field="Sentence (furigana)",
                         op=OP_FILL,
                         old_value="",
-                        new_value=parent_furigana,
+                        new_value=parent_ruby,
                         source_note_id=parent.note_id,
                         default_checked=checked,
                         badges=tuple(["scene-furigana", *context_badges]),
@@ -793,14 +835,14 @@ def _scene_writes_for(
                         group_id=group_id,
                     )
                 )
-            elif not is_empty(parent_furigana) and not is_empty(child_furigana):
+            elif not is_empty(parent_ruby) and not is_empty(child_furigana):
                 writes.append(
                     PlannedWrite(
                         note_id=candidate.note_id,
                         field="Sentence (furigana)",
                         op=OP_EXPAND_SENTENCE,
                         old_value=child_furigana,
-                        new_value=parent_furigana,
+                        new_value=parent_ruby,
                         source_note_id=parent.note_id,
                         default_checked=checked,
                         badges=tuple(["replaces-fragment-furigana", *context_badges]),
@@ -1157,6 +1199,15 @@ def build_plan(
                 warnings.append(
                     f"note {target.note_id} ({expr}): sentence repair skipped — {repair_detail}"
                 )
+        # The ruby field carries the same subtitle arrows (owner report
+        # 2026-11-16): clean it too, unless a checked write already targets it
+        # (a furigana regeneration or a scene fill replaces the whole value).
+        if repair_rules and not any(
+            w.field == FURIGANA_FIELD and w.default_checked for w in target_writes
+        ):
+            ruby_write, _ruby_reason, _ruby_detail = _ruby_repair_write(target, repair_rules)
+            if ruby_write is not None:
+                target_writes.append(ruby_write)
         # Furigana regeneration (dimension 3). Runs after any queued
         # Sentence write — the ruby layer must match the text the plan
         # leaves behind (BULK_FIX.md ordering). Only when no other

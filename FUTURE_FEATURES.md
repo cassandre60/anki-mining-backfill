@@ -131,8 +131,9 @@ dictionary needed. `plan._expression_repair_for` rewrites the Expression
 only when the furigana is well-formed, reads exactly as the `reading`
 field says, and the base is a word-like kanji spelling that differs from
 the Expression (QUALITY Q-D12, op `repair_expression`, badge
-`expression-repaired-from-furigana`). Opt-in: `batch_repair_expression`
-(default false). Verified end to end on the author's ひと握り card
+`expression-repaired-from-furigana`). On by default under the owner's
+automatic-mode decision (2026-11-16); `batch_repair_expression` is the
+escape hatch. Verified end to end on the author's ひと握り card
 (note 1736973220751). What remains below is the dictionary seam for
 kana-only Expressions with no usable furigana.
 
@@ -157,7 +158,11 @@ run log/undo as every other write.
 4. The same lookup supplies a bold-match candidate in the other direction:
    an Expression written in kanji can be found in a kana-spelled Sentence
    (and vice versa). The exactly-one-occurrence rule still applies.
-5. Off by default; preview shows the old → new word; the run log records it.
+5. Preview shows the old → new word; the run log records it. (Superseded
+   on shipping: by owner decision 2026-11-16 the self-oracled furigana-base
+   variant runs by default under automatic mode; the dictionary seam for
+   kana-only Expressions without furigana stays opt-in until Ring-3
+   reviewed.)
 ```
 
 ### Why it matters

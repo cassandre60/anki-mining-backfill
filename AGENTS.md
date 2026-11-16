@@ -241,16 +241,26 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   (owner requirement). Two things were needed: a definition field holding
   only the empty Yomitan shell is filled *through* (old_value = the shell,
   `filled-through-empty-shell`) — the clear op is only the no-sibling
-  fallback; and a scene expansion cleans the sentence it copies with the
-  configured repair rules (`expanded-<rule>` badges), because the parent's
-  dump carries tail arrows. Verified on a copy of the real collection (the
-  newest 30 notes): run 1 = 46 writes on 23 notes, verify clean, undo
-  byte-identical, run 2 = 0 rows. The one deliberate second-run pair left:
-  the Expression spelling rewrite waits for that card's word fills
-  (F2 risk 4, the T15 session's design).
+  fallback; and a scene expansion/fill cleans the text it copies with the
+  configured repair rules (`expanded-<rule>`) — for **both** `Sentence` and
+  `Sentence (furigana)`, because the parent's dump carries tail arrows.
+  Verified on a copy of the real collection (newest 30 notes): run 1 = 46
+  writes on 23 notes, verify clean, undo byte-identical, run 2 = 0 rows.
+  The one deliberate second-run pair left: the Expression spelling rewrite
+  waits for that card's word fills (F2 risk 4, the T15 session's design).
   Verified by: `test_a_shell_definition_is_filled_in_the_same_run_and_then_is_a_noop`,
-  `test_expansion_cleans_the_copied_sentence_in_the_same_write`, and the
-  Ring 3 replay.
+  `test_expansion_cleans_the_copied_sentence_in_the_same_write`,
+  `tests/test_real_cards.py`, and the Ring 3 replay.
+- [2026-11-16, OpenCode] Real cards, not synthetic fixtures, are what catch
+  these bugs: the arrows the author still saw lived in `Sentence (furigana)`
+  (the repair only cleaned `Sentence`), and a scene fill copied the parent's
+  ruby *with* its arrows. Both are fixed; the committed real-card suite
+  (`tests/test_real_cards.py` + `tests/fixtures/real_cards.json.gz`, 13
+  captured cards, five classes) caught them within minutes of being written
+  and pins the properties: second run = no-op, no arrow in either sentence
+  field, no junk shell left, clauses never bolded. Extend that fixture
+  (read-only capture) whenever a new real bug is found.
+  Verified by: `tests/test_real_cards.py` (8 tests) and the full suite.
 - [2026-11-16, OpenCode] Source-confidence guards (divergent/far scene
   siblings) now drop the *scene rows* only; a guarded (unchecked) row no
   longer suppresses the note's own repairs (bold/arrows/furigana) nor

@@ -59,6 +59,17 @@ not have and must never be given.
   (the Yomitan shell, variants, and every refusal: real text, media, blank)
   and `tests/test_plan.py` (a checked write per shell field, never on real
   content).
+- **Real-card regression suite** (`tests/test_real_cards.py`, owner
+  requirement 2026-11-16: "we need a robust regression testing suite").
+  Frozen field values captured read-only from the author's collection
+  (`tests/fixtures/real_cards.json.gz`; 13 cards, five labelled classes:
+  arrows-in-ruby, divergent fragments, empty definition shells, enriched
+  parents, clause expressions). It asserts the properties the author
+  actually cares about — a second run is a no-op, no subtitle arrow
+  survives in either sentence field, a definition never keeps a junk shell,
+  a clause is never bolded, junk data is reported not guessed. It exists
+  because synthetic fixtures passed while real cards stayed broken; it
+  caught the ruby-arrow and copied-ruby bugs the day it was written.
 - **Furigana regeneration** (bulk-fix dimension 3) is pinned in
   `tests/test_normalize.py` (`furigana_base_matches`: whitespace and the
   engine's spacing quirks, speaker brackets, mangled/unbalanced output
