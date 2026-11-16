@@ -62,7 +62,7 @@ the collection never touched by anything the dialog did not show.
 ## Acceptance criteria (every release)
 
 - `ruff check .` and `ruff format --check .` clean; `python3 -m pytest` green
-  (139 tests with Anki installed).
+  (165 tests with Anki installed).
 - CI (`tests` workflow) green on the released commit.
 - The golden fixture test still reproduces the author's manual fix
   byte-for-byte on all five fields.

@@ -48,6 +48,7 @@ from .plan import (
 )
 
 __all__ = [
+    "DIMENSION_LABELS",
     "DIMENSIONS",
     "OPTIONAL_OPS",
     "SAFE_OPS",
@@ -63,6 +64,13 @@ __all__ = [
 #: The bulk-fix dimensions a run can select (BULK_FIX.md). Word fills, bold
 #: repair and tag unions are lossless core work and are never a dimension.
 DIMENSIONS = ("scene", "arrows", "furigana")
+
+#: User-facing labels for those dimensions (the batch window's checkboxes).
+DIMENSION_LABELS = {
+    "scene": "Complete from scene sources",
+    "arrows": "Strip line-end arrows",
+    "furigana": "Regenerate furigana",
+}
 
 #: Writes that cannot lose information: empty-field fills, markup-only bold,
 #: and tag additions.

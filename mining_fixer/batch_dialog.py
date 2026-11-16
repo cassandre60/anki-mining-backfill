@@ -26,6 +26,7 @@ from aqt.utils import showCritical, showInfo
 
 from .applier import ApplyDecision, run_after_editor_saved
 from .batch import (
+    DIMENSION_LABELS,
     BatchSelection,
     cfg_for_dimensions,
     default_ops,
@@ -49,12 +50,6 @@ _OP_SUMMARY = {
     "replace_source": "source replacements",
     "repair_sentence": "noise repairs",
     "regenerate_furigana": "furigana regenerations",
-}
-
-_DIMENSION_LABELS = {
-    "scene": "Complete from scene sources",
-    "arrows": "Strip line-end arrows",
-    "furigana": "Regenerate furigana",
 }
 
 
@@ -95,7 +90,7 @@ class BatchDialog(QDialog):
         layout.addWidget(title)
 
         self.dimension_boxes: dict[str, QCheckBox] = {}
-        for key, label in _DIMENSION_LABELS.items():
+        for key, label in DIMENSION_LABELS.items():
             box = QCheckBox(label)
             box.setChecked(self.flags[key])
             box.toggled.connect(lambda _checked=False: self._on_dimensions_changed())

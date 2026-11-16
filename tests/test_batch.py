@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from mining_fixer.batch import (
+    DIMENSION_LABELS,
+    DIMENSIONS,
     allowed_ops,
     cfg_for_dimensions,
     default_ops,
@@ -198,6 +200,10 @@ def test_the_furigana_tier_is_off_by_default_and_opt_in():
 
 
 # --- dimension picker (BULK_FIX.md B7) --------------------------------------
+
+
+def test_every_dimension_has_a_label():
+    assert set(DIMENSION_LABELS) == set(DIMENSIONS)
 
 
 def test_dimension_flags_reflect_the_config():

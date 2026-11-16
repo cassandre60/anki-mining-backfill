@@ -161,6 +161,8 @@ you press Apply.
   regenerate furigana — initialised from the config keys above. Ticking
   one rebuilds the preview; nothing is written until you press Apply, and
   a dimension can only ever enable a documented, guarded write.
+  `"batch_scene_propagation": false` (default true) turns scene filling off
+  for a run entirely, including the fills it would otherwise propose.
   **Preview report** saves a one-page human-readable summary (word, note, what
   changes, what was left alone) without touching your collection. A real run
   takes an **Anki backup** first, writes its **undo log before the first
