@@ -517,6 +517,37 @@ def test_two_agreeing_parents_beat_a_divergent_one():
     assert not any("divergent-parents" in w.badges for w in rows)
 
 
+def test_a_bold_write_cleans_the_arrow_it_would_have_left():
+    # 手を出す-shaped: the card needs a bold term AND carries tail arrows.
+    # The bold write owns the field, so it must clean what it writes — the
+    # arrow cleaner defers to it.
+    target = rec(
+        1,
+        {
+            "Expression": "手を出す",
+            "reading": "てをだす",
+            "furigana": "",
+            "cloze-body": "手を出す",
+            "Sentence": "女性に手を出すと➡<br>あっという間に症状は<br>悪化します。",
+        },
+    )
+    plan = build_plan(
+        [target],
+        {**CFG, "sentence_repair_rules": ["strip-arrows"]},
+        scope_note_ids=[1],
+    )
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(bold) == 1
+    assert "➡" not in bold[0].new_value
+    assert "<b>手を出す</b>" in bold[0].new_value
+    assert "strip-arrows" in bold[0].badges
+
+    applied = dict(target.fields)
+    applied["Sentence"] = bold[0].new_value
+    again = build_plan([rec(1, applied)], CFG, scope_note_ids=[1])
+    assert not [w for w in again.writes if w.note_id == 1 and w.field == "Sentence"]
+
+
 def test_nested_scene_clips_are_trusted():
     # The author's 自閉症 case: two parents hold the same subtitle block, one
     # clipped shorter. That is a clip difference, not a different source, so

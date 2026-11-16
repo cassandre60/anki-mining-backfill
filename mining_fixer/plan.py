@@ -296,7 +296,9 @@ def _is_listening(target: NoteRecord) -> bool:
     )
 
 
-def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | None, str | None]:
+def _bold_repair_for(
+    target: NoteRecord, rules: tuple[str, ...] = ()
+) -> tuple[PlannedWrite | None, str | None, str | None]:
     """Locate the tested word in a bold-less ``Sentence``; markup-only fix.
 
     The deck convention bolds the mined word inside ``Sentence``; the front
@@ -315,6 +317,12 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
     (``expression-looks-like-a-clause``), never bolded. Ambiguity — more
     than one occurrence — is never resolved by guessing.
 
+    ``rules`` (the configured repair rules) are applied to the sentence
+    *before* the word is located: the bold write replaces the field, so it
+    must leave no subtitle arrows behind — otherwise the arrow cleaner, which
+    defers to a queued bold write, would be skipped and the arrows would
+    survive (author bug report: 手を出す-shaped cards).
+
     Returns ``(write, reason, detail)``: the write is markup-only
     (``strip_renderable`` equality is verified before it is returned);
     ``reason``/``detail`` explain a miss for the report.
@@ -325,6 +333,11 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
         return None, None, None
     if _is_listening(target):
         return None, None, None
+    noise_rules: tuple[str, ...] = ()
+    if rules:
+        cleaned, noise_rules = repair_sentence(sentence, rules)
+        if noise_rules:
+            sentence = cleaned
     body = strip_renderable(target.get("cloze-body")).strip()
     expr = strip_renderable(target.get("Expression")).strip()
 
@@ -343,7 +356,7 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
                     old_value=sentence,
                     new_value=new_value,
                     default_checked=True,
-                    badges=("bold-added-to-cloze-word",),
+                    badges=("bold-added-to-cloze-word", *noise_rules),
                 )
                 return write, None, None
             return (
@@ -379,7 +392,7 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
                 old_value=sentence,
                 new_value=new_value,
                 default_checked=True,
-                badges=("bold-added-to-expression",),
+                badges=("bold-added-to-expression", *noise_rules),
             )
             return write, None, None
 
@@ -401,7 +414,7 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
                 old_value=sentence,
                 new_value=new_value,
                 default_checked=True,
-                badges=("bold-added-to-surface-form",),
+                badges=("bold-added-to-surface-form", *noise_rules),
             )
             return write, None, None
     if hits:
@@ -430,7 +443,7 @@ def _bold_repair_for(target: NoteRecord) -> tuple[PlannedWrite | None, str | Non
                     old_value=sentence,
                     new_value=new_value,
                     default_checked=True,
-                    badges=("bold-added-to-reading-form",),
+                    badges=("bold-added-to-reading-form", *noise_rules),
                 )
                 return write, None, None
     # Expression absent (inflected or a mis-mine): silent when nothing was
@@ -1236,7 +1249,7 @@ def build_plan(
         # write is queued for the same note: the two ops would fight over the
         # field. A guarded (unchecked) row never applies, so it must not
         # suppress the repair — the card's own text is not the suspect part.
-        bold_write, bold_reason, bold_detail = _bold_repair_for(target)
+        bold_write, bold_reason, bold_detail = _bold_repair_for(target, repair_rules)
         queued_expansion = any(
             w.field == "Sentence" and w.op == OP_EXPAND_SENTENCE and w.default_checked
             for w in target_writes
