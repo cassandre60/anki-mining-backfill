@@ -297,6 +297,26 @@ def _is_listening(target: NoteRecord) -> bool:
     )
 
 
+def _bold_normalized_sentence(sentence: str, candidates: list[str]) -> tuple[str, str] | None:
+    """Markup-only fix for a sentence whose bold is foreign or duplicated.
+
+    A block copied before this rule existed can carry the scene's own bold
+    (ぜひ) plus the child's (校): two bold items (author report). The deck
+    convention is exactly one — the tested word. Every ``<b>`` tag is
+    stripped and the single unambiguous candidate is bolded again; the
+    rendered text is unchanged by construction.
+    """
+    without_bold = _BOLD_RE.sub(lambda match: match.group(1), sentence)
+    for cand in candidates:
+        if len(cand) < 2 or without_bold.count(cand) != 1:
+            continue
+        new_value = without_bold.replace(cand, f"<b>{cand}</b>", 1)
+        if new_value != sentence:
+            return new_value, cand
+        return None
+    return None
+
+
 def _bold_repair_for(
     target: NoteRecord, rules: tuple[str, ...] = ()
 ) -> tuple[PlannedWrite | None, str | None, str | None]:
@@ -330,8 +350,38 @@ def _bold_repair_for(
     """
     sentence = target.get("Sentence")
     # <br> must not read as a bold tag: match <b>/<b attrs>/<strong only.
-    if is_empty(sentence) or _BOLD_TAG_RE.search(sentence):
+    if is_empty(sentence):
         return None, None, None
+    if _BOLD_TAG_RE.search(sentence):
+        # Bold present: normally left alone — unless it is foreign or
+        # duplicated, in which case normalise the markup only (rendered text
+        # unchanged) so exactly the tested word carries the bold.
+        if _is_listening(target):
+            return None, None, None
+        candidates = [strip_renderable(target.get("cloze-body")).strip()]
+        candidates += [strip_renderable(target.get("Expression")).strip()]
+        candidates += kana_spelling_candidates(
+            target.get("Expression") or "", target.get("furigana") or ""
+        )
+        reading = kana_fold(norm_reading(target.get("reading") or ""))
+        if reading:
+            candidates.append(reading)
+        normalised = _bold_normalized_sentence(sentence, [c for c in candidates if c])
+        if normalised is None:
+            return None, None, None
+        new_value, chosen = normalised
+        if strip_renderable(new_value) != strip_renderable(sentence):
+            return None, None, None
+        write = PlannedWrite(
+            note_id=target.note_id,
+            field="Sentence",
+            op=OP_BOLD_CLOZE_WORD,
+            old_value=sentence,
+            new_value=new_value,
+            default_checked=True,
+            badges=("bold-normalized-to-one",),
+        )
+        return write, None, None
     if _is_listening(target):
         return None, None, None
     noise_rules: tuple[str, ...] = ()
@@ -613,7 +663,11 @@ def _furigana_write_for(
             "the reading engine produced nothing for this sentence",
         )
     current = target.get(FURIGANA_FIELD) or ""
-    if generated == current:
+    # A ruby that no longer describes its sentence (the mining junk
+    # この‐たび【…】, or a block copied earlier) is stale: regenerate it in
+    # place rather than leaving the mismatch (author report on 此の度).
+    stale = bool(current.strip()) and not furigana_base_matches(current, sentence)
+    if generated == current and not stale:
         return None, None, None
     if not furigana_base_matches(generated, sentence):
         return (
@@ -901,9 +955,16 @@ def _word_recovered_scene_writes(
         if field_name == "Sentence":
             continue
         value = representative.get(field_name)
-        if not is_empty(target.get(field_name)) or is_empty(value):
+        current_value = target.get(field_name)
+        stale_ruby = (
+            field_name == FURIGANA_FIELD
+            and not is_empty(value)
+            and not is_empty(current_value)
+            and not furigana_base_matches(current_value, new_sentence)
+        )
+        if not stale_ruby and (not is_empty(current_value) or is_empty(value)):
             continue
-        if field_name in ("Sentence (furigana)",) and repair_rules:
+        if field_name in (FURIGANA_FIELD,) and repair_rules:
             value, _applied = repair_sentence(value, repair_rules)
         if field_name == "Sentence Audio":
             refs = sound_files(value)
@@ -913,8 +974,8 @@ def _word_recovered_scene_writes(
             PlannedWrite(
                 note_id=target.note_id,
                 field=field_name,
-                op=OP_FILL,
-                old_value="",
+                op=OP_EXPAND_SENTENCE if stale_ruby else OP_FILL,
+                old_value=current_value if stale_ruby else "",
                 new_value=value,
                 source_note_id=representative.note_id,
                 default_checked=True,
@@ -936,6 +997,26 @@ def _word_recovered_scene_writes(
             )
         )
     return writes, None
+
+
+def _single_bold(value: str, body: str) -> str:
+    """Leave exactly one bold span — around the tested word — in ``value``.
+
+    The deck convention is one bold term. An expanded block can carry the
+    scene's own bold (ぜひ's ``<b>ぜひ</b>``) and the child's word on top of
+    it, which produced two bold items (author report on 校).
+    """
+    target = strip_renderable(body).strip()
+    if not target:
+        return value
+
+    def keep_wanted(match: re.Match) -> str:
+        inner = match.group(1)
+        if strip_renderable(inner).strip() == target:
+            return match.group(0)
+        return inner
+
+    return _BOLD_RE.sub(keep_wanted, value)
 
 
 def _fragment_anchored_sentence(
@@ -1133,13 +1214,17 @@ def _scene_writes_for(
             badges = ["expands-sentence", "fragment-kept-in-cloze", *context_badges]
             if unique_anchor:
                 new_sentence, bold_badge = _retarget_bold(
-                    parent_sentence, parent.get("cloze-body"), candidate.get("cloze-body")
+                    parent_sentence,
+                    parent.get("cloze-body"),
+                    candidate.get("cloze-body"),
                 )
+                new_sentence = _single_bold(new_sentence, candidate.get("cloze-body"))
             else:
                 # The word occurs more than once in the block (校 in 精神医学
                 # 校, 医学校, …): bold the occurrence inside the child's own
                 # fragment, which is unique by definition.
-                new_sentence, bold_badge = fragment_bold, "bold-added-to-cloze-word"
+                new_sentence = _single_bold(fragment_bold, candidate.get("cloze-body"))
+                bold_badge = "bold-added-to-cloze-word"
             if bold_badge:
                 badges.append(bold_badge)
             # Repair the text the expansion writes: the parent's subtitle dump

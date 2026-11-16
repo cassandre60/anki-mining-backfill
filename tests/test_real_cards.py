@@ -34,7 +34,12 @@ from pathlib import Path
 
 from mining_fixer.batch import default_ops, select
 from mining_fixer.matching import NoteRecord, kana_spelling_candidates
-from mining_fixer.normalize import is_empty_glossary_shell, kana_fold, strip_renderable
+from mining_fixer.normalize import (
+    furigana_base_matches,
+    is_empty_glossary_shell,
+    kana_fold,
+    strip_renderable,
+)
 from mining_fixer.plan import OP_BOLD_CLOZE_WORD, OP_STRIP_EMPTY_GLOSSARY, build_plan
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "real_cards.json.gz"
@@ -226,3 +231,34 @@ def test_the_default_policy_selects_the_same_rows_for_the_real_cards():
     for note_id in {w.note_id for w in plan.writes}:
         if not any(nid == note_id for nid, _ in selected):
             assert note_id in reported, note_id
+
+
+def _applied(note: NoteRecord, plan) -> dict[str, str]:
+    fields = dict(note.fields)
+    for write in plan.writes:
+        if write.note_id == note.note_id and write.default_checked:
+            fields[write.field] = write.new_value
+    return fields
+
+
+def test_each_card_ends_with_at_most_one_bold_span():
+    # Content assertion (owner: why did the tests not catch this?). A block
+    # copied earlier kept the scene's own bold next to the card's word —
+    # 校 had <b>校</b> and <b>ぜひ</b>. The deck convention is exactly one.
+    for note in ALL:
+        after = _applied(note, plan_for(list(ALL), [note.note_id]))
+        spans = re.findall(r"<b>(.*?)</b>", after.get("Sentence") or "", re.S)
+        assert len(spans) <= 1, (note.note_id, note.get("Expression"), spans)
+
+
+def test_each_card_ends_with_a_ruby_that_matches_its_sentence():
+    # Content assertion: 此の度 kept its dictionary-entry ruby under a
+    # completely different sentence. A ruby whose base text does not match
+    # the sentence is broken, whatever else the plan does.
+    for note in ALL:
+        after = _applied(note, plan_for(list(ALL), [note.note_id]))
+        ruby = after.get("Sentence (furigana)") or ""
+        sentence = after.get("Sentence") or ""
+        if not ruby.strip() or not sentence.strip():
+            continue
+        assert furigana_base_matches(ruby, sentence), (note.note_id, note.get("Expression"))
