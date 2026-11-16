@@ -68,10 +68,14 @@ against the template's own HTML/JS on 2026-11-16:
    `Frequency` present without glosses is **not** listening — the template
    deliberately shows the normal sentence for those.
 
-Dimensions that only matter for a visible sentence (bold repair, arrows)
-should skip both paths. The bold repair shipped that skip (T14); whether the
-arrow repair and the furigana regeneration should skip too is an open
-question (their writes are harmless but pointless on an audio-only front).
+Dimensions that only matter for the front's sentence rendering follow this
+rule: the bold repair skips both listening paths (T14) — its contract is the
+front's bold term / cloze fallback, which a listening front never uses. The
+arrow repair and the furigana regeneration do **not** skip them: the **back**
+always renders the sentence — the `Sentence (furigana)` version when
+present, else the plain `Sentence` — on every card, listening or not
+(verified in the back template 2026-11-16), so both still improve a
+listening card's back.
 
 ## Ordering (the DAG)
 
@@ -342,8 +346,11 @@ proof.
   length/space heuristic now, a MeCab token-count later (BULK_FIX dim 6)?
 - Inflection matching (dimension 6): MeCab lemma pass through Japanese
   Support's engine, or the conservative okurigana-stem rule?
-- Should the listening predicate (now gating the bold repair, T14) also
-  gate the arrow repair and the furigana regeneration?
+- ~~Should the listening predicate (now gating the bold repair, T14) also
+  gate the arrow repair and the furigana regeneration?~~ **Answered
+  2026-11-16:** no — the back always renders the sentence (furigana when
+  present, else plain), so the arrow repair and the furigana regeneration
+  keep running on listening cards; only the bold repair skips them.
 - How do we detect "this child was already filled from that source and the
   source has since changed" when the run was not performed by this tool?
 - Where does the source set stop being the configured deck, and what breaks

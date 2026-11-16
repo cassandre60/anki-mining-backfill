@@ -107,6 +107,13 @@ not have and must never be given.
   | 12 | nothing to fix | fully enriched note | untouched; byte-identical after apply + undo |
 
   Twelve cards, one per class; a new guard adds one card, not a bigger run.
+
+  The runner is `scripts/acceptance_battery.py`: give it a copy of the
+  profile (`--profile-dir` → `--work-dir`, the builder's pattern) and a
+  battery JSON mapping each class to note ids; it prints PASS/FAIL per
+  class from the plan alone and writes nothing. The two furigana classes
+  need Japanese Support's engine, which exists only inside a running
+  Anki — headless runs print SKIP for them.
 - The **UI** (`preview_dialog.py`) is not unit-tested; its import is checked
   in Ring 2 and its behaviour is exercised by Ring 3's apply run. Anything
   decision-shaped in it is delegated to `applier.py`/`plan.py` precisely so it
