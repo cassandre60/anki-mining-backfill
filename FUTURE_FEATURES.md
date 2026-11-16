@@ -124,12 +124,24 @@ Owner ask 2026-11-16: "いきなり should become 行き成り", and likewise
 kanji spelling exists, and the author wants the card's word rewritten to
 the kanji form.
 
+**Shipped 2026-11-16 (the self-oracled variant):** when the card's own
+`furigana` field records the dictionary form (ひと握り mined under
+furigana `一握[ひとにぎ]り`), the furigana base is the oracle — no
+dictionary needed. `plan._expression_repair_for` rewrites the Expression
+only when the furigana is well-formed, reads exactly as the `reading`
+field says, and the base is a word-like kanji spelling that differs from
+the Expression (QUALITY Q-D12, op `repair_expression`, badge
+`expression-repaired-from-furigana`). Opt-in: `batch_repair_expression`
+(default false). Verified end to end on the author's ひと握り card
+(note 1736973220751). What remains below is the dictionary seam for
+kana-only Expressions with no usable furigana.
+
 This is **not** the shipped bold repair: that one never rewrites a word, it
 only wraps one unique existing occurrence in `<b>`. This feature writes a
 non-empty `Expression` — a new approved write (QUALITY Q-D2 today allows
-six, none of them `Expression`), so it needs a QUALITY amendment, its own
-opt-in policy tier and badge, a preview diff and the same run log/undo as
-every other write.
+seven, `repair_expression` among them), so it needed a QUALITY amendment
+(Q-D12), its own opt-in policy tier and badge, a preview diff and the same
+run log/undo as every other write.
 
 ### Design sketch
 

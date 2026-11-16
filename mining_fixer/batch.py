@@ -6,13 +6,15 @@ The preview dialog is for one card at a time. A bulk run over hundreds of
 notes cannot ask the user to audit hundreds of rows, so it applies a
 *policy* instead:
 
-- **Lossless (default).** Fills into empty fields, markup-only bold repair,
-  tag union. Nothing that already holds content is replaced.
-- **Also replace Source** — the asbplayer blob URL becomes the timestamped
-  source (the URL is kept in the run log).
-- **Also expand Sentence** — the mined fragment becomes the full scene
-  sentence, with the scene's bold moved onto this card's word (the fragment
-  survives in ``cloze-*``).
+- **Everything fixable, one pass (default).** Fills into empty fields,
+  markup-only bold repair, tag union, scene completion (blob Source →
+  timestamped source; fragment Sentence → full scene sentence with the bold
+  moved onto this card's word), the line-tail arrow repair, and the
+  furigana regeneration — the sentence text is cleaned before its ruby is
+  rebuilt. Owner decision 2026-11-16: the tool fixes on its own, with no
+  options to tick.
+- **The config is the escape hatch.** Every dimension above has a
+  ``batch_*`` key; switching one off is a config edit, not a dialog.
 
 Two kinds of guard are treated differently, because only one of them is about
 trusting the source:
@@ -34,7 +36,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .normalize import REPAIR_RULES
 from .plan import (
     OP_ADD_TAGS,
     OP_BOLD_CLOZE_WORD,
@@ -48,29 +49,14 @@ from .plan import (
 )
 
 __all__ = [
-    "DIMENSION_LABELS",
-    "DIMENSIONS",
     "OPTIONAL_OPS",
     "SAFE_OPS",
     "BatchSelection",
     "LeftAlone",
     "allowed_ops",
-    "cfg_for_dimensions",
     "default_ops",
-    "dimension_flags",
     "select",
 ]
-
-#: The bulk-fix dimensions a run can select (BULK_FIX.md). Word fills, bold
-#: repair and tag unions are lossless core work and are never a dimension.
-DIMENSIONS = ("scene", "arrows", "furigana")
-
-#: User-facing labels for those dimensions (the batch window's checkboxes).
-DIMENSION_LABELS = {
-    "scene": "Complete from scene sources",
-    "arrows": "Strip line-end arrows",
-    "furigana": "Regenerate furigana",
-}
 
 #: Writes that cannot lose information: empty-field fills, markup-only bold,
 #: and tag additions.
@@ -177,63 +163,24 @@ def allowed_ops(
 
 
 def default_ops(cfg: dict | None = None) -> frozenset[str]:
-    """What a bulk run does out of the box.
+    """What a bulk run does out of the box: everything fixable.
 
-    ``expand_sentence`` and ``replace_source`` are *information-preserving*
-    replaces: the mined fragment survives in ``cloze-*`` and the blob URL is
-    kept in the run log, so the undo restores them. A bulk fixer that
-    refused to complete sentences would be useless, so they are on by
-    default and configurable without a UI (``batch_expand_sentence`` /
-    ``batch_replace_source``). The subtitle-noise repair rewrites non-empty
-    text with no oracle beyond its own rule list, so it stays OFF by
-    default (``batch_repair_sentence``) until proven on a real collection;
-    the furigana regeneration rewrites non-empty ruby with the external
-    reading engine as its oracle (``batch_regenerate_furigana``), also off
-    by default.
+    Owner decision 2026-11-16 — the tool fixes on its own, so every
+    dimension is on by default: the two information-preserving replaces (the
+    mined fragment survives in ``cloze-*``; the blob URL is kept in the run
+    log, so the undo restores them), the line-tail arrow repair, and the
+    furigana regeneration. The ``batch_*`` keys stay as the escape hatch for
+    switching a dimension off. The safety model is untouched: Anki backup
+    first, undo log before the first write, per-write verification, and
+    every guard still drops what cannot be proven (QUALITY.md).
     """
     cfg = cfg or {}
     return allowed_ops(
         expand_sentence=bool(cfg.get("batch_expand_sentence", True)),
         replace_source=bool(cfg.get("batch_replace_source", True)),
-        repair_sentence=bool(cfg.get("batch_repair_sentence", False)),
-        regenerate_furigana=bool(cfg.get("batch_regenerate_furigana", False)),
+        repair_sentence=bool(cfg.get("batch_repair_sentence", True)),
+        regenerate_furigana=bool(cfg.get("batch_regenerate_furigana", True)),
     )
-
-
-def dimension_flags(cfg: dict | None = None) -> dict[str, bool]:
-    """Which bulk-fix dimensions the config enables — the picker's defaults.
-
-    ``scene`` — source–child propagation (fills plus the configured replace
-    tiers); ``arrows`` — the line-tail arrow repair, which needs its rule
-    list; ``furigana`` — regeneration through Japanese Support.
-    """
-    cfg = cfg or {}
-    return {
-        "scene": bool(cfg.get("batch_scene_propagation", True)),
-        "arrows": bool(cfg.get("batch_repair_sentence", False))
-        and bool(tuple(cfg.get("sentence_repair_rules", ()) or ())),
-        "furigana": bool(cfg.get("batch_regenerate_furigana", False)),
-    }
-
-
-def cfg_for_dimensions(cfg: dict, flags: dict[str, bool]) -> dict:
-    """A config copy that runs exactly the chosen dimensions.
-
-    Only documented ``batch_*`` keys are touched: the picker narrows or
-    enables a dimension, it never unlocks a write the config does not
-    describe. Ticking ``arrows`` with an empty rule list selects the
-    shipped rule set — a tick must do something — while unticking keeps
-    the configured list for later runs.
-    """
-    out = dict(cfg)
-    out["batch_scene_propagation"] = bool(flags.get("scene", True))
-    out["batch_repair_sentence"] = bool(flags.get("arrows", False))
-    rules = tuple(cfg.get("sentence_repair_rules", ()) or ())
-    if flags.get("arrows") and not rules:
-        rules = REPAIR_RULES
-    out["sentence_repair_rules"] = list(rules)
-    out["batch_regenerate_furigana"] = bool(flags.get("furigana", False))
-    return out
 
 
 def _reason_text(reason: str) -> str:

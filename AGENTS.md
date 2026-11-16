@@ -236,6 +236,16 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   only honest oracle. Scratch script deleted.
   Verified by: the experiment output recorded in BULK_FIX.md
   (dimension 6, open questions).
+- [2026-11-16, OpenCode] Owner decision — **automatic mode**: the tool
+  fixes on its own, no options to tick. Every dimension is on by default
+  (`batch.default_ops`: fills, scene completion, blob-Source replace,
+  `strip-arrows`, furigana regeneration; sentence cleaned before its ruby),
+  the batch window's dimension checkboxes and their overlay helpers were
+  removed the day they shipped, and the `batch_*` config keys remain the
+  escape hatch. Anki merges packaged `config.json` defaults under any user
+  keys, so a fresh dev install with no overrides follows these defaults.
+  Verified by: `tests/test_batch.py` (defaults on, per-key opt-out) and the
+  local `meta.json` (no config section).
 
 ## Lessons Learned
 

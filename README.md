@@ -59,6 +59,16 @@ and covered by tests, not just intended:
      is dropped when the engine produces nothing, raises, or returns ruby
      whose base text no longer matches the sentence. Off by default
      (`batch_regenerate_furigana`).
+   - Expression spelling repair (`repair_expression`): an opt-in rewrite of
+     the card's own `Expression` to the dictionary form its `furigana` field
+     already records — the card mined ひと握り while Yomitan resolved the
+     lookup to 一握り (`furigana`: `一握[ひとにぎ]り`). The furigana base is
+     the oracle: the rewrite happens only when the furigana is well-formed,
+     reads exactly as the note's `reading` field says, and the base is a
+     word-like kanji spelling that differs from the Expression. Anything
+     else is a reported reason, never a guess; the rewrite is deferred while
+     word-level fills are queued for the same card. Off by default
+     (`batch_repair_expression`).
    - Tags (`add_tags`): the target keeps its tags and gains every
      contributing source card's tags — a pure union that never removes;
      Anki control tags (`marked`, `leech`) and this tool's own tags
@@ -138,31 +148,21 @@ you press Apply.
   note(s)**, done. The window stays quiet — counts, not rows: how many notes
   will be fixed, how many are unchanged, how many were left alone (the reasons
   are behind one button and in the preview report).
-  Out of the box it performs every **information-preserving** fix: fills into
-  empty fields, scene sentence completion (the mined fragment stays in
-  `cloze-*`), blob `Source` → timestamped source (the URL stays in the run
-  log), bold markup, and tag unions. The two replaces can be switched off in
-  the config (`batch_expand_sentence`, `batch_replace_source`).
-  The **subtitle-noise repair** is an additional opt-in tier: set
-  `"batch_repair_sentence": true` and choose the rules with
-  `"sentence_repair_rules"` (`strip-arrows` — `[]` disables it everywhere).
-  It strips the continuation arrows subtitle exports leave at line ends
-  (0.4% of this deck's `Sentence` fields); line breaks (`<br>`) and
-  spacing stay exactly as mined. It replaces content that is already
-  there, so it stays off until you turn it on.
-  The **furigana regeneration** is another opt-in tier: set
-  `"batch_regenerate_furigana": true` and the tool rebuilds
-  `Sentence (furigana)` for every card through Japanese Support's reading
-  engine, from the sentence the run will leave behind. It rewrites
-  non-empty ruby, so it also stays off until you turn it on; without the
-  Japanese Support add-on it reports itself unavailable and writes nothing.
-  **In the batch window** the three bulk-fix dimensions appear as
-  checkboxes — complete from scene sources, strip line-end arrows,
-  regenerate furigana — initialised from the config keys above. Ticking
-  one rebuilds the preview; nothing is written until you press Apply, and
-  a dimension can only ever enable a documented, guarded write.
-  `"batch_scene_propagation": false` (default true) turns scene filling off
-  for a run entirely, including the fills it would otherwise propose.
+  Out of the box it does **everything it can, on its own, in one pass**:
+  fills into empty fields, completes sentences from scene sources (the
+  mined fragment stays in `cloze-*`), replaces blob `Source` with the
+  timestamped source (the URL stays in the run log), strips the
+  line-end arrows subtitle exports leave behind (line breaks and spacing
+  stay exactly as mined), rebuilds `Sentence (furigana)` through the
+  installed Japanese Support add-on — always from the sentence the run
+  leaves behind, so cleaning happens before the ruby — and unions tags.
+  **There are no options to tick.** One button, one pass.
+  The config keys remain the escape hatch if you ever want a dimension
+  off: `batch_expand_sentence`, `batch_replace_source`,
+  `batch_scene_propagation`, `batch_repair_sentence` (with
+  `sentence_repair_rules`), `batch_regenerate_furigana` — all default
+  true. Without the Japanese Support add-on the furigana step reports
+  itself unavailable and writes nothing.
   **Preview report** saves a one-page human-readable summary (word, note, what
   changes, what was left alone) without touching your collection. A real run
   takes an **Anki backup** first, writes its **undo log before the first

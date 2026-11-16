@@ -10,12 +10,14 @@ first, with the reason.
 - **Q-D1 — Fills only touch empty fields.** A field with any non-whitespace
   content is never written by a `fill`; markup-only values like `<hr>` count
   as occupied.
-- **Q-D2 — Six approved non-empty writes, each information-preserving.**
+- **Q-D2 — Seven approved non-empty writes, each information-preserving.**
   `replace_source` (blob URL is logged), `expand_sentence` (fragment survives
   in `cloze-*`), `bold_cloze_word` (rendered text unchanged),
   `repair_sentence` (only configured noise classes change, Q-D10),
   `regenerate_furigana` (the ruby layer must still carry the sentence's
-  characters, Q-D11), `add_tags` (superset only).
+  characters, Q-D11), `repair_expression` (the new spelling is the note's own
+  furigana base, cross-checked against its reading field, Q-D12; the old
+  spelling survives in the run log, Q-D7), `add_tags` (superset only).
   `OPS_TOUCHING_NONEMPTY` is the single source of
   truth and a test asserts no other op writes a non-empty value.
 - **Q-D3 — Bold is markup-only, word-like and unique.** A bold write is
@@ -66,9 +68,11 @@ first, with the reason.
   rule names are warned about and ignored. A repair write is never issued
   when another `Sentence` write (expansion or bold) is queued for the same
   note, and it is dropped when it would change how often the tested word
-  (`cloze-body`) occurs. The transformation is idempotent, and the
-  dimension ships off by default (`sentence_repair_rules: []`,
-  `batch_repair_sentence: false`) until proven on a real collection.
+  (`cloze-body`) occurs. The transformation is idempotent. By owner
+  decision (2026-11-16) the dimension runs by default: the tool fixes on
+  its own (`batch_repair_sentence: true`, rules `strip-arrows`); the
+  config key remains the escape hatch to switch it off, and every guard
+  above still applies.
 - **Q-D11 — Furigana regeneration uses Japanese Support as the only
   oracle.** The `regenerate_furigana` op rewrites `Sentence (furigana)`
   from the note's own Sentence through the installed Japanese Support
@@ -84,8 +88,25 @@ first, with the reason.
   ruby's base text must carry exactly the sentence's characters
   (`normalize.furigana_base_matches`), else `furigana-base-mismatch` and no
   write. Unreachable engine (headless, add-on missing) is reported once per
-  run. It ships off by default (`batch_regenerate_furigana: false`) until
-  proven on a real collection.
+  run. By owner decision (2026-11-16) it runs by default
+  (`batch_regenerate_furigana: true`); the config key remains the escape
+  hatch, and every guard above still applies.
+- **Q-D12 — Expression repair is self-oracled and opt-in.** The
+  `repair_expression` op rewrites a note's own `Expression` to the base text
+  of its own `furigana` field: Yomitan records the dictionary form the lookup
+  resolved to (ひと握り mined under furigana `一握[ひとにぎ]り` → 一握り).
+  No dictionary seam and no hand-written kana→kanji table — the note itself
+  is the oracle. Guards, each a reported reason instead of a guess:
+  `reading_from_furigana(furigana)` must equal the note's normalized
+  `reading` field (the furigana must describe *this* word); the base must
+  differ from the Expression, contain kanji (a pure-kana rewrite would be a
+  different word, never a spelling) and be word-like (the Q-D3 gate). The
+  write is deferred when a word-level write is queued for the note — those
+  values come from the old spelling's word group and must not land in the
+  same run as the rewrite (F2 risk 4). Off by default
+  (`batch_repair_expression: false`) — the highest-guess-risk dimension
+  (BULK_FIX slice 4) — and every rewrite is previewed old → new and undone
+  from the run log like every other write.
 
 ## Correctness of decisions
 
@@ -137,7 +158,8 @@ first, with the reason.
     mined fragment survives in `cloze-*`, the blob URL is written to the run
     log before the write. The subtitle-noise repair is an additional opt-in
     tier (`batch_repair_sentence`, default false); rows of a disabled tier
-    make the note count as excluded by policy.
+    make the note count as excluded by policy. The Expression repair is
+    likewise opt-in (`batch_repair_expression`, default false, Q-D12).
 
 ## Apply behaviour
 

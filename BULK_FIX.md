@@ -29,15 +29,17 @@ selection grows and as more dimensions are added.
 ## Dimensions
 
 Each dimension is an independent, individually toggleable policy with its
-own evidence rules and guards. The shipped propagation dimension is on by
-default (its replaces are information-preserving); **every new dimension
-stays off by default until it is proven on a real collection**.
+own evidence rules and guards. **Owner decision 2026-11-16: every dimension
+runs by default — the tool fixes on its own, with no options to tick** (the
+config keys remain the escape hatch). The safety model below is what makes
+that acceptable: backup first, undo log, per-write verification, and a
+guard that drops what cannot be proven.
 
 | # | Dimension | Status | What it fixes | Evidence / guards |
 |---|---|---|---|---|
 | 1 | Source–child fixes (scene propagation) | **shipped** | `Sentence`, `Sentence (furigana)`, scene audio, picture, `Translation`, timestamped `Source` onto children | source-confidence (`divergent-parents`, `far-from-source`), text-safety (`fragment-not-recoverable`, `cloze-anchor-not-unique`, `stale-fragment-furigana-risk`) |
-| 2 | Sentence repair | **shipped, off by default** | remove line-tail continuation arrows (`➡` / `→`); `<br>` line breaks and spacing stay exactly as mined (owner decision 2026-11-15) | config-driven rule list (`strip-arrows`); `cloze-*` fragment anchor must still be found; old → new diff in the report |
-| 3 | Furigana generation | **shipped, off by default** | rebuild `Sentence (furigana)` from the note's own post-write sentence | runs *after* repair in one plan; `reading.mecab.reading` of Japanese Support (installed, id 3918629684) — never a home-grown generator; base-text guard + engine-failure reasons |
+| 2 | Sentence repair | **shipped, on by default** | remove line-tail continuation arrows (`➡` / `→`); `<br>` line breaks and spacing stay exactly as mined (owner decision 2026-11-15) | config-driven rule list (`strip-arrows`); `cloze-*` fragment anchor must still be found; old → new diff in the report |
+| 3 | Furigana generation | **shipped, on by default** | rebuild `Sentence (furigana)` from the note's own post-write sentence | runs *after* repair in one plan; `reading.mecab.reading` of Japanese Support (installed, id 3918629684) — never a home-grown generator; base-text guard + engine-failure reasons |
 | 4 | Expression repair | **future** | fix inflections; repair an expression written partly in kana when the kanji form exists; **rewrite a kana-only expression to its kanji spelling** (owner ask 2026-11-16: いきなり → 行き成り, ときに → 時に) | needs an offline dictionary and a per-expression oracle; exactly one dictionary form, ambiguity reported, never guessed; a non-empty write on `Expression` — new approved write + opt-in tier (FUTURE_FEATURES.md §F2) |
 | 5 | Indentation / formatting | **future** | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
 | 6 | Bold from expression | **shipped (verbatim only)**; inflected matching future | on **non-listening** cards whose `Sentence` has no bold term, bold the expression's occurrence (including from a missing/junk `cloze-body`); an inflected surface (読む → 読め) is the open part | expression must look like a word (clause-like expressions such as 漢字は読めるようになりたいかな are rejected, never bolded); occurrence must be unique; ambiguity reported, never guessed; listening predicate mirrors the card template (see below) |
@@ -45,7 +47,7 @@ stays off by default until it is proven on a real collection**.
 Dimension 1 is what `batch.py` + `collection_io.apply_batch` ship today.
 Dimensions 2 and 3 have code (`normalize.repair_sentence` /
 `normalize.furigana_base_matches`, the `repair_sentence` and
-`regenerate_furigana` ops) and ship **off by default**
+`regenerate_furigana` ops) and run **by default** (owner decision 2026-11-16)
 (`sentence_repair_rules: []` / `batch_repair_sentence: false`,
 `batch_regenerate_furigana: false`) until their Ring 3 battery on a copy; the
 remaining dimensions are on the backlog (B6 the source-first pipeline, B7
@@ -171,8 +173,9 @@ is **shipped** today in `collection_io.apply_batch`; new dimensions reuse it:
 
 ## Build plan
 
-Ordered slices. Each ships **independently** and stays **off by default**
-until proven on a real collection. "Tests" means the hermetic suite;
+Ordered slices. Each ships **independently**, and since the owner's
+automatic-mode decision (2026-11-16) each runs **by default** — the Ring 3
+battery on a copy still precedes trusting a dimension at scale. "Tests" means the hermetic suite;
 "real-collection check" means the Ring 3 run on an existing snapshot, never
 the live profile (AGENTS.md §2 rules 2–3) — and it is a **curated battery,
 not a bulk 1000-note run** (owner guidance, 2026-11-16): twelve cards, one
@@ -200,7 +203,8 @@ proof.
 
 - **Goal.** Rebuild the note's `Sentence (furigana)` from its own
   post-write Sentence through Japanese Support. Shipped as T12
-  (`PLAN_VERSION` 4), off by default (`batch_regenerate_furigana: false`).
+  (`PLAN_VERSION` 4), on by default (`batch_regenerate_furigana`; owner
+decision 2026-11-16).
 - **Modules.** `collection_io.py` (the only Anki-facing caller:
   `japanese_support_furigana_generator`), the `regenerate_furigana` op in
   `plan.py` / `batch.py`, the base-text guard in `normalize.py`
@@ -234,6 +238,17 @@ proof.
   exists. Includes the owner ask of 2026-11-16: rewrite a kana word to its
   kanji spelling (いきなり → 行き成り, ときに → 時に), design in
   [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) §F2.
+- **Shipped 2026-11-16 (self-oracled variant, `PLAN_VERSION` 5):** the
+  ひと握り → 一握り class, where the note's own `furigana` field already
+  records the dictionary form (`一握[ひとにぎ]り`): the furigana base is the
+  oracle, cross-checked against the `reading` field (`normalize.furigana_base`,
+  `plan._expression_repair_for`, op `repair_expression`, badge
+  `expression-repaired-from-furigana`, QUALITY Q-D12). Opt-in via
+  `batch_repair_expression` (default false). No offline dictionary needed for
+  this variant.
+- **Still open.** Kana-only Expressions without a usable `furigana` field
+  (いきなり with an empty furigana) need the offline dictionary seam below,
+  and inflection repair needs MeCab (B8).
 - **Modules.** `normalize.py`, `plan.py`, word-group logic in `matching.py`,
   and a new dictionary seam (offline; the mining dictionaries or another
   bundled lookup — never a hand-written kana→kanji table).
@@ -267,24 +282,17 @@ proof.
 - **Risks.** Largest refactor; do it only once a second setup actually
   exists.
 
-### Slice 7 — Dimension picker (B7)
+### Slice 7 — Dimension picker (B7) — superseded
 
-- **Goal.** One window: the selected cards, three checkboxes (scene
-  propagation / line-end arrows / furigana regeneration), counts, Apply.
-  Shipped as T13.
-- **Modules.** `batch.dimension_flags` / `batch.cfg_for_dimensions` (a pure
-  overlay onto documented `batch_*` keys — a tick can only enable a
-  documented, guarded write), `build_plan`'s `batch_scene_propagation`
-  gate, the batch dialog's checkboxes (rebuild the preview on toggle).
-  The lossless core — word fills, bold repair, tag unions — is not a
-  dimension and always stays eligible.
-- **Acceptance.** Toggling a dimension rebuilds the preview and the
-  counts; scene-off leaves no scene-origin row in the plan; hermetic tests
-  pin the overlay and the gate; the Ring 3 battery confirms the counts
-  per class.
-- **Risks.** The plan is rebuilt per toggle — fine at the shipped scale
-  (thousands of notes); a million-card selection would need a cheaper
-  filter instead of a rebuild.
+Built 2026-11-16, removed the same day. The owner's decision is automatic
+mode: "I want the app to fix things on its own... no boxes, reduce useless
+friction". The batch window therefore has no options to tick — every
+configured dimension runs in one pass (`batch.default_ops`, all on by
+default), the sentence is cleaned before its ruby is rebuilt, and the
+`batch_*` config keys remain the escape hatch. What survives from the
+picker work: the `batch_scene_propagation` gate in `build_plan` (a
+dimension can still be switched off, just in config rather than in the
+window).
 
 ### Slice 8 — Bold from expression (dimension 6)
 

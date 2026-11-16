@@ -8,7 +8,11 @@ expectation (TEST_STRATEGY.md, "Acceptance runs use a curated battery").
 
 Usage:
     python3 scripts/acceptance_battery.py --profile-dir "<Anki profile dir>" \
-        --work-dir /tmp/opencode/mb_battery --battery battery.json [--arrows] [--furigana]
+        --work-dir /tmp/opencode/mb_battery --battery battery.json
+
+``--arrows`` / ``--furigana`` force those dimensions on for the run; with
+the shipped defaults both are already on, so the flags are only needed when
+the config switched one off.
 
 Battery file (one or more note ids per class):
     {
@@ -25,8 +29,8 @@ correct-furigana, child-with-scene-fill, blob-source, divergent-parents,
 nothing-to-fix.
 
 The furigana classes need Japanese Support's engine, which only exists inside
-a running Anki; headless, the planner reports the dimension unavailable and
-those classes print SKIP. Run those two classes from the add-on instead.
+a running Anki; headless, the planner reports the dimension unavailable (a
+warning) and those classes cannot pass. Run them from the add-on instead.
 """
 
 from __future__ import annotations
@@ -107,8 +111,8 @@ def main() -> int:
     parser.add_argument("--profile-dir", required=True, type=Path)
     parser.add_argument("--work-dir", required=True, type=Path)
     parser.add_argument("--battery", required=True, type=Path)
-    parser.add_argument("--arrows", action="store_true", help="enable the arrow tier")
-    parser.add_argument("--furigana", action="store_true", help="enable the furigana tier")
+    parser.add_argument("--arrows", action="store_true", help="force the arrow tier on")
+    parser.add_argument("--furigana", action="store_true", help="force the furigana tier on")
     args = parser.parse_args()
 
     classes = load_battery(args.battery)
@@ -148,9 +152,6 @@ def main() -> int:
         expectation = EXPECTATIONS[name]
         for nid in note_ids:
             ok, want = verdict(by_note.get(nid, []), plan.reasons.get(nid), expectation)
-            if name in ("stale-furigana", "correct-furigana") and not args.furigana:
-                print(f"SKIP  {name:<22} note {nid} — furigana tier not enabled (--furigana)")
-                continue
             rows = ", ".join(
                 f"{w.field}:{w.op}{'' if w.default_checked else '(unchecked)'}"
                 for w in by_note.get(nid, [])

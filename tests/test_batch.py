@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 from mining_fixer.batch import (
-    DIMENSION_LABELS,
-    DIMENSIONS,
     allowed_ops,
-    cfg_for_dimensions,
     default_ops,
-    dimension_flags,
     select,
 )
 from mining_fixer.plan import (
@@ -171,87 +167,36 @@ def test_complete_notes_count_as_untouched_and_ambiguous_bold_is_left_alone():
     ]
 
 
-def test_default_batch_writes_the_information_preserving_replaces():
-    # The bulk fixer completes cards out of the box: the fragment stays in
-    # cloze-*, the blob URL stays in the run log, so both replaces are safe.
+def test_default_batch_fixes_everything_fixable():
+    # Owner decision 2026-11-16: out of the box the bulk fixer completes
+    # cards, strips arrows and rebuilds furigana; every config key can still
+    # switch its dimension off.
     assert default_ops() == {
         OP_FILL,
         OP_BOLD_CLOZE_WORD,
         OP_ADD_TAGS,
         OP_EXPAND_SENTENCE,
         OP_REPLACE_SOURCE,
+        OP_REPAIR_SENTENCE,
+        OP_REGENERATE_FURIGANA,
     }
     assert OP_EXPAND_SENTENCE not in default_ops({"batch_expand_sentence": False})
     assert OP_REPLACE_SOURCE not in default_ops({"batch_replace_source": False})
 
 
-def test_the_repair_tier_is_off_by_default_and_opt_in():
+def test_the_repair_tier_is_on_by_default():
+    # Owner decision 2026-11-16: the tool fixes on its own.
     assert OP_REPAIR_SENTENCE not in allowed_ops()
     assert OP_REPAIR_SENTENCE in allowed_ops(repair_sentence=True)
-    assert OP_REPAIR_SENTENCE not in default_ops()
-    assert OP_REPAIR_SENTENCE in default_ops({"batch_repair_sentence": True})
+    assert OP_REPAIR_SENTENCE in default_ops()
+    assert OP_REPAIR_SENTENCE not in default_ops({"batch_repair_sentence": False})
 
 
-def test_the_furigana_tier_is_off_by_default_and_opt_in():
+def test_the_furigana_tier_is_on_by_default():
     assert OP_REGENERATE_FURIGANA not in allowed_ops()
     assert OP_REGENERATE_FURIGANA in allowed_ops(regenerate_furigana=True)
-    assert OP_REGENERATE_FURIGANA not in default_ops()
-    assert OP_REGENERATE_FURIGANA in default_ops({"batch_regenerate_furigana": True})
-
-
-# --- dimension picker (BULK_FIX.md B7) --------------------------------------
-
-
-def test_every_dimension_has_a_label():
-    assert set(DIMENSION_LABELS) == set(DIMENSIONS)
-
-
-def test_dimension_flags_reflect_the_config():
-    flags = dimension_flags({"sentence_repair_rules": ["strip-arrows"]})
-    assert flags == {"scene": True, "arrows": False, "furigana": False}
-    flags = dimension_flags(
-        {
-            "batch_repair_sentence": True,
-            "sentence_repair_rules": ["strip-arrows"],
-            "batch_regenerate_furigana": True,
-            "batch_scene_propagation": False,
-        }
-    )
-    assert flags == {"scene": False, "arrows": True, "furigana": True}
-
-
-def test_the_arrows_flag_needs_its_rule_list():
-    # A tick without rules cannot do anything, so the flag stays off.
-    assert dimension_flags({"batch_repair_sentence": True})["arrows"] is False
-
-
-def test_cfg_for_dimensions_overlays_only_documented_keys():
-    cfg = {"deck_name": "Deck", "batch_repair_sentence": False, "sentence_repair_rules": []}
-    out = cfg_for_dimensions(cfg, {"scene": False, "arrows": True, "furigana": True})
-    assert out["batch_scene_propagation"] is False
-    assert out["batch_repair_sentence"] is True
-    assert out["batch_regenerate_furigana"] is True
-    # Ticking arrows with no rules selects the shipped set (a tick must act).
-    assert out["sentence_repair_rules"] == ["strip-arrows"]
-    # Untouched keys survive, and the input config is not mutated.
-    assert out["deck_name"] == "Deck"
-    assert cfg["batch_repair_sentence"] is False
-    assert cfg["sentence_repair_rules"] == []
-
-
-def test_cfg_for_dimensions_keeps_configured_rules_when_arrows_are_off():
-    cfg = {"batch_repair_sentence": True, "sentence_repair_rules": ["strip-arrows"]}
-    out = cfg_for_dimensions(cfg, {"scene": True, "arrows": False, "furigana": False})
-    assert out["batch_repair_sentence"] is False
-    assert out["sentence_repair_rules"] == ["strip-arrows"]
-
-
-def test_the_picker_ops_follow_the_overlaid_config():
-    cfg = {"sentence_repair_rules": ["strip-arrows"]}
-    out = cfg_for_dimensions(cfg, {"scene": False, "arrows": True, "furigana": True})
-    ops = default_ops(out)
-    assert OP_REPAIR_SENTENCE in ops
-    assert OP_REGENERATE_FURIGANA in ops
+    assert OP_REGENERATE_FURIGANA in default_ops()
+    assert OP_REGENERATE_FURIGANA not in default_ops({"batch_regenerate_furigana": False})
 
 
 def test_furigana_rows_are_selected_only_when_the_tier_is_on():

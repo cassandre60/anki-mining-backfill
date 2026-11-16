@@ -1,16 +1,17 @@
-"""Batch dialog: one screen, counts instead of rows, no decisions to make.
+"""Batch dialog: one screen, one button — everything fixable gets fixed.
 
 The policy (what may be written, and which guards block it) lives in
-``batch.py``; the dialog only reports what will happen, what was left alone,
-and applies it. Options are config keys, and the window surfaces the three
-bulk-fix dimensions (scene propagation, arrows, furigana) as checkboxes that
-map onto those documented keys — never onto new ones.
+``batch.py``; the dialog reports what will happen, what was left alone, and
+applies it. There are no options to tick: every dimension the config enables
+runs in one pass, in the enforced order (a sentence is cleaned before its
+furigana is regenerated — `plan.py` feeds the post-write sentence to the
+reading engine). The config keys remain the escape hatch for anyone who
+wants a dimension off; the window itself stays out of the way.
 """
 
 from __future__ import annotations
 
 from aqt.qt import (
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFont,
@@ -25,14 +26,7 @@ from aqt.qt import (
 from aqt.utils import showCritical, showInfo
 
 from .applier import ApplyDecision, run_after_editor_saved
-from .batch import (
-    DIMENSION_LABELS,
-    BatchSelection,
-    cfg_for_dimensions,
-    default_ops,
-    dimension_flags,
-    select,
-)
+from .batch import BatchSelection, default_ops, select
 from .collection_io import (
     Preview,
     apply_batch,
@@ -41,16 +35,6 @@ from .collection_io import (
     plan_preview,
     write_dry_run,
 )
-
-_OP_SUMMARY = {
-    "fill": "fills",
-    "bold_cloze_word": "bold repairs",
-    "add_tags": "tag additions",
-    "expand_sentence": "sentence rewrites",
-    "replace_source": "source replacements",
-    "repair_sentence": "noise repairs",
-    "regenerate_furigana": "furigana regenerations",
-}
 
 
 class BatchDialog(QDialog):
@@ -67,15 +51,12 @@ class BatchDialog(QDialog):
         super().__init__(parent)
         self.col = col
         self.cfg = cfg if cfg is not None else load_config()
-        self.scope_note_ids = scope_note_ids
         self.browser = browser
-        self.flags = dimension_flags(self.cfg)
-        self.run_cfg = cfg_for_dimensions(self.cfg, self.flags)
-        self.preview: Preview = plan_preview(col, self.run_cfg, scope_note_ids)
+        self.preview: Preview = plan_preview(col, self.cfg, scope_note_ids)
         self.pending: tuple[ApplyDecision, dict] | None = None
 
         self.setWindowTitle("Mining Fixer")
-        self.resize(640, 360)
+        self.resize(640, 320)
         layout = QVBoxLayout(self)
 
         if self.preview.error:
@@ -88,14 +69,6 @@ class BatchDialog(QDialog):
         font.setBold(True)
         title.setFont(font)
         layout.addWidget(title)
-
-        self.dimension_boxes: dict[str, QCheckBox] = {}
-        for key, label in DIMENSION_LABELS.items():
-            box = QCheckBox(label)
-            box.setChecked(self.flags[key])
-            box.toggled.connect(lambda _checked=False: self._on_dimensions_changed())
-            layout.addWidget(box)
-            self.dimension_boxes[key] = box
 
         self.summary = QLabel("")
         self.summary.setWordWrap(True)
@@ -129,7 +102,7 @@ class BatchDialog(QDialog):
     def _selection(self) -> BatchSelection:
         plan = self.preview.plan
         assert plan is not None
-        return select(plan, default_ops(self.run_cfg))
+        return select(plan, default_ops(self.cfg))
 
     def _meta(self, selection: BatchSelection) -> dict:
         plan = self.preview.plan
@@ -142,31 +115,13 @@ class BatchDialog(QDialog):
             "rows": len(selection.rows),
             "notes": selection.notes,
             "ops": sorted({write.op for write in selection.rows}),
-            "dimensions": sorted(key for key, on in self.flags.items() if on),
         }
-
-    def _on_dimensions_changed(self) -> None:
-        self.flags = {key: box.isChecked() for key, box in self.dimension_boxes.items()}
-        self.run_cfg = cfg_for_dimensions(self.cfg, self.flags)
-        self.preview = plan_preview(self.col, self.run_cfg, self.scope_note_ids)
-        if self.preview.error:
-            self.summary.setText(self.preview.error)
-            self.apply_button.setEnabled(False)
-            return
-        self._refresh()
 
     def _refresh(self) -> None:
         selection = self._selection()
-        by_op = selection.count_by_op()
-        filled = ", ".join(
-            f"{count} {_OP_SUMMARY.get(op, op)}" for op, count in by_op.items() if op != "add_tags"
-        )
         parts = []
         if selection.field_notes:
-            parts.append(
-                f"{selection.field_notes} note(s) will be fixed"
-                + (f" ({filled})" if filled else "")
-            )
+            parts.append(f"{selection.field_notes} note(s) will be fixed")
         else:
             parts.append("Nothing to fix")
         if selection.untouched:

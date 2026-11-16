@@ -59,8 +59,9 @@ below, never as silent scope creep inside a coding session.
   mined; the audio-aligned-breaks direction is recorded in BULK_FIX.md)
   behind the opt-in `repair_sentence` op (`PLAN_VERSION` 3): skipped when
   expansion or bold already owns the `Sentence`, dropped when it would
-  change the tested word's occurrence count, idempotent, off by default
-  (`sentence_repair_rules: []`, `batch_repair_sentence: false`). Pinned
+  change the tested word's occurrence count, idempotent, on by default
+  since the owner's automatic-mode decision (2026-11-16) —
+  `batch_repair_sentence` with rules `strip-arrows`. Pinned
   against real deck values; the Ring 3 old → new diff on a collection copy
   is still pending.
 - **T12 — Furigana regeneration (bulk-fix dimension 3, B7 slice 2).**
@@ -76,7 +77,8 @@ below, never as silent scope creep inside a coding session.
   raised engine error, `furigana-base-mismatch` when the ruby's base text
   no longer carries the sentence (pure
   `normalize.furigana_base_matches`), one unavailable-engine warning per
-  run, off by default (`batch_regenerate_furigana: false`). Ring 3
+  run, on by default since the owner's automatic-mode decision
+  (2026-11-16; `batch_regenerate_furigana`). Ring 3
   battery pending (curated per-class cards, TEST_STRATEGY.md).
 - **T8 — Batch mode for hundreds/thousands of notes.** A counts-only dialog
   with a lossless-by-default policy (`batch.py`), opt-in Sentence/Source
@@ -106,21 +108,19 @@ below, never as silent scope creep inside a coding session.
 | T10 | `test_batch.py` (defaults), `tests/test_report_summary.py` (readable preview); Ring 3 run |
 | T11 | `test_normalize.py` (repair rules), `test_plan.py` (guards, exclusivity), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 diff pending |
 | T12 | `test_normalize.py` (base-text guard), `test_plan.py` (guards, ordering, exclusivity, engine failures), `test_batch.py` (tier), `test_report_summary.py`; Ring 3 battery pending |
-| T13 | `test_batch.py` (flags, overlay keys, no-op tick), `test_plan.py` (scene-off gate); Ring 3 battery pending |
+| T13 | superseded 2026-11-16 (picker built, then removed at the owner's request); `test_plan.py` keeps the `batch_scene_propagation` gate |
 | T14 | `test_plan.py` (expression tier, word-like gate, listening predicate incl. the Frequency exception); Ring 3 battery pending |
+| T15 | `test_normalize.py` (`furigana_base`), `test_plan.py` (rewrite + every Q-D12 guard), `test_batch.py` (opt-in tier); real card 1736973220751; Ring 3 pending |
 
-- **T13 — Dimension picker in the batch window (B7).** Three checkboxes
-  (scene propagation / line-end arrows / furigana regeneration) initialised
-  from the config keys, each mapping onto documented `batch_*` keys via
-  `batch.dimension_flags` / `batch.cfg_for_dimensions`; toggling rebuilds
-  the preview and the counts. Ticking arrows with an empty rule list
-  selects the shipped `strip-arrows` set; unticking keeps the configured
-  rules for later runs. Turning scene propagation off removes scene-origin
-  rows at plan time (`build_plan` honours `batch_scene_propagation`), so
-  no fill can slip through selection; the lossless core (word fills, bold
-  repair, tag unions) is not a dimension and always stays eligible. The
-  picker can enable only documented, guarded writes. Ring 3 battery
-  pending.
+- **T13 — Dimension picker in the batch window (B7) — superseded.** Built
+  on 2026-11-16 with three checkboxes (scene / arrows / furigana) and pure
+  overlay helpers (`batch.dimension_flags`, `batch.cfg_for_dimensions`),
+  then removed the same day: the owner's decision is **automatic mode** —
+  "I want the app to fix things on its own... no boxes, reduce useless
+  friction". The window now has no options; every configured dimension
+  runs in one pass (`batch.default_ops`, all on by default), and the
+  `batch_*` config keys are the escape hatch. The scene-propagation gate
+  (`build_plan` honours `batch_scene_propagation`) stays and is tested.
 - **T14 — Bold from expression (B8 slice 1).** `plan._bold_repair_for`
   gained a verbatim-Expression tier (`bold-added-to-expression` badge)
   for cards whose `cloze-body` is missing or junk, the word-like gate
@@ -133,6 +133,24 @@ below, never as silent scope creep inside a coding session.
   Audio — Frequency-without-glosses stays repaired). Inflected matching
   stays open (BULK_FIX slice 8; 278 census cards). Ring 3 battery
   pending.
+- **T15 — Expression spelling repair, self-oracled variant (BULK_FIX
+  slice 4, F2; `PLAN_VERSION` 5).** The owner's ひと握り card
+  (1736973220751) was reported "already complete" while its Expression
+  kept the subtitle's surface form — its own `furigana` field records the
+  dictionary form (`一握[ひとにぎ]り`). New op `repair_expression`
+  (`plan._expression_repair_for`): rewrite the Expression to the furigana
+  base when the furigana is well-formed, `reading_from_furigana` equals
+  the normalized `reading` field, the base differs from the Expression,
+  contains kanji and passes the word-like gate; deferred while
+  word-level writes are queued (F2 risk 4: the rewrite must not land in
+  the same run as fills sourced from the old spelling's word group).
+  Opt-in tier `batch_repair_expression` (default false — the
+  highest-guess-risk dimension stays opt-in per slice 4), badge
+  `expression-repaired-from-furigana`, old spelling in the run log
+  (Q-D7), reasons `expression-repair-reading-mismatch`,
+  `expression-repair-no-kanji-form`, `expression-not-word-like` in the
+  left-alone report. The dictionary seam for furigana-less kana
+  Expressions stays future (F2).
 
 ## Backlog
 
@@ -143,8 +161,9 @@ below, never as silent scope creep inside a coding session.
   formatting), press apply. Includes multi-deck selection and, later, other
   note types and languages behind a language/note-type profile. Slice 1 (the
   sentence-repair dimension) shipped as T11, slice 2 (furigana regeneration)
-  as T12 (both off by default) and the single-window dimension picker as
-  T13; the repair→propagate DAG sequencing is still open.
+  as T12 — both **on by default** since the owner's automatic-mode decision
+  (2026-11-16) — and the dimension picker (T13) was built then removed at
+  the owner's request; the repair→propagate DAG sequencing is still open.
 - **B6 — Source-first pipeline** (author's idea, text in
   [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md)): normalise a source card before
   its children — strip continuation arrows (line breaks stay as mined; see

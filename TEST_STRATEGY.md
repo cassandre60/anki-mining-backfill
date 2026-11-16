@@ -65,6 +65,15 @@ not have and must never be given.
   tier). The engine itself is never faked into the suite's core paths: it
   is an injected callable, so a broken MeCab degrades to a skip, not a
   wrong write — **never run it inside Anki from the suite**.
+- **Expression repair** (bulk-fix dimension 4, self-oracled variant, Q-D12)
+  is pinned in `tests/test_normalize.py` (`furigana_base` extracts the
+  dictionary form from inline ruby, unusable markup yields nothing),
+  `tests/test_plan.py` (the ひと握り → 一握り rewrite from the note's own
+  furigana, off by default, inert when the furigana base already matches the
+  Expression, silent without furigana, reading mismatch reported, kanji-less
+  and clause-like bases refused, deferred while word-level writes are
+  queued), and `tests/test_batch.py` (the opt-in `batch_repair_expression`
+  tier, selected only when enabled).
 - **Write timing** is pinned in the same file with fake editors: writes wait
   for `call_after_note_saved`, a doubled editor callback writes once, a lost
   callback is covered by the scheduler safety net, and a raising or missing
@@ -111,9 +120,11 @@ not have and must never be given.
   The runner is `scripts/acceptance_battery.py`: give it a copy of the
   profile (`--profile-dir` → `--work-dir`, the builder's pattern) and a
   battery JSON mapping each class to note ids; it prints PASS/FAIL per
-  class from the plan alone and writes nothing. The two furigana classes
-  need Japanese Support's engine, which exists only inside a running
-  Anki — headless runs print SKIP for them.
+  class from the plan alone and writes nothing. Every dimension runs by
+  default (owner decision 2026-11-16), so `--arrows` / `--furigana` only
+  force a dimension back on after a config switched it off. The two
+  furigana classes need Japanese Support's engine, which exists only
+  inside a running Anki — headless they cannot pass.
 - The **UI** (`preview_dialog.py`) is not unit-tested; its import is checked
   in Ring 2 and its behaviour is exercised by Ring 3's apply run. Anything
   decision-shaped in it is delegated to `applier.py`/`plan.py` precisely so it
