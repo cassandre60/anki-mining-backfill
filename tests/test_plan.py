@@ -13,6 +13,7 @@ from mining_fixer.plan import (
     OP_EXPAND_SENTENCE,
     OP_FILL,
     OP_REGENERATE_FURIGANA,
+    OP_REPAIR_EXPRESSION,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     PLAN_VERSION,
@@ -55,6 +56,7 @@ def test_replaces_only_approved_ops():
                 OP_BOLD_CLOZE_WORD,
                 OP_REPAIR_SENTENCE,
                 OP_REGENERATE_FURIGANA,
+                OP_REPAIR_EXPRESSION,
                 OP_ADD_TAGS,
             ), w.field
 
@@ -824,3 +826,198 @@ def test_the_scene_dimension_off_leaves_scene_fills_out_of_the_plan():
     assert not any(w.op in (OP_EXPAND_SENTENCE, OP_REPLACE_SOURCE) for w in plan.writes)
     # The lossless core still works (bold repair is not a dimension).
     assert any(w.op == OP_BOLD_CLOZE_WORD for w in plan.writes) or not plan.writes
+
+
+# --- Expression spelling repair (bulk-fix dimension 4, Q-D12) -----------------
+
+# The real ひと握り card (note 1736973220751): the mining kept the subtitle's
+# surface form while the note's own furigana records the dictionary form the
+# Yomitan lookup resolved to. Before T15 the planner emitted nothing for it
+# ("already complete") — the observation that made the gap visible.
+HITONIGIRI = rec(
+    1736973220751,
+    {
+        **BASE,
+        "Expression": "ひと握り",
+        "reading": "ひとにぎり",
+        "furigana": "一握[ひとにぎ]り",
+        "Sentence": "選別者の中でも&nbsp;ほんの<b>ひと握り</b>の<br>常識を超えた怪物たち",
+        "Sentence (furigana)": "選別[せんべつ]者[しゃ]の 中[なか]でもほんのひと 握[にぎ]りの",
+        "Sentence Audio": "[sound:Judas_Kami_no_Tou_-_S0_828541_4f19jx02.mp3]",
+        "Word Audio": "[sound:yomitan_audio.mp3]",
+        "Picture": '<img src="Judas_Kami_no_Tou_-_S0_828640_CMfYsMCA.webp">',
+        "Source": "[Judas] Kami no Tou - S01E02.mkv (13m48s)",
+    },
+)
+EXPR_REPAIR_CFG = {**CFG, "batch_repair_expression": True}
+
+
+def expression_rows(plan):
+    return [w for w in plan.writes if w.field == "Expression"]
+
+
+def test_expression_repair_rewrites_the_surface_form_to_the_furigana_base():
+    plan = build_plan([HITONIGIRI], EXPR_REPAIR_CFG, scope_note_ids=[HITONIGIRI.note_id])
+    rows = expression_rows(plan)
+    assert len(rows) == 1
+    write = rows[0]
+    assert write.op == OP_REPAIR_EXPRESSION
+    assert write.old_value == "ひと握り"
+    assert write.new_value == "一握り"
+    assert write.default_checked
+    assert "expression-repaired-from-furigana" in write.badges
+
+
+def test_expression_repair_is_off_by_default():
+    plan = build_plan([HITONIGIRI], CFG, scope_note_ids=[HITONIGIRI.note_id])
+    assert expression_rows(plan) == []
+    # Not reported as a new anomaly either — the card simply stays untouched.
+    assert plan.reasons.get(HITONIGIRI.note_id) == "no-parent-that-fills"
+
+
+def test_expression_repair_is_inert_when_the_furigana_matches_the_expression():
+    # A correctly mined card: furigana `ひと握[にぎ]り` describes ひと握り.
+    target = rec(
+        2,
+        {
+            **BASE,
+            "Expression": "ひと握り",
+            "reading": "ひとにぎり",
+            "furigana": "ひと握[にぎ]り",
+            "Sentence": "ほんの<b>ひと握り</b>の怪物たち",
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[2])
+    assert expression_rows(plan) == []
+    assert plan.warnings == []
+
+
+def test_expression_repair_is_silent_without_a_furigana_field():
+    # No oracle on the note → nothing to derive; kana-only expressions
+    # without furigana stay future work (the offline dictionary seam).
+    target = rec(
+        3,
+        {**BASE, "Expression": "いきなり", "reading": "いきなり", "furigana": ""},
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[3])
+    assert expression_rows(plan) == []
+    assert plan.warnings == []
+
+
+def test_expression_repair_reports_a_furigana_that_reads_differently():
+    # The furigana describes another word than the reading field claims:
+    # a mis-mine signal, reported — never rewritten. The card is fully
+    # enriched, so the expression reason is the plan's only reason (the
+    # scene dimension stays quiet); on a scene-gapped card the same miss
+    # surfaces as a run warning instead.
+    target = rec(
+        4,
+        {
+            **BASE,
+            "Expression": "ひと握り",
+            "reading": "にぎる",
+            "furigana": "一握[ひとにぎ]り",
+            "Sentence": "ほんの<b>ひと握り</b>の怪物たち",
+            "Sentence (furigana)": "ほんのひと 握[にぎ]りの怪物たち",
+            "Sentence Audio": "[sound:a.mp3]",
+            "Picture": '<img src="p.webp">',
+            "Translation": "a handful of monsters",
+            "Source": "show (13m48s)",
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[4])
+    assert expression_rows(plan) == []
+    assert plan.reasons == {4: "expression-repair-reading-mismatch"}
+    assert any("expression repair skipped" in warning for warning in plan.warnings)
+
+
+def test_expression_repair_refuses_a_kanji_less_base():
+    # A pure-kana base would be a different word, never a spelling (Q-D12).
+    # `ひとに[ぎり]` reads ひとにぎり like the reading field, but its base
+    # ひとに carries no kanji to rewrite to.
+    target = rec(
+        5,
+        {
+            **BASE,
+            "Expression": "ひと握り",
+            "reading": "ひとにぎり",
+            "furigana": "ひとに[ぎり]",
+            "Sentence": "ほんの<b>ひと握り</b>の怪物たち",
+            "Sentence (furigana)": "ほんのひと 握[にぎ]りの怪物たち",
+            "Sentence Audio": "[sound:a.mp3]",
+            "Picture": '<img src="p.webp">',
+            "Translation": "a handful of monsters",
+            "Source": "show (13m48s)",
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[5])
+    assert expression_rows(plan) == []
+    assert plan.reasons == {5: "expression-repair-no-kanji-form"}
+
+
+def test_expression_repair_refuses_a_clause_like_base():
+    # The Q-D3 word-like gate applies to the base too. The base is all
+    # kanji, so the reading cross-check passes and the gate is what refuses.
+    target = rec(
+        6,
+        {
+            **BASE,
+            "Expression": "ひと握り",
+            "reading": "ひとにぎり",
+            "furigana": "漢字能力検定試験実施企画[ひとにぎり]",
+            "Sentence": "ほんの<b>ひと握り</b>の怪物たち",
+            "Sentence (furigana)": "ほんのひと 握[にぎ]りの怪物たち",
+            "Sentence Audio": "[sound:a.mp3]",
+            "Picture": '<img src="p.webp">',
+            "Translation": "a handful of monsters",
+            "Source": "show (13m48s)",
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[6])
+    assert expression_rows(plan) == []
+    assert plan.reasons == {6: "expression-not-word-like"}
+
+
+def test_expression_repair_is_deferred_while_word_writes_are_queued():
+    # F2 risk 4: a Definition fill is sourced from the old spelling's word
+    # group; the rewrite must not land in the same run. The next run, with
+    # the Definition filled, picks the rewrite up.
+    sibling = rec(
+        7,
+        {
+            **BASE,
+            "Expression": "ひと握り",
+            "reading": "ひとにぎり",
+            "furigana": "一握[ひとにぎ]り",
+            "Definition": "one handful",
+        },
+    )
+    target = rec(
+        8,
+        {
+            **BASE,
+            "Expression": "ひと握り",
+            "reading": "ひとにぎり",
+            "furigana": "一握[ひとにぎ]り",
+            "Sentence": "ほんの<b>ひと握り</b>の怪物たち",
+            "Definition": "",
+        },
+    )
+    plan = build_plan([sibling, target], EXPR_REPAIR_CFG, scope_note_ids=[8])
+    assert any(w.field == "Definition" for w in plan.writes)  # the word tier ran
+    assert expression_rows(plan) == []
+
+
+def test_expression_repair_runs_alongside_non_word_writes():
+    # Bold markup and scene media do not depend on the word group: the
+    # rewrite is not deferred for them.
+    target = rec(
+        9,
+        {
+            **HITONIGIRI.fields,
+            "Sentence": "ほんのひと握りの怪物たち",  # no bold → bold repair too
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[9])
+    assert expression_rows(plan)
+    assert any(w.op == OP_BOLD_CLOZE_WORD for w in plan.writes)

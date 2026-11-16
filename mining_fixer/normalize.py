@@ -26,6 +26,7 @@ from collections.abc import Iterable
 
 __all__ = [
     "REPAIR_RULES",
+    "furigana_base",
     "norm_sentence",
     "norm_sentence_match",
     "norm_word_text",
@@ -210,6 +211,23 @@ def word_key(expression: str, reading: str, furigana: str = "") -> tuple[str, st
         read = reading_from_furigana(furigana) or ""
         read = kana_fold(read)
     return (expr, read)
+
+
+def furigana_base(furigana: str) -> str:
+    """Base text of a Yomitan-style inline ruby value (``一握[ひとにぎ]り``).
+
+    Bracket payloads stripped, markup removed, whitespace squeezed —
+    ``一握[ひとにぎ]り`` → ``一握り``. Returns ``""`` for an unusable value:
+    empty, unbalanced brackets (the engine mangled it) or nothing left
+    outside the annotations. Pure; the Expression-repair oracle reads the
+    dictionary form out of the note's own furigana with this.
+    """
+    if not (furigana or "").strip():
+        return ""
+    if furigana.count("[") != furigana.count("]"):
+        return ""
+    base = _FURIGANA_ANNOTATION_RE.sub("", furigana)
+    return _WHITESPACE_RE.sub("", strip_renderable(base))
 
 
 def furigana_base_matches(generated: str, sentence: str) -> bool:

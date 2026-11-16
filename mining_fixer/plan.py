@@ -35,9 +35,12 @@ from .matching import (
 )
 from .normalize import (
     REPAIR_RULES,
+    furigana_base,
     furigana_base_matches,
     kana_fold,
+    norm_reading,
     norm_sentence_match,
+    reading_from_furigana,
     repair_sentence,
     strip_renderable,
     word_key,
@@ -45,7 +48,7 @@ from .normalize import (
 
 __all__ = ["PlannedWrite", "Plan", "build_plan", "PLAN_VERSION", "scope_from_selection"]
 
-PLAN_VERSION = 4
+PLAN_VERSION = 5
 
 OP_FILL = "fill"
 OP_REPLACE_SOURCE = "replace_source"
@@ -61,6 +64,10 @@ OP_REPAIR_SENTENCE = "repair_sentence"
 OP_REGENERATE_FURIGANA = "regenerate_furigana"
 # The ruby layer this op rebuilds (the deck's own field name convention).
 FURIGANA_FIELD = "Sentence (furigana)"
+# Expression spelling repair (bulk-fix dimension 4, self-oracled variant):
+# rewrite a surface-form Expression to the dictionary form the note's own
+# `furigana` field records (ひと握り under `一握[ひとにぎ]り` → 一握り).
+OP_REPAIR_EXPRESSION = "repair_expression"
 # Tag-set union from contributing sources; never removes a tag.
 OP_ADD_TAGS = "add_tags"
 OPS_TOUCHING_NONEMPTY = frozenset(
@@ -70,6 +77,7 @@ OPS_TOUCHING_NONEMPTY = frozenset(
         OP_BOLD_CLOZE_WORD,
         OP_REPAIR_SENTENCE,
         OP_REGENERATE_FURIGANA,
+        OP_REPAIR_EXPRESSION,
         OP_ADD_TAGS,
     }
 )
@@ -79,14 +87,16 @@ OPS_TOUCHING_NONEMPTY = frozenset(
 class PlannedWrite:
     """One field change. ``old_value`` empty <=> OP_FILL in almost all cases.
 
-    Six ops may write a non-empty value, each guarded: the two approved
+    Seven ops may write a non-empty value, each guarded: the two approved
     replaces (blob Source — the blob URL is recorded in the audit log;
     fragment Sentence — the fragment survives in cloze-*), the markup-only
     bold repair (``strip_renderable`` of both values must be equal), the
     subtitle-noise repair (only the configured noise classes change,
     QUALITY Q-D10), the furigana regeneration (the ruby layer must carry
-    exactly the sentence's characters, QUALITY Q-D11) and the tags union
-    (``new_value`` is a superset of ``old_value``). All carry badges.
+    exactly the sentence's characters, QUALITY Q-D11), the Expression
+    spelling repair (the new value is the note's own furigana base,
+    QUALITY Q-D12) and the tags union (``new_value`` is a superset of
+    ``old_value``). All carry badges.
     """
 
     note_id: int
@@ -518,6 +528,76 @@ def _furigana_write_for(
     )
 
 
+def _expression_repair_for(
+    target: NoteRecord,
+) -> tuple[PlannedWrite | None, str | None, str | None]:
+    """Rewrite a surface-form ``Expression`` to its recorded dictionary form.
+
+    Bulk-fix dimension 4 (FUTURE_FEATURES §F2): the mining keeps the
+    subtitle's mixed-kana spelling (ひと握り) while the card's own
+    ``furigana`` field records the dictionary form the Yomitan lookup
+    resolved to (``一握[ひとにぎ]り``). The furigana base IS the oracle —
+    no dictionary seam and no hand-written kana→kanji table. Kana-only
+    Expressions without a usable furigana stay future work.
+
+    Guards (QUALITY Q-D12) — every failure is a reported reason, never a
+    guess:
+
+    - the furigana must be usable and ``reading_from_furigana(furigana)``
+      must equal the note's normalized ``reading`` field: the furigana must
+      describe *this* word, not another entry;
+    - the base must differ from the Expression (the inert, common case),
+      contain kanji (a pure-kana rewrite would be a different word, never a
+      spelling) and be word-like (the Q-D3 gate);
+    - the caller queues it only when no word-level write is queued for the
+      note — those values come from the old spelling's word group and must
+      not land in the same run as the rewrite (F2 risk 4).
+
+    Returns ``(write, reason, detail)``; a missing or empty furigana is the
+    silent no-op, not an anomaly.
+    """
+    expression = strip_renderable(target.get("Expression")).strip()
+    furigana = target.get("furigana")
+    base = furigana_base(furigana)
+    if not expression or not base:
+        return None, None, None
+    if base == expression:
+        return None, None, None  # the furigana already describes the mined spelling
+    derived = reading_from_furigana(furigana)
+    reading = norm_reading(target.get("reading"))
+    if derived is None or not reading or derived != reading:
+        return (
+            None,
+            "expression-repair-reading-mismatch",
+            f"furigana base '{base}' does not read as the note's reading '{target.get('reading')}'",
+        )
+    if not _KANJI_HINT_RE.search(base):
+        return (
+            None,
+            "expression-repair-no-kanji-form",
+            f"furigana base '{base}' has no kanji spelling to rewrite to",
+        )
+    if not _expression_is_word_like(base):
+        return (
+            None,
+            "expression-not-word-like",
+            f"furigana base '{base}' is not word-like enough to become the Expression",
+        )
+    return (
+        PlannedWrite(
+            note_id=target.note_id,
+            field="Expression",
+            op=OP_REPAIR_EXPRESSION,
+            old_value=target.get("Expression"),
+            new_value=base,
+            default_checked=True,
+            badges=("expression-repaired-from-furigana",),
+        ),
+        None,
+        None,
+    )
+
+
 def _scene_writes_for(
     candidate: NoteRecord,
     matches: list[SceneMatch],
@@ -889,6 +969,10 @@ def build_plan(
         warnings.append(f"unknown sentence_repair_rules ignored: {', '.join(unknown_rules)}")
     repair_rules = tuple(rule for rule in raw_repair_rules if rule in REPAIR_RULES)
     furigana_tier = bool(cfg.get("batch_regenerate_furigana", False))
+    expression_tier = bool(cfg.get("batch_repair_expression", False))
+    # Fields whose queued values come from the old spelling's word group;
+    # the Expression rewrite must not land in the same run as them.
+    word_fields = frozenset({*cfg.get("word_fill_fields", ()), "Expression"})
 
     groups = word_groups(records)
     parent_usage: dict[int, int] = {}
@@ -943,6 +1027,24 @@ def build_plan(
             group = groups.get(key, [])
             if len(group) > 1:
                 target_writes.extend(_word_writes_for(target, group, groups, cfg))
+        # Expression spelling repair (dimension 4, self-oracled). Deferred
+        # while a word-level write is queued: those values come from the old
+        # spelling's word group, and the rewrite must not land in the same
+        # run as them (F2 risk 4) — the next run picks it up.
+        if expression_tier and not any(w.field in word_fields for w in target_writes):
+            repair_expr_write, repair_expr_reason, repair_expr_detail = _expression_repair_for(
+                target
+            )
+            if repair_expr_write is not None:
+                target_writes.append(repair_expr_write)
+            elif repair_expr_reason is not None:
+                expr_label = target.get("Expression") or "(sentence card)"
+                warnings.append(
+                    f"note {target.note_id} ({expr_label}): expression repair"
+                    f" skipped — {repair_expr_detail}"
+                )
+                if not target_writes and target.note_id not in reasons:
+                    reasons[target.note_id] = repair_expr_reason
         # Markup-only bold repair. Never issued when a Sentence expansion is
         # queued for the same note: the two ops would fight over the field.
         bold_write, bold_reason, bold_detail = _bold_repair_for(target)

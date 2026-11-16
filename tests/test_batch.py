@@ -13,6 +13,7 @@ from mining_fixer.plan import (
     OP_EXPAND_SENTENCE,
     OP_FILL,
     OP_REGENERATE_FURIGANA,
+    OP_REPAIR_EXPRESSION,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     Plan,
@@ -276,3 +277,29 @@ def test_tag_only_notes_are_reported_separately():
     selection = select(plan, allowed_ops())
     assert selection.count_by_op() == {OP_FILL: 2, OP_ADD_TAGS: 1}
     assert selection.notes == 2
+
+
+def test_the_expression_repair_tier_is_opt_in():
+    # BULK_FIX slice 4: the highest-guess-risk dimension stays opt-in, even
+    # under the automatic-mode defaults (owner decision 2026-11-16).
+    assert OP_REPAIR_EXPRESSION not in allowed_ops()
+    assert OP_REPAIR_EXPRESSION in allowed_ops(repair_expression=True)
+    assert OP_REPAIR_EXPRESSION not in default_ops()
+    assert OP_REPAIR_EXPRESSION not in default_ops({"batch_repair_expression": False})
+    assert OP_REPAIR_EXPRESSION in default_ops({"batch_repair_expression": True})
+
+
+def test_expression_rows_are_selected_only_when_the_tier_is_on():
+    plan = Plan(
+        writes=(
+            w(1, "Expression", OP_REPAIR_EXPRESSION, "ひと握り", "一握り"),
+            w(1, "Sentence Audio", OP_FILL, "", "[sound:a.webm]"),
+        )
+    )
+    off = select(plan, allowed_ops())
+    assert [row.field for row in off.rows] == ["Sentence Audio"]
+    assert off.excluded_notes == 1
+
+    on = select(plan, allowed_ops(repair_expression=True))
+    assert sorted(row.field for row in on.rows) == ["Expression", "Sentence Audio"]
+    assert on.excluded_notes == 0

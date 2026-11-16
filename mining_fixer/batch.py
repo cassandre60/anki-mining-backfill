@@ -42,6 +42,7 @@ from .plan import (
     OP_EXPAND_SENTENCE,
     OP_FILL,
     OP_REGENERATE_FURIGANA,
+    OP_REPAIR_EXPRESSION,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     Plan,
@@ -64,7 +65,13 @@ SAFE_OPS = frozenset({OP_FILL, OP_BOLD_CLOZE_WORD, OP_ADD_TAGS})
 
 #: Information-preserving replaces, each opt-in for a batch run.
 OPTIONAL_OPS = frozenset(
-    {OP_REPLACE_SOURCE, OP_EXPAND_SENTENCE, OP_REPAIR_SENTENCE, OP_REGENERATE_FURIGANA}
+    {
+        OP_REPLACE_SOURCE,
+        OP_EXPAND_SENTENCE,
+        OP_REPAIR_SENTENCE,
+        OP_REGENERATE_FURIGANA,
+        OP_REPAIR_EXPRESSION,
+    }
 )
 
 #: The text unit: a sentence and its ruby are atomic (QUALITY Q-D4). Audio,
@@ -85,7 +92,15 @@ TEXT_GUARDS = (
 )
 
 #: Reasons that are worth reporting but are not a decision for the user.
-REPORT_REASONS = frozenset({"cloze-word-ambiguous", "cloze-word-not-in-sentence"})
+REPORT_REASONS = frozenset(
+    {
+        "cloze-word-ambiguous",
+        "cloze-word-not-in-sentence",
+        "expression-repair-reading-mismatch",
+        "expression-repair-no-kanji-form",
+        "expression-not-word-like",
+    }
+)
 
 _REASON_TEXT = {
     "no-parent-that-fills": "no enriched sibling found",
@@ -93,6 +108,9 @@ _REASON_TEXT = {
     "opted-out": "opted out with the opt-out tag",
     "cloze-word-ambiguous": "bold ambiguous — left alone",
     "cloze-word-not-in-sentence": "bold not found — left alone",
+    "expression-repair-reading-mismatch": "furigana does not read as the reading field",
+    "expression-repair-no-kanji-form": "no kanji spelling in the furigana — left alone",
+    "expression-not-word-like": "furigana base is not word-like — left alone",
 }
 
 
@@ -148,6 +166,7 @@ def allowed_ops(
     replace_source: bool = False,
     repair_sentence: bool = False,
     regenerate_furigana: bool = False,
+    repair_expression: bool = False,
 ) -> frozenset[str]:
     """The op set for the chosen batch options (the default is lossless)."""
     ops = set(SAFE_OPS)
@@ -159,6 +178,8 @@ def allowed_ops(
         ops.add(OP_REPAIR_SENTENCE)
     if regenerate_furigana:
         ops.add(OP_REGENERATE_FURIGANA)
+    if repair_expression:
+        ops.add(OP_REPAIR_EXPRESSION)
     return frozenset(ops)
 
 
@@ -180,6 +201,7 @@ def default_ops(cfg: dict | None = None) -> frozenset[str]:
         replace_source=bool(cfg.get("batch_replace_source", True)),
         repair_sentence=bool(cfg.get("batch_repair_sentence", True)),
         regenerate_furigana=bool(cfg.get("batch_regenerate_furigana", True)),
+        repair_expression=bool(cfg.get("batch_repair_expression", False)),
     )
 
 

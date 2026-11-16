@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mining_fixer.normalize import (
     REPAIR_RULES,
+    furigana_base,
     furigana_base_matches,
     kana_fold,
     norm_reading,
@@ -191,3 +192,22 @@ def test_furigana_base_rejects_a_mangled_generation():
     assert not furigana_base_matches("見[", "見出し")
     assert not furigana_base_matches("全然違うテキスト", "見出しはこうニャ！")
     assert not furigana_base_matches("", "見出し")
+
+
+# --- furigana_base (bulk-fix dimension 4: the Expression-repair oracle) -------
+
+
+def test_furigana_base_extracts_the_dictionary_form():
+    # The real ひと握り card: the mined spelling is the surface form, the
+    # furigana records the dictionary form the Yomitan lookup resolved to.
+    assert furigana_base("一握[ひとにぎ]り") == "一握り"
+
+
+def test_furigana_base_strips_markup_and_squeezes_whitespace():
+    assert furigana_base(" 表面[ひょうめん]が  白い ") == "表面が白い"
+
+
+def test_furigana_base_is_empty_for_unusable_values():
+    assert furigana_base("") == ""
+    assert furigana_base("見[") == ""  # unbalanced: the writer mangled it
+    assert furigana_base("[ひとにぎり]") == ""  # nothing outside the brackets

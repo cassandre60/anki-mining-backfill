@@ -11,6 +11,7 @@
   "batch_repair_sentence": true,
   "sentence_repair_rules": ["strip-arrows"],
   "batch_regenerate_furigana": true,
+  "batch_repair_expression": false,
   "min_sentence_len": 6,
   "min_nonspace_chars": 4,
   "scene_fill_fields": ["Sentence Audio", "Picture", "Sentence (furigana)", "Translation"],
