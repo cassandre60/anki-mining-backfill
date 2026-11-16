@@ -57,6 +57,7 @@ __all__ = [
     "LeftAlone",
     "allowed_ops",
     "default_ops",
+    "reason_text",
     "select",
 ]
 
@@ -104,7 +105,11 @@ REPORT_REASONS = frozenset(
 )
 
 _REASON_TEXT = {
-    "no-parent-that-fills": "no enriched sibling found",
+    # What the author needs to know, in their words: can the app fix this
+    # card, and if not, is the card's own data the problem? "no enriched
+    # sibling" means nothing in the deck contains this sentence — the card
+    # needs re-mining, not fixing.
+    "no-parent-that-fills": "nothing to copy from — no other card contains this sentence",
     "nothing-to-fill": "already complete",
     "opted-out": "opted out with the opt-out tag",
     "cloze-word-ambiguous": "bold ambiguous — left alone",
@@ -112,6 +117,9 @@ _REASON_TEXT = {
     "expression-repair-reading-mismatch": "furigana does not read as the reading field",
     "expression-repair-no-kanji-form": "no kanji spelling in the furigana — left alone",
     "expression-not-word-like": "furigana base is not word-like — left alone",
+    "repair-anchor-risk": "cleaning would move the tested word — left alone",
+    "furigana-generation-failed": "the reading engine produced nothing — left alone",
+    "furigana-base-mismatch": "generated reading does not match the sentence — left alone",
 }
 
 
@@ -206,7 +214,8 @@ def default_ops(cfg: dict | None = None) -> frozenset[str]:
     )
 
 
-def _reason_text(reason: str) -> str:
+def reason_text(reason: str) -> str:
+    """Plain wording for a plan reason (reporting only)."""
     return _REASON_TEXT.get(reason, reason)
 
 
@@ -291,7 +300,7 @@ def select(plan: Plan, ops: frozenset[str]) -> BatchSelection:
     for note_id, reason in plan.reasons.items():
         if note_id in left_alone or reason not in REPORT_REASONS:
             continue
-        left_alone[note_id] = LeftAlone(note_id, _reason_text(reason))
+        left_alone[note_id] = LeftAlone(note_id, reason_text(reason))
 
     written = {write.note_id for write in selected}
     untouched = len(scope_notes - written - set(left_alone) - excluded_notes)

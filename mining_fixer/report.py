@@ -5,6 +5,7 @@ Pure module: no anki/aqt imports.
 
 from __future__ import annotations
 
+from .batch import reason_text
 from .fieldconfig import sound_files
 from .matching import NoteRecord
 from .plan import (
@@ -266,7 +267,8 @@ def render_markdown(plan: Plan, records: dict[int, NoteRecord], run_meta: dict) 
         record = records.get(note_id)
         expr = record.get("Expression") if record else "?"
         lines.append(
-            f"| {note_id} | {_plain(expr or '(sentence card)', 40)} | {plan.reasons[note_id]} |"
+            f"| {note_id} | {_plain(expr or '(sentence card)', 40)} |"
+            f" {reason_text(str(plan.reasons[note_id]))} |"
         )
     lines.append("")
     return "\n".join(lines)
