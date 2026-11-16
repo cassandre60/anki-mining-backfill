@@ -125,8 +125,17 @@ def norm_sentence(text: str) -> str:
 
 
 def norm_sentence_match(text: str) -> str:
-    """Like :func:`norm_sentence`, plus trailing continuation-marker strip."""
-    return _TRAILING_MARKS_RE.sub("", norm_sentence(text))
+    """Like :func:`norm_sentence`, plus trailing continuation-marker strip.
+
+    The mining export leaves a stray ``>`` glued to a bolded word
+    (``<b>芸者&gt;</b>``), so the child's sentence and its parent's differ by
+    one character and containment fails — 85 cards in the newest 300 had no
+    audio-bearing parent for exactly this reason (author-reported 芸者,
+    ハマり, ギャンブル依存症). Angle brackets carry no meaning in these
+    sentences, so the *matching key* drops them; stored values are never
+    touched.
+    """
+    return _TRAILING_MARKS_RE.sub("", norm_sentence(text)).replace(">", "").replace("<", "")
 
 
 def norm_word_text(text: str) -> str:

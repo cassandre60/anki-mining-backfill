@@ -517,6 +517,49 @@ def test_two_agreeing_parents_beat_a_divergent_one():
     assert not any("divergent-parents" in w.badges for w in rows)
 
 
+def test_a_stray_angle_bracket_does_not_block_the_match():
+    # Mining leaves <b>芸者&gt;</b>; the parent has 芸者. The matching key
+    # ignores angle brackets, so the child still finds its scene (author's
+    # 芸者/ハマり/ギャンブル依存症 cards).
+    child = rec(
+        1,
+        {
+            "Expression": "芸者",
+            "reading": "げいしゃ",
+            "furigana": "",
+            "Sentence": "夢乃とかいう<b>芸者&gt;</b>じゃないのか?",
+            "Sentence Audio": "",
+            "Picture": "",
+            "Translation": "",
+            "Sentence (furigana)": "",
+            "Source": "blob:https://asbplayer/xyz",
+            "cloze-prefix": "夢乃とかいう",
+            "cloze-body": "芸者",
+            "cloze-suffix": "じゃないのか?",
+        },
+    )
+    parent = rec(
+        2,
+        {
+            "Expression": "占領",
+            "reading": "せんりょう",
+            "Sentence": "なぁ 今 お前の心の中占領してんのは誰だ?夢乃とかいう芸者じゃないのか?",
+            "Sentence Audio": " [sound:a.webm] ",
+            "Picture": '<img src="a.jpg">',
+            "Translation": "",
+            "Sentence (furigana)": "",
+            "Source": "Show.mp4 (1m00s)",
+            "cloze-prefix": "",
+            "cloze-body": "",
+            "cloze-suffix": "",
+        },
+    )
+    plan = build_plan([child, parent], CFG, scope_note_ids=[1])
+    rows = [w for w in plan.writes if w.note_id == 1 and w.op == OP_EXPAND_SENTENCE]
+    assert rows, plan.reasons.get(1)
+    assert "芸者" in rows[0].new_value
+
+
 def test_a_bold_write_cleans_the_arrow_it_would_have_left():
     # 手を出す-shaped: the card needs a bold term AND carries tail arrows.
     # The bold write owns the field, so it must clean what it writes — the
