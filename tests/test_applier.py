@@ -304,3 +304,69 @@ def test_an_unreadable_newest_log_means_no_undo(tmp_path):
     folder.mkdir(parents=True)
     (folder / "run-20261115-090000-000000.json").write_text("{broken", encoding="utf-8")
     assert latest_run_log_in([folder]) is None
+
+
+# --- semantic verification (the author's hand-found defects) -----------------
+
+
+def _state(note_id, fields, tags=()):
+    return NoteState(fields=dict(fields), tags=frozenset(tags))
+
+
+def test_verification_reports_two_bold_items():
+    from mining_fixer.applier import ApplyDecision, FieldWrite, verify_writes
+
+    decision = ApplyDecision(
+        field_writes=[FieldWrite(1, "Sentence", "bold_cloze_word", "old", "<b>校</b>と<b>ぜひ</b>")]
+    )
+    problems = verify_writes(
+        decision, lambda nid: _state(nid, {"Sentence": "<b>校</b>と<b>ぜひ</b>"})
+    )
+    assert any("2 bold items" in problem for problem in problems)
+
+
+def test_verification_reports_a_ruby_that_does_not_match_its_sentence():
+    from mining_fixer.applier import ApplyDecision, FieldWrite, verify_writes
+
+    decision = ApplyDecision(
+        field_writes=[FieldWrite(1, "Sentence (furigana)", "fill", "", "この‐たび【 ×此の度】")]
+    )
+    problems = verify_writes(
+        decision,
+        lambda nid: _state(
+            nid,
+            {
+                "Sentence": "今回 対象としたい患者は この方。",
+                "Sentence (furigana)": "この‐たび【 ×此の度】",
+            },
+        ),
+    )
+    assert any("ruby does not match" in problem for problem in problems)
+
+
+def test_verification_reports_missing_media():
+    from mining_fixer.applier import ApplyDecision, FieldWrite, verify_writes
+
+    decision = ApplyDecision(
+        field_writes=[FieldWrite(1, "Sentence Audio", "fill", "", "[sound:a.webm]")]
+    )
+    problems = verify_writes(
+        decision,
+        lambda nid: _state(nid, {"Sentence Audio": "[sound:a.webm]"}),
+        media_exists=lambda name: False,
+    )
+    assert any("media file(s) missing" in problem for problem in problems)
+
+
+def test_verification_is_silent_for_a_coherent_card():
+    from mining_fixer.applier import ApplyDecision, FieldWrite, verify_writes
+
+    decision = ApplyDecision(
+        field_writes=[FieldWrite(1, "Sentence", "bold_cloze_word", "あ校", "あ<b>校</b>")]
+    )
+    problems = verify_writes(
+        decision,
+        lambda nid: _state(nid, {"Sentence": "あ<b>校</b>", "Sentence (furigana)": "あ 校[こう]"}),
+        media_exists=lambda name: True,
+    )
+    assert problems == []

@@ -413,7 +413,13 @@ def apply_batch(col, decision: ApplyDecision, meta: dict) -> BatchResult:
     for start in range(0, len(notes), BATCH_CHUNK_NOTES):
         chunk = notes[start : start + BATCH_CHUNK_NOTES]
         result.modified += apply_decision(col, decision_subset(decision, chunk))
-    result.problems.extend(verify_writes(decision, lambda nid: read_state(col, nid)))
+    result.problems.extend(
+        verify_writes(
+            decision,
+            lambda nid: read_state(col, nid),
+            media_exists=lambda name: _media_exists(col, name),
+        )
+    )
     return result
 
 

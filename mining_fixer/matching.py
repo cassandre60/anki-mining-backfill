@@ -40,6 +40,7 @@ __all__ = [
     "SceneMatch",
     "WordSource",
     "find_scene_parents",
+    "is_word_media",
     "kana_spelling_candidates",
     "rank_scene_parents",
     "word_groups",
@@ -116,6 +117,28 @@ def _boundary_ok(candidate_norm: str, parent_norm: str, start: int) -> bool:
     end = start + len(candidate_norm)
     ok_end = end == len(parent_norm) or parent_norm[end] in _BOUNDARY_CHARS
     return ok_start and ok_end
+
+
+#: Media that belongs to a *word* card, not to a scene: jidoujisho, Yomitan
+#: and dictionary packs name their files this way (``jidoujisho-…mp3``,
+#: ``yomitan_audio_….ogg``). Scene media are asbplayer exports or named after
+#: the source video.
+_WORD_MEDIA_MARKERS = ("jidoujisho", "yomitan", "dictionary", "forvo")
+_MEDIA_REF_RE = re.compile(r"\[sound:([^\]]+)\]|<img[^>]+src=[\"']?([^\"'>]+)", re.IGNORECASE)
+
+
+def is_word_media(value: str) -> bool:
+    """True when a media field holds word-level media rather than a scene's.
+
+    A card whose Sentence Audio or Picture is word media is a *word* card:
+    using it as a scene parent copied a dictionary mp3 onto 正道's scene
+    fields (author report). Pure.
+    """
+    for audio_name, image_name in _MEDIA_REF_RE.findall(value or ""):
+        filename = (audio_name or image_name or "").lower()
+        if any(marker in filename for marker in _WORD_MEDIA_MARKERS):
+            return True
+    return False
 
 
 def find_scene_parents(

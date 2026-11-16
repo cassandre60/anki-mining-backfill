@@ -29,6 +29,7 @@ from .matching import (
     agreement_groups,
     best_word_source,
     find_scene_parents,
+    is_word_media,
     kana_spelling_candidates,
     rank_scene_parents,
     singleton_kanji_guard,
@@ -306,6 +307,27 @@ def _bold_normalized_sentence(sentence: str, candidates: list[str]) -> tuple[str
     stripped and the single unambiguous candidate is bolded again; the
     rendered text is unchanged by construction.
     """
+    wanted = {strip_renderable(cand).strip() for cand in candidates if cand}
+    spans = _BOLD_RE.findall(sentence)
+    matching = [span for span in spans if strip_renderable(span).strip() in wanted]
+    if len(spans) > 1:
+        # Several bold items: keep the one that wraps the tested word (the
+        # author's 校 block carried <b>校</b> and <b>ぜひ</b>), unbold the rest.
+        if len(matching) == 1:
+            keep = matching[0]
+            seen = False
+
+            def only_kept(match: re.Match) -> str:
+                nonlocal seen
+                if not seen and match.group(1) == keep:
+                    seen = True
+                    return match.group(0)
+                return match.group(1)
+
+            new_value = _BOLD_RE.sub(only_kept, sentence)
+            if new_value != sentence:
+                return new_value, keep
+        return None
     without_bold = _BOLD_RE.sub(lambda match: match.group(1), sentence)
     for cand in candidates:
         if len(cand) < 2 or without_bold.count(cand) != 1:
@@ -871,7 +893,15 @@ def _word_recovered_scene_writes(
     # would be re-expanded on every run, and "run twice = no-op" breaks.
     sentence = target.get("Sentence") or ""
     looks_like_dictionary = bool(re.search(r"[【】]|‐|〔|⦅", sentence))
-    if not looks_like_dictionary and any(cand and cand in sentence for cand in candidates):
+    # kana-fold both sides: the Expression may be written すぺくとらむ while
+    # the sentence has スペクトラム — the word IS present, so the sentence is
+    # not a mis-mine and must not be replaced by some other scene that merely
+    # mentions it (author's 自閉症すぺくとらむ).
+    folded_sentence = kana_fold(norm_sentence_match(sentence))
+    word_present = any(
+        cand and kana_fold(norm_sentence_match(cand)) in folded_sentence for cand in candidates
+    )
+    if not looks_like_dictionary and word_present:
         return [], "no-parent-that-fills"
 
     # Group by the spelling that matched, not by the whole sentence: the
@@ -1503,6 +1533,8 @@ def build_plan(
         for r in records
         if sound_files(r.get("Sentence Audio"))
         and r.get("Sentence Audio") is not None
+        and not is_word_media(r.get("Sentence Audio"))
+        and not is_word_media(r.get("Picture"))
         and (
             media_exists is None
             or all(media_exists(f) for f in sound_files(r.get("Sentence Audio")))

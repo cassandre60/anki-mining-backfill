@@ -1627,3 +1627,95 @@ def test_expression_repair_runs_alongside_non_word_writes():
     plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[9])
     assert expression_rows(plan)
     assert any(w.op == OP_BOLD_CLOZE_WORD for w in plan.writes)
+
+
+def test_a_word_media_card_is_never_a_scene_parent():
+    # 正道 was filled with 出来's dictionary mp3 as Sentence Audio: a card
+    # whose media is word-level (jidoujisho/Yomitan) is not a scene parent.
+    child = rec(
+        1,
+        {
+            "Expression": "正道",
+            "reading": "せいどう",
+            "furigana": "正[せい]道[どう]",
+            "Sentence": "兄(オレ)が正道を歩んだのなら",
+            "Sentence Audio": "",
+            "Picture": "",
+            "Source": "Show.mp4 (5m00s)",
+            "cloze-prefix": "兄(オレ)が",
+            "cloze-body": "正道",
+            "cloze-suffix": "を歩んだのなら",
+        },
+    )
+    word_card = rec(
+        2,
+        {
+            "Expression": "出来",
+            "reading": "でき",
+            "Sentence": "兄(オレ)が正道を歩んだのなら 弟は 後をついてくればいい",
+            "Sentence Audio": " [sound:jidoujisho-20260208T104227_6236629731955619868.mp3] ",
+            "Picture": '<img src="jidoujisho-20260208T104227_653.jpg">',
+            "Source": "Show.mp4 (5m01s)",
+            "cloze-prefix": "",
+            "cloze-body": "出来",
+            "cloze-suffix": "",
+        },
+    )
+    plan = build_plan([child, word_card], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if w.note_id == 1 and w.field == "Sentence Audio"]
+
+
+def test_recovery_is_refused_when_the_word_is_present_in_katakana():
+    # 自閉症すぺくとらむ: the Expression is kana, the sentence has katakana —
+    # the word IS present, so the sentence is not a mis-mine and must not be
+    # replaced by another scene that merely mentions the phrase.
+    target = rec(
+        1,
+        {
+            "Expression": "自閉症すぺくとらむ",
+            "reading": "じへいしょうすぺくとらむ",
+            "furigana": "自[じ]閉[へい]症[しょう]すぺくとらむ",
+            "Sentence": (
+                "深也くんは<br>自閉症スペクトラムでありながら"
+                "<br>その立体造形に類いまれなる才能を持ち"
+            ),
+            "Sentence Audio": "",
+            "Picture": "",
+            "Source": "Show.mp4 (15m20s)",
+            "cloze-prefix": "",
+            "cloze-body": "自閉症スペクトラム",
+            "cloze-suffix": "でありながら",
+        },
+    )
+    other = rec(
+        2,
+        {
+            "Expression": "親御",
+            "reading": "おやご",
+            "Sentence": "自閉症スペクトラムの子供を持つ 親御さんは つい自分を責めてしまいます",
+            "Sentence Audio": " [sound:asbp_x.webm] ",
+            "Picture": '<img src="asbp_x.jpg">',
+            "Source": "Show.mp4 (12m00s)",
+            "cloze-prefix": "",
+            "cloze-body": "親御",
+            "cloze-suffix": "",
+        },
+    )
+    third = rec(
+        3,
+        {
+            "Expression": "授乳",
+            "reading": "じゅにゅう",
+            "Sentence": (
+                "自閉症スペクトラムの子供を持つ 親御さんは つい自分を責めてしまいます 授乳中"
+            ),
+            "Sentence Audio": " [sound:asbp_y.webm] ",
+            "Picture": '<img src="asbp_y.jpg">',
+            "Source": "Show.mp4 (12m10s)",
+            "cloze-prefix": "",
+            "cloze-body": "授乳",
+            "cloze-suffix": "",
+        },
+    )
+    plan = build_plan([target, other, third], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if "recovered-sentence" in w.badges]

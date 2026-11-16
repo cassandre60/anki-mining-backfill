@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -273,12 +274,16 @@ def decision_subset(decision: ApplyDecision, note_ids: Iterable[int]) -> ApplyDe
     )
 
 
-def verify_writes(decision: ApplyDecision, read_state: StateReader) -> list[str]:
-    """Re-read the collection and report any write that did not land verbatim.
+def verify_writes(decision: ApplyDecision, read_state: StateReader, media_exists=None) -> list[str]:
+    """Re-read the collection and prove every write landed *and* is sane.
 
     A bulk run needs proof, not faith: the caller applies, then asks the
-    collection what it actually holds. Empty list means every field and tag
-    set matches the decision exactly.
+    collection what it actually holds. Beyond the verbatim check — did the
+    value land? — the written notes are checked for the semantic defects the
+    author found by hand: more than one bold item, a ruby that no longer
+    describes its sentence, and media references whose files do not exist
+    (``media_exists`` is optional; pass a checker to enable that one). Empty
+    list means every write landed and every card is coherent.
     """
     problems: list[str] = []
     by_note: dict[int, list[FieldWrite]] = {}
@@ -296,6 +301,35 @@ def verify_writes(decision: ApplyDecision, read_state: StateReader) -> list[str]
             problems.append(
                 f"note {note_id} tags: {sorted(state.tags)} != {sorted(tags_write.new_tags)}"
             )
+        problems.extend(_semantic_problems(note_id, state.fields, media_exists))
+    return problems
+
+
+_BOLD_RE = re.compile(r"<b>(.*?)</b>", re.DOTALL)
+_SOUND_REF_RE = re.compile(r"\[sound:([^\]]+)\]")
+_IMG_REF_RE = re.compile(r"<img[^>]+src=[\"']?([^\"'>]+)", re.IGNORECASE)
+
+
+def _semantic_problems(note_id: int, fields: Mapping[str, str], media_exists) -> list[str]:
+    """Defects that a verbatim write can still leave behind."""
+    from .normalize import furigana_base_matches
+
+    problems: list[str] = []
+    sentence = fields.get("Sentence") or ""
+    spans = _BOLD_RE.findall(sentence)
+    if len(spans) > 1:
+        problems.append(f"note {note_id} Sentence: {len(spans)} bold items {spans[:2]}")
+    ruby = fields.get("Sentence (furigana)") or ""
+    if ruby.strip() and sentence.strip() and not furigana_base_matches(ruby, sentence):
+        problems.append(f"note {note_id} Sentence (furigana): ruby does not match the sentence")
+    if media_exists is not None:
+        refs = _SOUND_REF_RE.findall(sentence)
+        for value in fields.values():
+            refs += _SOUND_REF_RE.findall(value or "")
+            refs += _IMG_REF_RE.findall(value or "")
+        missing = sorted({ref for ref in refs if not media_exists(ref)})
+        if missing:
+            problems.append(f"note {note_id}: media file(s) missing {missing[:3]}")
     return problems
 
 
