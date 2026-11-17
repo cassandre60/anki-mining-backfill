@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from typing import Any
 
 import pytest
 
@@ -63,12 +64,12 @@ def loaded_addon(monkeypatch):
     _purge("aqt")
     _purge("mining_fixer")
 
-    aqt = types.ModuleType("aqt")
+    aqt: Any = types.ModuleType("aqt")
     aqt.mw = types.SimpleNamespace(form=types.SimpleNamespace(menuTools=_Menu()))
     aqt.gui_hooks = types.SimpleNamespace(
         main_window_did_init=[], browser_will_show_context_menu=[]
     )
-    utils = types.ModuleType("aqt.utils")
+    utils: Any = types.ModuleType("aqt.utils")
     utils.showInfo = lambda *a, **k: None
     utils.showWarning = lambda *a, **k: None
     monkeypatch.setitem(sys.modules, "aqt", aqt)
@@ -111,12 +112,12 @@ def test_entry_point_reports_the_packaged_version(loaded_addon):
 def test_entry_point_survives_a_missing_main_window(monkeypatch):
     _purge("aqt")
     _purge("mining_fixer")
-    aqt = types.ModuleType("aqt")
+    aqt: Any = types.ModuleType("aqt")
     aqt.mw = types.SimpleNamespace(form=None)  # main window not built yet
     aqt.gui_hooks = types.SimpleNamespace(
         main_window_did_init=[], browser_will_show_context_menu=[]
     )
-    utils = types.ModuleType("aqt.utils")
+    utils: Any = types.ModuleType("aqt.utils")
     utils.showInfo = lambda *a, **k: None
     utils.showWarning = lambda *a, **k: None
     monkeypatch.setitem(sys.modules, "aqt", aqt)
@@ -212,9 +213,9 @@ def test_japanese_support_lookup_finds_the_reading_engine(loaded_addon, monkeypa
     from mining_fixer import collection_io
 
     controller = types.SimpleNamespace(reading=lambda sentence: sentence)
-    reading = types.ModuleType("3918629684.reading")
+    reading: Any = types.ModuleType("3918629684.reading")
     reading.mecab = controller
-    package = types.ModuleType("3918629684")
+    package: Any = types.ModuleType("3918629684")
     package.reading = reading
     monkeypatch.setitem(sys.modules, "3918629684", package)
     monkeypatch.setitem(sys.modules, "3918629684.reading", reading)
@@ -225,7 +226,7 @@ def test_japanese_support_lookup_accepts_a_package_level_controller(loaded_addon
     from mining_fixer import collection_io
 
     controller = types.SimpleNamespace(reading=lambda sentence: sentence)
-    package = types.ModuleType("3918629684")
+    package: Any = types.ModuleType("3918629684")
     package.mecab = controller
     monkeypatch.setitem(sys.modules, "3918629684", package)
     monkeypatch.delitem(sys.modules, "3918629684.reading", raising=False)
@@ -247,8 +248,10 @@ def test_undo_keeps_run_log_when_all_writes_fail(loaded_addon, monkeypatch, tmp_
     log_file = tmp_path / "run-20261117-120000-000000.json"
     log_file.write_text('{"records": []}', encoding="utf-8")
     warnings: list[str] = []
-    sys.modules["aqt"].mw.col = object()
-    sys.modules["aqt.utils"].showWarning = lambda msg, *a, **k: warnings.append(msg)
+    aqt_mod: Any = sys.modules["aqt"]
+    utils_mod: Any = sys.modules["aqt.utils"]
+    aqt_mod.mw.col = object()
+    utils_mod.showWarning = lambda msg, *a, **k: warnings.append(msg)
 
     monkeypatch.setattr(collection_io, "latest_run_log", lambda: (log_file, {"records": []}))
     monkeypatch.setattr(

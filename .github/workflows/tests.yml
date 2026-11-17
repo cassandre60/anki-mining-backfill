@@ -29,11 +29,14 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: "pyproject.toml"
       - name: Install tools
-        run: python -m pip install --upgrade pip pytest hypothesis ruff
-      - name: Lint and format check
+        run: python -m pip install --upgrade pip pytest hypothesis ruff pyright
+      - name: Lint, format and type check
         run: |
           ruff check .
           ruff format --check .
+          pyright
       - name: Test suite
         run: python -m pytest

@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from typing import Any
 
 import pytest
 
@@ -36,7 +37,7 @@ def controller(monkeypatch):
     """Import ``collection_io`` behind a stub ``aqt`` and hand back the module."""
     for name in [n for n in list(sys.modules) if n == "aqt" or n.startswith("aqt.")]:
         del sys.modules[name]
-    aqt = types.ModuleType("aqt")
+    aqt: Any = types.ModuleType("aqt")
     aqt.mw = types.SimpleNamespace()
     monkeypatch.setitem(sys.modules, "aqt", aqt)
     sys.modules.pop("mining_fixer.collection_io", None)

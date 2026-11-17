@@ -149,10 +149,12 @@ def _add_menu_entries() -> None:
     try:
         menu = mw.form.menuTools
         preview_action = menu.addAction(PREVIEW_LABEL)
-        preview_action.triggered.connect(lambda _checked=False: _on_preview())
+        if preview_action is not None:
+            preview_action.triggered.connect(lambda _checked=False: _on_preview())
+            menu.insertSeparator(preview_action)
         undo_action = menu.addAction(UNDO_LABEL)
-        undo_action.triggered.connect(lambda _checked=False: _on_undo())
-        menu.insertSeparator(preview_action)
+        if undo_action is not None:
+            undo_action.triggered.connect(lambda _checked=False: _on_undo())
         _menu_added = True
     except Exception:
         print(f"Mining Fixer: could not add the Tools menu entries\n{traceback.format_exc()}")

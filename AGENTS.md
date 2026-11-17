@@ -103,8 +103,8 @@ enriched siblings. Two halves:
 ## 4. Gates before you present work
 
 ```bash
-ruff check . && ruff format --check .     # must be clean
-python3 -m pytest                         # 264 tests with Anki installed
+ruff check . && ruff format --check . && pyright   # must be clean
+python3 -m pytest                                  # 264 tests with Anki installed
 ```
 
 Then push and watch CI — it is the gate, and it runs without Anki (262 passed,

@@ -5,6 +5,9 @@ description = "Anki add-on: backfills mining cards from their enriched scene sib
 requires-python = ">=3.13"
 license = "AGPL-3.0-or-later"
 
+[project.optional-dependencies]
+dev = ["hypothesis", "pyright", "pytest", "ruff"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
@@ -18,3 +21,5 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pyright]
 include = ["mining_fixer", "scripts", "tests"]
+extraPaths = ["scripts", "tests"]
+reportMissingImports = "none"

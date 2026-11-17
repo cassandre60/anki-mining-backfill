@@ -167,10 +167,12 @@ def main() -> int:
         # Build audit notes under a cloned note type in a fresh deck.
         audit_deck_id = col.decks.id(args.deck_name)
         mid = col.models.id_for_name(note_type_name)
+        assert audit_deck_id is not None and mid is not None
         audit_mid = clone_note_type(col, mid, f"{note_type_name} (MB Audit)")
+        assert audit_mid is not None
 
         created = 0
-        field_order = None
+        field_order: list[str] | None = None
         for target_id in scope:
             target = records_by_id[target_id]
             writes = [w for w in plan.writes if w.note_id == target_id and w.default_checked]
@@ -183,7 +185,9 @@ def main() -> int:
                 values[w.field] = w.new_value
             note = Note(col, audit_mid)
             if field_order is None:
-                field_order = [f["name"] for f in col.models.get(audit_mid)["flds"]]
+                model_dict = col.models.get(audit_mid)
+                assert model_dict is not None
+                field_order = [f["name"] for f in model_dict["flds"]]
             for name in field_order:
                 note[name] = values.get(name, "")
             # Tags = the target's own tags plus every contributing source's

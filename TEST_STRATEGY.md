@@ -22,7 +22,7 @@ and moves outward only when it needs more of the real world.
 | **Ring 1 — golden acceptance** (`tests/test_golden_scene.py`) | The pipeline must reproduce the author's real manual fix (診察, from scene 至急) **byte-for-byte on all five fields** plus the tag union, from a frozen fixture (`tests/fixtures/golden_scene.json`). This is the anchor: if it moves, behaviour moved. | Local + CI | ms |
 | **Ring 2 — add-on load contract** (`tests/test_addon_load.py`) | Imports the package *the way Anki does* (folder name → package, stubbed `aqt`), asserting the two Tools entries are added once, the banner reports the packaged version, a missing main window does not raise, and the Browser context-menu action appears **only** when notes are selected (ids captured when the menu opened). Catches "add-on failed to load" and menu-wiring regressions. | Local + CI | ms |
 | **Ring 3 — real-collection verification** (ad-hoc scripts, not committed as tests) | Apply + undo against a **copy** of the real collection (every checked write lands verbatim, guarded-only notes untouched, undo restores exactly); the audit builder's `--last`/`--note-id` scope and package round-trip; the entry point against the real `aqt` package. A live-GUI pass is manual: apply from the Browser selection, then close the Browser and quit Anki, watching the debug console — Anki's legacy-editor teardown has its own known crash (see `AGENTS.md`), and no headless harness here reproduces the Browser's save/close path reliably. | Author's machine, on demand | seconds–minutes |
-| **Ring 4 — CI gate** (`.github/workflows/tests.yml`) | `ruff check` + `ruff format --check` + the whole suite on every push and PR, with **no Anki installed**. Green exit code is the gate. | GitHub Actions | ~15 s |
+| **Ring 4 — CI gate** (`.github/workflows/tests.yml`) | `ruff check` + `ruff format --check` + `pyright` + the whole suite on every push and PR, with **no Anki installed**. Green exit code is the gate. | GitHub Actions | ~15 s |
 
 Ring 3 exists because Rings 0–2 cannot see Anki's own API behaviour. It is
 deliberately not a committed test: it needs a real collection, which CI does
@@ -256,9 +256,9 @@ faked with a stub that cannot see it.
 ## Running things
 
 ```bash
-ruff check . && ruff format --check .   # Ring 4 locally, fast
-python3 -m pytest                       # Rings 0–2
-gh run watch --exit-status              # Ring 4, the gate
+ruff check . && ruff format --check . && pyright   # Ring 4 locally, fast
+python3 -m pytest                                  # Rings 0–2
+gh run watch --exit-status                         # Ring 4, the gate
 ```
 
 The suite is hermetic and sub-second, so local runs are cheap and allowed —
@@ -276,5 +276,7 @@ ln -s "$HOME/.local/share/Anki2/User 1/collection.media" /tmp/opencode/probe/col
   Qt/Anki-facing modules, relative intra-package imports only (flat module names
   would collide across add-ons in Anki's shared `sys.path`).
 - `ruff` — lint (`E,F,I,UP,B,SIM`) plus formatting, line length 100.
+- `pyright` — static type check across `mining_fixer/`, `scripts/` and `tests/`
+  (catches Qt/Anki signature mismatches without booting a GUI process).
 - `test_addon_load.py` also asserts the menu labels contain no Qt mnemonic
   `&`, a rendering hazard that no runtime test would catch.

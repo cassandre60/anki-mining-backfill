@@ -312,7 +312,7 @@ def open_batch_dialog(scope_note_ids=None, browser=None) -> None:
     from aqt import mw
 
     if mw is None or mw.col is None:
-        showCritical("Open a profile first.", parent=mw)
+        showCritical("Open a profile first.")
         return
     if browser is None:
         try:

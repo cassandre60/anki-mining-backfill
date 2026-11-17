@@ -19,6 +19,7 @@ from .plan import (
     OP_REPLACE_SOURCE,
     OP_STRIP_EMPTY_GLOSSARY,
     Plan,
+    PlannedWrite,
 )
 
 __all__ = [
@@ -167,7 +168,7 @@ _LABELS_BY_FIELD = {
 }
 
 
-def field_label(write) -> str:
+def field_label(write: PlannedWrite) -> str:
     """A human phrase for one planned write."""
     if write.op == OP_ADD_TAGS:
         added = " ".join(sorted(set(write.new_value.split()) - set(write.old_value.split())))

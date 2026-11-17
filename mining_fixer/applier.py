@@ -433,6 +433,12 @@ def latest_run_log_in(folders: Sequence[Path]) -> tuple[Path, dict] | None:
         return None
 
 
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+        return [str(item) for item in value]
+    return []
+
+
 def decide_undo(records: Iterable[Mapping[str, object]], read_state: StateReader) -> ApplyDecision:
     """Decide how to reverse a run logged by :func:`build_run_log`.
 
@@ -443,9 +449,17 @@ def decide_undo(records: Iterable[Mapping[str, object]], read_state: StateReader
     """
     decision = ApplyDecision()
     for record in records:
-        note_id = int(record["note_id"])
+        raw_nid = record.get("note_id")
+        if not isinstance(raw_nid, (int, str)):
+            continue
+        note_id = int(raw_nid)
         state = read_state(note_id)
-        fields = [f for f in record.get("fields", []) if isinstance(f, dict)]
+        raw_fields = record.get("fields", [])
+        fields = (
+            [f for f in raw_fields if isinstance(f, dict)]
+            if isinstance(raw_fields, Sequence) and not isinstance(raw_fields, (str, bytes))
+            else []
+        )
 
         stale: list[str] = []
         restores: list[FieldWrite] = []
@@ -461,8 +475,8 @@ def decide_undo(records: Iterable[Mapping[str, object]], read_state: StateReader
                 continue
             restores.append(FieldWrite(note_id, field_name, OP_RESTORE, applied, prior))
 
-        to_remove = _tag_key(record.get("tags_applied", [])) - _tag_key(
-            record.get("tags_prior", [])
+        to_remove = _tag_key(_string_list(record.get("tags_applied"))) - _tag_key(
+            _string_list(record.get("tags_prior"))
         )
         remaining_tags = {tag for tag in state.tags if tag.lower() not in to_remove}
 

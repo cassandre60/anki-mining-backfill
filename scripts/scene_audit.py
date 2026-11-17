@@ -110,6 +110,7 @@ def main() -> int:
             shutil.rmtree(args.work_dir)
         prepare_work_dir(args.profile_dir, args.work_dir)
     from anki.collection import Collection
+    from anki.notes import NoteId
 
     col = Collection(str(args.work_dir / "collection.anki2"))
     cfg = json.loads((REPO_ROOT / "mining_fixer" / "config.json").read_text(encoding="utf-8"))
@@ -143,7 +144,7 @@ def main() -> int:
             )
 
         def state(note_id: int) -> NoteState:
-            note = col.get_note(note_id)
+            note = col.get_note(NoteId(note_id))
             return NoteState(fields=dict(note.items()), tags=frozenset(note.tags))
 
         # One Apply is the whole fix (QUALITY Q-A2): the add-on re-plans on the
@@ -169,18 +170,18 @@ def main() -> int:
             if not decision.field_writes and not decision.tags_writes:
                 break
             for write in decision.field_writes:
-                note = col.get_note(write.note_id)
+                note = col.get_note(NoteId(write.note_id))
                 note[write.field] = write.new_value
                 col.update_note(note)
             for write in decision.tags_writes:
-                note = col.get_note(write.note_id)
+                note = col.get_note(NoteId(write.note_id))
                 note.tags = list(write.new_tags)
                 col.update_note(note)
 
-        fields = {note_id: dict(col.get_note(note_id).items()) for note_id in scope}
+        fields = {note_id: dict(col.get_note(NoteId(note_id)).items()) for note_id in scope}
         by_sentence: dict[str, list[int]] = collections.defaultdict(list)
         for note_id in scope:
-            by_sentence[strip_renderable(fields[note_id].get("Sentence"))].append(note_id)
+            by_sentence[strip_renderable(fields[note_id].get("Sentence") or "")].append(note_id)
 
         violations: collections.Counter[str] = collections.Counter()
         examples: dict[str, list[str]] = collections.defaultdict(list)

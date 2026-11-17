@@ -221,6 +221,7 @@ def test_writes_wait_for_the_editor_to_save():
     editor = _FakeEditor()
     run_after_editor_saved(types.SimpleNamespace(editor=editor), lambda: events.append("write"))
     assert events == []  # nothing is written while a save is still pending
+    assert editor.callback is not None
     editor.callback()
     assert events == ["write"]
 
@@ -229,6 +230,7 @@ def test_a_doubled_editor_callback_still_writes_once():
     events: list[str] = []
     editor = _FakeEditor()
     run_after_editor_saved(types.SimpleNamespace(editor=editor), lambda: events.append("write"))
+    assert editor.callback is not None
     editor.callback()
     editor.callback()  # some editors invoke their callback more than once
     assert events == ["write"]
@@ -265,6 +267,7 @@ def test_a_lost_editor_callback_cannot_swallow_the_run():
     assert events == []  # still waiting for the editor to save
     scheduled[0]()  # safety net fires: Anki lost the save callback
     assert events == ["write"]
+    assert editor.callback is not None
     editor.callback()  # a late save callback must not write a second time
     assert events == ["write"]
 
@@ -281,7 +284,9 @@ def test_the_newest_run_log_wins_across_folders(tmp_path):
     (current / "run-20261115-090000-000000.json").write_text(
         json.dumps({"records": []}), encoding="utf-8"
     )
-    path, log = latest_run_log_in([current, legacy])
+    found = latest_run_log_in([current, legacy])
+    assert found is not None
+    path, log = found
     assert path.name == "run-20261115-090000-000000.json"
     assert log == {"records": []}
 
@@ -291,7 +296,9 @@ def test_a_run_logged_before_the_rename_stays_undoable(tmp_path):
     legacy.mkdir(parents=True)
     (legacy / "run-20261114-222600.json").write_text(json.dumps({"records": []}), encoding="utf-8")
     current = tmp_path / "mining_fixer" / "undo"  # never created
-    path, _ = latest_run_log_in([current, legacy])
+    found = latest_run_log_in([current, legacy])
+    assert found is not None
+    path, _ = found
     assert path.parent == legacy
 
 

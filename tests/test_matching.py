@@ -195,6 +195,7 @@ def test_best_word_source_prefers_provenance_then_consensus():
     group = [junk, plain, gloss]
     cand = rec(9, {**BASE, "Expression": "診察", "reading": "しんさつ"})
     src = best_word_source("Definition", cand, group)
+    assert src is not None
     assert src.record.note_id == gloss.note_id
     assert src.provenance
 

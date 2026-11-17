@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,7 +23,7 @@ def mock_aqt(monkeypatch):
     """Provide a mock aqt environment for collection_io tests."""
     for name in [n for n in list(sys.modules) if n == "aqt" or n.startswith("aqt.")]:
         del sys.modules[name]
-    aqt = types.ModuleType("aqt")
+    aqt: Any = types.ModuleType("aqt")
     mw = types.SimpleNamespace()
     mw.col = types.SimpleNamespace()
     mw.reset = MagicMock()
@@ -43,7 +44,7 @@ def mock_aqt(monkeypatch):
 def test_notify_when_mw_is_none():
     for name in [n for n in list(sys.modules) if n == "aqt" or n.startswith("aqt.")]:
         del sys.modules[name]
-    aqt = types.ModuleType("aqt")
+    aqt: Any = types.ModuleType("aqt")
     aqt.mw = None
     sys.modules["aqt"] = aqt
     sys.modules.pop("mining_fixer.collection_io", None)

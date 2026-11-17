@@ -143,14 +143,17 @@ class PreviewDialog(QDialog):
         inner = QVBoxLayout(page)
         table = QTableWidget(0, len(_HEADERS))
         table.setHorizontalHeaderLabels(_HEADERS)
-        table.verticalHeader().setVisible(False)
+        vheader = table.verticalHeader()
+        if vheader is not None:
+            vheader.setVisible(False)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSortingEnabled(False)
         header = table.horizontalHeader()
-        for column in range(len(_HEADERS)):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        if header is not None:
+            for column in range(len(_HEADERS)):
+                header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
 
         records = self.preview.records_by_id or {}
         seen: set[int] = set()
@@ -404,7 +407,7 @@ def open_preview_dialog(scope_note_ids=None, browser=None) -> None:
     from aqt import mw
 
     if mw is None or mw.col is None:
-        showCritical("Open a profile first.", parent=mw)
+        showCritical("Open a profile first.")
         return
     if browser is None:
         try:

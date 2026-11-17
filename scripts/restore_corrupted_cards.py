@@ -187,6 +187,7 @@ def main() -> int:
         return 2
 
     from anki.collection import Collection
+    from anki.notes import NoteId
 
     work_col_path = prepare_work_dir(args.profile_dir, args.work_dir)
     col = Collection(str(work_col_path))
@@ -194,7 +195,7 @@ def main() -> int:
         log_records: list[dict] = []
         for nid, info in RESTORATIONS.items():
             try:
-                note = col.get_note(nid)
+                note = col.get_note(NoteId(nid))
             except Exception as e:
                 print(f"Note {nid} ({info['name']}): could not load: {e}")
                 continue

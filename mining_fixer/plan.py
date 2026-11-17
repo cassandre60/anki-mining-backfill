@@ -1588,6 +1588,7 @@ def _scene_writes_for(
                 # The word occurs more than once in the block (校 in 精神医学
                 # 校, 医学校, …): bold the occurrence inside the child's own
                 # fragment, which is unique by definition.
+                assert fragment_bold is not None
                 new_sentence = _single_bold(
                     fragment_bold,
                     candidate.get("cloze-body"),
