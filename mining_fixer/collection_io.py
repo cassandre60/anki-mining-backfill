@@ -41,6 +41,7 @@ __all__ = [
     "deck_records",
     "latest_run_log",
     "load_config",
+    "notify_collection_changed",
     "plan_preview",
     "read_state",
     "restore_from_log",
@@ -297,29 +298,108 @@ def apply_decision(col, decision: ApplyDecision) -> int:
     fields_by_note: dict[int, list] = {}
     for write in decision.field_writes:
         fields_by_note.setdefault(write.note_id, []).append(write)
+    tags_by_note = {tw.note_id: tw for tw in decision.tags_writes}
+    all_note_ids = list(dict.fromkeys(list(fields_by_note) + list(tags_by_note)))
     modified = 0
-    for note_id, writes in fields_by_note.items():
+    for note_id in all_note_ids:
         try:
             note = col.get_note(note_id)
-            for write in writes:
+            for write in fields_by_note.get(note_id, []):
                 note[write.field] = write.new_value
+            tw = tags_by_note.get(note_id)
+            if tw is not None:
+                for tag in set(tw.new_tags) - set(tw.old_tags):
+                    note.add_tag(tag)
+                for tag in set(tw.old_tags) - set(tw.new_tags):
+                    note.remove_tag(tag)
             col.update_note(note)
             modified += 1
         except Exception as exc:
             print(f"Mining Fixer: could not write note {note_id}: {exc}")
-    for tags_write in decision.tags_writes:
-        try:
-            note = col.get_note(tags_write.note_id)
-            for tag in set(tags_write.new_tags) - set(tags_write.old_tags):
-                note.add_tag(tag)
-            for tag in set(tags_write.old_tags) - set(tags_write.new_tags):
-                note.remove_tag(tag)
-            col.update_note(note)
-            if tags_write.note_id not in fields_by_note:
-                modified += 1
-        except Exception as exc:
-            print(f"Mining Fixer: could not tag note {tags_write.note_id}: {exc}")
     return modified
+
+
+def notify_collection_changed(browser=None) -> None:
+    """Notify Anki and any open editors/views that collection data has changed.
+
+    When notes are written to the database via col.update_note:
+    1. mw.reset() synthesizes OpChanges and fires gui_hooks.operation_did_execute,
+       gui_hooks.state_did_reset, and mw.update_undo_actions. This tells Anki's
+       reviewer, deck browser, and any open webviews (Svelte/JS) to reload.
+    2. If a Browser is open (or was passed in), its table model and current editor
+       are refreshed with the newly written note data from the database.
+       Crucially, if the browser editor is not refreshed, closing the browser or
+       switching cards causes Anki's editor saveNow() to flush stale editor
+       contents back to SQLite, silently overwriting and reverting the applied fix!
+    3. If mw.reviewer.card is loaded, card.load() clears the cached _note so opening
+       the browser from the reviewer will not load stale note data.
+    4. If EditCurrent is open, its editor is refreshed as well.
+    """
+    if mw is None or getattr(mw, "col", None) is None:
+        return
+
+    # 1. Clear cached _note on reviewer card if reviewing
+    try:
+        reviewer = getattr(mw, "reviewer", None)
+        card = getattr(reviewer, "card", None)
+        if card is not None and hasattr(card, "load"):
+            card.load()
+    except Exception as exc:
+        print(f"Mining Fixer: reviewer card reload failed: {exc}")
+
+    # 2. Global Anki reset (OpChanges, gui_hooks, undo actions)
+    try:
+        mw.reset()
+    except Exception as exc:
+        print(f"Mining Fixer: mw.reset failed: {exc}")
+
+    # 3. Locate open browser if not provided
+    if browser is None:
+        try:
+            from aqt import dialogs
+
+            browser = dialogs.getInstance("Browser")
+        except Exception:
+            browser = None
+
+    # 4. Refresh open browser editor and table
+    if browser is not None and not getattr(browser, "_closeEventHasCleanedUp", True):
+        try:
+            table = getattr(browser, "table", None)
+            if table is not None:
+                card = table.get_single_selected_card()
+                if card is not None:
+                    if hasattr(card, "load"):
+                        card.load()
+                    editor = getattr(browser, "editor", None)
+                    if editor is not None and hasattr(editor, "set_note"):
+                        note = card.note(reload=True) if hasattr(card, "note") else None
+                        if note is not None:
+                            editor.set_note(note)
+                if hasattr(table, "redraw_cells"):
+                    table.redraw_cells()
+        except Exception as exc:
+            print(f"Mining Fixer: browser refresh failed: {exc}")
+
+    # 5. Refresh open EditCurrent dialog if open
+    try:
+        from aqt import dialogs
+
+        for name in ("EditCurrent", "NewEditCurrent"):
+            ec = dialogs.getInstance(name)
+            if ec is not None and getattr(ec, "editor", None) is not None:
+                editor = ec.editor
+                card = getattr(editor, "card", None) or getattr(
+                    getattr(mw, "reviewer", None), "card", None
+                )
+                if card is not None:
+                    if hasattr(card, "load"):
+                        card.load()
+                    note = card.note(reload=True) if hasattr(card, "note") else None
+                    if note is not None and hasattr(editor, "set_note"):
+                        editor.set_note(note)
+    except Exception as exc:
+        print(f"Mining Fixer: EditCurrent refresh failed: {exc}")
 
 
 def undo_folder() -> Path:

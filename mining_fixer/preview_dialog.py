@@ -32,6 +32,7 @@ from .collection_io import (
     apply_decision,
     build_decision,
     load_config,
+    notify_collection_changed,
     plan_preview,
     preflight_fields,
     read_state,
@@ -293,7 +294,7 @@ class PreviewDialog(QDialog):
         self.accept()
 
 
-def _finish_apply(col, decision: ApplyDecision, meta: dict, parent) -> None:
+def _finish_apply(col, decision: ApplyDecision, meta: dict, browser=None, parent=None) -> None:
     """Preflight, log, write, verify — in that order (runs outside the dialog)."""
     field_problems = preflight_fields(col, decision)
     if field_problems:
@@ -306,6 +307,8 @@ def _finish_apply(col, decision: ApplyDecision, meta: dict, parent) -> None:
     # Log first: even a crash mid-run stays exactly reversible.
     log_path = write_run_log(decision, meta) if decision.row_count() else None
     modified = apply_decision(col, decision)
+    if modified:
+        notify_collection_changed(browser=browser)
     problems = verify_writes(decision, lambda nid: read_state(col, nid))
     lines = [f"Applied {decision.row_count()} write(s) to {modified} note(s)."]
     if decision.skipped:
@@ -337,7 +340,7 @@ def apply_pending(col, pending, browser=None, parent=None) -> None:
     decision, meta = pending
     run_after_editor_saved(
         browser,
-        lambda: _finish_apply(col, decision, meta, parent),
+        lambda: _finish_apply(col, decision, meta, browser=browser, parent=parent),
         schedule=lambda once: QTimer.singleShot(1500, once),
     )
 
@@ -355,6 +358,17 @@ def open_preview_dialog(scope_note_ids=None, browser=None) -> None:
     if mw is None or mw.col is None:
         showCritical("Open a profile first.", parent=mw)
         return
+    if browser is None:
+        try:
+            from aqt import dialogs
+
+            browser = (
+                dialogs.getInstance("Browser")
+                or dialogs.getInstance("EditCurrent")
+                or dialogs.getInstance("NewEditCurrent")
+            )
+        except Exception:
+            browser = None
     dialog = PreviewDialog(mw.col, load_config(), scope_note_ids, browser=browser, parent=mw)
     dialog.exec()
     if dialog.pending is not None:

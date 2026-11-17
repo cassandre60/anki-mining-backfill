@@ -81,6 +81,15 @@ enriched siblings. Two halves:
     fixpoint, re-plan it, and the residual must be **0 rows**. Never ship a
     change that leaves a second run with work — that is a defect, not a
     limitation.
+12. **Host UI synchronization after writes (QUALITY Q-A9).** Any code
+    modifying the collection (`apply_decision`, `apply_plan_to_fixpoint`,
+    undo) must call `notify_collection_changed(browser=...)`. An open Browser
+    or `EditCurrent` holds note fields in webview DOM memory; Anki's
+    `closeEvent` flushes that editor on close (`call_after_note_saved` →
+    `saveNow()`). Without explicit post-write synchronization (`mw.reset()`,
+    `card.load()`, `editor.set_note(card.note(reload=True))`), closing or
+    switching away from the browser flushes stale pre-fix fields back to SQLite,
+    silently reverting the fix (the ばあちゃん defect).
 
 ## 3. Environment (verified on the author's machine)
 
@@ -95,10 +104,10 @@ enriched siblings. Two halves:
 
 ```bash
 ruff check . && ruff format --check .     # must be clean
-python3 -m pytest                         # 165 tests with Anki installed
+python3 -m pytest                         # 254 tests with Anki installed
 ```
 
-Then push and watch CI — it is the gate, and it runs without Anki (163 passed,
+Then push and watch CI — it is the gate, and it runs without Anki (252 passed,
 2 skipped):
 
 ```bash

@@ -291,6 +291,14 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   Verified by: `test_japanese_support_lookup_finds_the_reading_engine`
   (plus the package-level and missing-addon cases) and
   `test_a_completion_is_demoted_when_the_ruby_engine_returns_nothing`.
+- [2026-11-17, OpenCode] Anki's Browser and EditCurrent save on close via
+  `editor.call_after_note_saved` (`saveNow()` in webview JS). Writing notes via
+  `col.update_note` without `mw.reset()` and without reloading the open editor
+  leaves stale field values in the webview DOM; when the browser is subsequently
+  closed, the webview flushes those stale values back to SQLite, silently
+  reverting the fix (author's ばあちゃん defect). Fixed by
+  `notify_collection_changed(browser)` on all apply paths (QUALITY Q-A9).
+  Verified by: `tests/test_notify_collection_changed.py`.
 
 ## Lessons Learned
 

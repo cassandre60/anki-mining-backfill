@@ -34,6 +34,7 @@ from .collection_io import (
     apply_plan_to_fixpoint,
     build_batch_decision,
     load_config,
+    notify_collection_changed,
     plan_preview,
     write_dry_run,
 )
@@ -264,11 +265,13 @@ class BatchDialog(QDialog):
         return box
 
 
-def _finish_batch(col, pending, parent) -> None:
+def _finish_batch(col, pending, browser=None, parent=None) -> None:
     decision, meta, cfg, scope = pending
     # One Apply is the whole fix (QUALITY Q-A2): keep re-planning on the real
     # post-write state until a pass writes nothing, then report the total.
     result = apply_plan_to_fixpoint(col, cfg, scope, meta, first_decision=decision)
+    if result.writes:
+        notify_collection_changed(browser=browser)
     if not result.writes:
         lines = ["Nothing was written."]
         if decision.skipped:
@@ -305,11 +308,22 @@ def open_batch_dialog(scope_note_ids=None, browser=None) -> None:
     if mw is None or mw.col is None:
         showCritical("Open a profile first.", parent=mw)
         return
+    if browser is None:
+        try:
+            from aqt import dialogs
+
+            browser = (
+                dialogs.getInstance("Browser")
+                or dialogs.getInstance("EditCurrent")
+                or dialogs.getInstance("NewEditCurrent")
+            )
+        except Exception:
+            browser = None
     dialog = BatchDialog(mw.col, load_config(), scope_note_ids, browser=browser, parent=mw)
     dialog.exec()
     if dialog.pending is not None:
         run_after_editor_saved(
             browser,
-            lambda: _finish_batch(mw.col, dialog.pending, parent=mw),
+            lambda: _finish_batch(mw.col, dialog.pending, browser=browser, parent=mw),
             schedule=lambda once: QTimer.singleShot(1500, once),
         )

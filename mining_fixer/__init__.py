@@ -100,7 +100,12 @@ def _on_undo() -> None:
     from aqt.utils import showInfo, showWarning
 
     try:
-        from .collection_io import apply_decision, latest_run_log, restore_from_log
+        from .collection_io import (
+            apply_decision,
+            latest_run_log,
+            notify_collection_changed,
+            restore_from_log,
+        )
 
         if mw is None or mw.col is None:
             showInfo("Open a profile first.")
@@ -115,6 +120,8 @@ def _on_undo() -> None:
             showInfo("Mining Fixer: that run is already undone.")
             return
         notes = apply_decision(mw.col, decision)
+        if notes:
+            notify_collection_changed()
         lines = [f"Restored {decision.row_count()} value(s) across {notes} note(s)."]
         if decision.skipped:
             lines.append(

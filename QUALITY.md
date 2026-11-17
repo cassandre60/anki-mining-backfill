@@ -353,6 +353,22 @@ first, with the reason.
 - **Q-A8 — Tags compare case-insensitively**, exactly like Anki's own tag
   matching, so a case difference can neither duplicate a tag nor produce a
   false verification problem.
+- **Q-A9 — Host UI synchronization after collection writes.** Every write to
+  the collection (single-preview Apply, batch-fix, undo) must immediately
+  synchronize Anki's host UI and open editors
+  (`collection_io.notify_collection_changed`). This:
+  1. invalidates cached reviewer cards (`mw.reviewer.card.load()`) so opening
+     the browser from review never loads stale card note references;
+  2. triggers Anki's global reset (`mw.reset()`), synthesizing `OpChanges` to
+     fire `gui_hooks.operation_did_execute` and `gui_hooks.state_did_reset`,
+     alerting all webviews (legacy and Svelte) and Anki components;
+  3. reloads any open Browser or EditCurrent note editor from SQLite
+     (`card.note(reload=True)` → `editor.set_note(note)`) and redraws browser
+     table cells (`table.redraw_cells()`).
+  Without this post-write synchronization, any open or subsequently closed
+  Browser flushes its stale editor contents on `closeEvent` (`saveNow()`),
+  silently overwriting and reverting the applied fix to its pre-fix values
+  (the author's ばあちゃん defect).
 
 ## System
 

@@ -228,21 +228,26 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **177 passed** |
-| CI / a venv without Anki | **175 passed, 2 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **254 passed** |
+| CI / a venv without Anki | **252 passed, 2 skipped** |
 
 Both are green; the difference is exactly two self-skipping import checks
 (the dialog modules need a real `aqt`).
 
 ## Fail-to-pass for bug fixes
 
-A test added for a bug must be able to fail on the unfixed code. Two real
+A test added for a bug must be able to fail on the unfixed code. Three real
 examples from this repo's history:
 
 - `<b` matched `<br`, silently disabling every bold repair →
   `test_bold_repair_with_br_markup` pins the `<br>` case.
 - An already-applied row was misreported as stale (re-running a plan looked
   like a conflict) → `test_rerunning_the_same_plan_is_a_noop`.
+- Closing Anki's Browser reverted newly applied writes because the browser
+  editor flushed stale pre-fix fields on close (`saveNow()`) →
+  `tests/test_notify_collection_changed.py` pins Q-A9 (`mw.reset()`,
+  `card.load()`, `editor.set_note(card.note(reload=True))` and one
+  `update_note` call per note).
 
 When the bug is only observable with real Anki/anime data, the observation
 that made it visible is recorded in the test or in this file rather than
