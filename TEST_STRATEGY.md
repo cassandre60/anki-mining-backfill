@@ -97,14 +97,18 @@ not have and must never be given.
   because synthetic fixtures passed while real cards stayed broken; it
   caught the ruby-arrow and copied-ruby bugs the day it was written.
 - **One-run convergence** (QUALITY Q-A2; owner requirement 2026-11-17: "it
-  should fix everything in 1 run") is enforced by `scripts/scene_audit.py`
-  class **F**: one run is applied to a copy, the same scope is re-planned,
-  and the audit **fails if the second run has any row**. The same property
-  is pinned per card in `tests/test_real_cards.py` (second run = no-op) and
-  in the property tests (re-running a plan is a no-op); the audit extends it
-  from a fixed fixture to a whole selection, because a cross-run cascade only
-  appears *across* cards (a completed card becoming a source for a
-  neighbour). The gate is **red** until class F is 0. Never weaken it.
+  should fix everything in 1 run"). The mechanism is
+  `collection_io.apply_plan_to_fixpoint`: each pass plans on the *real*
+  post-write state, selects, decides and writes, and the loop stops when a
+  pass writes nothing; the per-pass undo logs are merged into one by
+  `applier.merge_run_logs` (pinned in `tests/test_applier.py`). The gate is
+  `scripts/scene_audit.py` class **F**, which mirrors that loop: apply the
+  selection to a fixpoint, re-plan it, and **fail if any row remains**. The
+  same property is pinned per card in `tests/test_real_cards.py` (second run =
+  no-op) and in the property tests (re-running a plan is a no-op); the audit
+  extends it from a fixed fixture to a whole selection, because a cross-run
+  cascade only appears *across* cards. Measured 0 rows on the newest 300
+  (2026-11-17). Never weaken it.
 - **Word-anchored scene recovery** (QUALITY Q-D14) is pinned in
   `tests/test_plan.py`: a mis-mined sentence is recovered from the word's
   own spellings, the tighter of two nested same-episode blocks wins, the

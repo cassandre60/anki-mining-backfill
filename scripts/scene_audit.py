@@ -20,10 +20,11 @@ Invariants (a card fails if any is broken):
      still counts as the word);
   E  no block-level markup survives in the sentence fields (the .vtt/.srt
      ``<div>`` nesting is rewritten to ``<br>`` by the repair);
-  F  **one run is the whole fix** (QUALITY Q-A2): after applying a run, a
-     second plan over the same cards must be **empty** — zero rows. Any row
-     is follow-up work the first run should have done in the same pass
-     (cross-run cascade or misordered steps). This is a release gate.
+  F  **one run is the whole fix** (QUALITY Q-A2): the apply runs to a
+     fixpoint exactly as the add-on does (re-plan on the real post-write
+     state until a pass writes nothing), then the same scope is re-planned —
+     the residual must be **0 rows**. Any row is work the fixpoint should
+     have absorbed (a cross-run cascade or a misordered step). Release gate.
 
 Output is a count per class with examples. Zero on every line means the
 corpus is coherent; the author's reported cards would appear under B, C, D.
