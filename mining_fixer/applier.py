@@ -355,10 +355,17 @@ def merge_run_logs(paths: list[Path]) -> None:
         header = {k: v for k, v in log.items() if k != "records"}
         for record in run_log_records(log):
             note_id = record["note_id"]
-            entry = merged.setdefault(
-                note_id,
-                {"note_id": note_id, "fields": [], "tags_applied": [], "tags_prior": []},
-            )
+            entry = merged.get(note_id)
+            if entry is None:
+                # The first record of a note is the true "before" of the whole
+                # Apply: its prior values (tags included) win, even when empty.
+                merged[note_id] = {
+                    "note_id": note_id,
+                    "fields": [dict(change) for change in record.get("fields", [])],
+                    "tags_applied": list(record.get("tags_applied") or []),
+                    "tags_prior": list(record.get("tags_prior") or []),
+                }
+                continue
             by_field = {change["field"]: change for change in entry["fields"]}
             for change in record.get("fields", []):
                 if change["field"] in by_field:
@@ -367,10 +374,8 @@ def merge_run_logs(paths: list[Path]) -> None:
                     added = dict(change)
                     entry["fields"].append(added)
                     by_field[added["field"]] = added
-            if record.get("tags_applied"):
-                entry["tags_applied"] = record["tags_applied"]
-            if record.get("tags_prior") and not entry["tags_prior"]:
-                entry["tags_prior"] = record["tags_prior"]
+            # The last pass leaves the tags the user ends with.
+            entry["tags_applied"] = list(record.get("tags_applied") or [])
     merged_log = {**header, "records": [merged[nid] for nid in sorted(merged)]}
     target = paths[-1]
     target.write_text(json.dumps(merged_log, ensure_ascii=False, indent=2), encoding="utf-8")

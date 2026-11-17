@@ -416,5 +416,49 @@ def test_merged_run_logs_keep_the_first_prior_and_the_last_applied(tmp_path):
     assert fields["Sentence"]["prior"] == "a"  # the earliest old value
     assert fields["Sentence"]["applied"] == "c"  # the last applied value
     assert fields["Picture"]["applied"] == "p"
-    assert record["tags_applied"] == ["t", "u"]
-    assert record["tags_prior"] == ["t"]
+    assert record["tags_applied"] == ["t", "u"]  # the last pass's tags
+    assert record["tags_prior"] == []  # the true "before", from the first pass
+
+
+def test_merged_multi_pass_log_undoes_the_whole_apply(tmp_path):
+    # Undo on the merged log must return every field to its pre-Apply value
+    # (not the value after the first pass) and the tags to the pre-Apply set.
+    from mining_fixer.applier import decide_undo, merge_run_logs
+
+    def log(name, records):
+        path = tmp_path / name
+        path.write_text(json.dumps({"records": records}), encoding="utf-8")
+        return path
+
+    first = log(
+        "run-1.json",
+        [
+            {
+                "note_id": 1,
+                "fields": [{"field": "Sentence", "prior": "a", "applied": "b"}],
+                "tags_applied": ["t"],
+                "tags_prior": [],
+            }
+        ],
+    )
+    second = log(
+        "run-2.json",
+        [
+            {
+                "note_id": 1,
+                "fields": [
+                    {"field": "Sentence", "prior": "b", "applied": "c"},
+                    {"field": "Picture", "prior": "", "applied": "p"},
+                ],
+                "tags_applied": ["t", "u"],
+                "tags_prior": ["t"],
+            }
+        ],
+    )
+    merge_run_logs([first, second])
+    merged = json.loads(second.read_text(encoding="utf-8"))
+    after_apply = {1: state({"Sentence": "c", "Picture": "p"}, tags=("t", "u"))}
+    undo = decide_undo(run_log_records(merged), reader(after_apply))
+    restored = {write.field: write.new_value for write in undo.field_writes}
+    assert restored == {"Sentence": "a", "Picture": ""}
+    assert list(undo.tags_writes[0].new_tags) == []  # back to the pre-Apply tags
