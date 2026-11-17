@@ -358,6 +358,15 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   word-plus-punctuation when the word repeats; a word absent from its sentence;
   a clause-like Expression). They are reported, not guessed.
   Verified by: `gh issue list` (4 open) and the scene audit classes D.
+- [2026-11-17, OpenCode] `join-speaker-lines` must not join a tag across a
+  blank line (`<br><br>`): matching only the first break left the second in
+  place, so the next run joined again — 3 values deck-wide were
+  non-idempotent since the rule shipped (the 19-card fixture lacks that
+  shape). The **whole-deck idempotency sweep** (repair every `Sentence` twice
+  over all 17,665 notes) found it; run that sweep before shipping a new
+  repair rule, it is cheap and read-only.
+  Verified by: `test_repair_join_does_not_cross_a_blank_line` (fails pre-fix)
+  and the sweep (non-idempotent 3 → 0).
 
 ## Lessons Learned
 

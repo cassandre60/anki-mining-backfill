@@ -218,6 +218,19 @@ def test_repair_joins_a_line_break_after_a_speaker_tag():
     assert repair_sentence(long_line, ALL_RULES) == (long_line, ())
 
 
+def test_repair_join_does_not_cross_a_blank_line():
+    # A tag followed by a blank line (<br><br>) is its own stanza, not a
+    # wrapped line. Joining only one of the two breaks left the second, so a
+    # second run joined again and never converged (owner requirement: one run
+    # fixes a card; a second is a no-op). Real value, note 1744221774736.
+    text = "微かな望みさえ見えない<br>(So dark)<br><br>手を伸ばしても届かない"
+    assert repair_sentence(text, ALL_RULES) == (text, ())
+    # A single break after the tag still joins.
+    new, applied = repair_sentence("微かな<br>(So dark)<br>手を", ALL_RULES)
+    assert applied == ("join-speaker-lines",)
+    assert new == "微かな<br>(So dark)手を"
+
+
 def test_repair_unknown_rules_are_ignored():
     new, applied = repair_sentence("前➡<br>後", ("strip-arrows", "nonsense"))
     assert applied == ("strip-arrows",)
