@@ -1632,6 +1632,16 @@ def _scene_writes_for(
             parent_ruby = parent_furigana
             if repair_rules:
                 parent_ruby, _applied_ruby = repair_sentence(parent_furigana, repair_rules)
+            # The ruby must describe the sentence this card ends up with — the
+            # parent's ruby belongs to the parent's line and is only usable
+            # when its base text matches (author's どなた: a parent's ruby was
+            # copied under a different sentence).
+            effective_sentence = next(
+                (w.new_value for w in writes if w.field == "Sentence"),
+                candidate.get("Sentence") or "",
+            )
+            if parent_ruby.strip() and not furigana_base_matches(parent_ruby, effective_sentence):
+                parent_ruby = ""
             already_queued = any(w.field == "Sentence (furigana)" for w in writes)
             if not already_queued and not is_empty(parent_ruby):
                 if is_empty(child_furigana):

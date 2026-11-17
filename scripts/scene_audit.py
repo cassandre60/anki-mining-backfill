@@ -51,6 +51,13 @@ def main() -> int:
     parser.add_argument("--work-dir", type=Path, default=Path("/tmp/opencode/mb_audit"))
     parser.add_argument("--last", type=int, default=300)
     parser.add_argument(
+        "--engine",
+        choices=("none", "fake"),
+        default="none",
+        help="simulate the reading engine (inside Anki only) so the ruby "
+        "class can be measured; 'fake' annotates kanji runs, base text intact",
+    )
+    parser.add_argument(
         "--reuse-copy",
         action="store_true",
         help="audit the existing work dir instead of re-copying the profile "
@@ -75,7 +82,33 @@ def main() -> int:
         records = records_from_collection(col, cfg["deck_name"], cfg["note_type_name"])
         scope = [r.note_id for r in sorted(records, key=lambda r: r.note_id, reverse=True)]
         scope = scope[: args.last]
-        plan = build_plan(records, cfg, scope_note_ids=scope, media_exists=media_exists)
+
+        def fake_engine(sentence: str) -> str | None:
+            """Stand-in for Japanese Support.
+
+            Annotates the first kanji run; a kana-only sentence comes back
+            unchanged, exactly as MeCab does (base text intact either way), so
+            a kana-only card is not reported as an engine failure.
+            """
+            match = re.search(r"[\u4e00-\u9fff]+", sentence or "")
+            if match is None:
+                return sentence or None
+            return (
+                sentence[: match.start()]
+                + match.group(0)
+                + "["
+                + match.group(0)
+                + "]"
+                + sentence[match.end() :]
+            )
+
+        plan = build_plan(
+            records,
+            cfg,
+            scope_note_ids=scope,
+            media_exists=media_exists,
+            furigana_generator=fake_engine if args.engine == "fake" else None,
+        )
         selection = select(plan, default_ops(cfg))
 
         def state(note_id: int) -> NoteState:
@@ -128,7 +161,16 @@ def main() -> int:
 
             if ruby.strip() and sentence.strip() and not furigana_base_matches(ruby, sentence):
                 violations["C ruby does not match its sentence"] += 1
-                examples["C ruby does not match its sentence"].append(word)
+                base = re.sub(r"\[[^\[\]]*\]", "", re.sub(r"<[^>]+>", "", ruby))
+                plain = re.sub(r"<[^>]+>", "", sentence)
+                squeeze = lambda text: re.sub(r"\s+", "", text)  # noqa: E731
+                if squeeze(base) != squeeze(plain):
+                    violations["C base text differs from the sentence"] += 1
+                else:
+                    violations["C ruby present but unusable"] += 1
+                examples["C ruby does not match its sentence"].append(
+                    f"{word}: {squeeze(base)[:26]!r} vs {squeeze(plain)[:26]!r}"
+                )
 
             from mining_fixer.plan import _bold_candidates
 
