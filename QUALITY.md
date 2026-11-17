@@ -14,8 +14,10 @@ first, with the reason.
   Yomitan `<ol></ol>` shell — is treated as empty, so the fill replaces the
   shell in one run.
 - **Q-D2 — Eight approved non-empty writes, each information-preserving.**
-  `replace_source` (blob URL is logged), `expand_sentence` (fragment survives
-  in `cloze-*`), `bold_cloze_word` (rendered text unchanged),
+  `replace_source` (blob URL is logged), `expand_sentence` (the card's mined
+  fragment survives: the scene matcher proved it is contained in the new
+  sentence — `cloze-*` holds it too on a sentence-mined card — Q-D16),
+  `bold_cloze_word` (rendered text unchanged),
   `repair_sentence` (only configured noise classes change, Q-D10),
   `regenerate_furigana` (the ruby layer must still carry the sentence's
   characters, Q-D11), `repair_expression` (the new spelling is the note's own
@@ -180,6 +182,40 @@ first, with the reason.
   unchecked, is left for the reason it carries). Verified by
   `test_a_foreign_ruby_is_never_copied_onto_a_different_sentence` and the
   scene audit (C class 0 with the reading engine).
+- **Q-D16 — A card that receives the scene's audio also receives the scene's
+  text.** A card missing its `Sentence Audio` is completed from the scene
+  source: its `Sentence` becomes the parent's whole block (the card's word
+  bolded, `expand_sentence`), so the text and the clip describe the same
+  speech. This is the general form of the word-mined fragment: a card mined
+  as one word keeps only its fragment in `cloze-*` (the tested word), so the
+  old "fragment must be recoverable from `cloze-*`" guard refused every
+  completion it should have made (author's 正道: a two-line fragment playing
+  the parent 出来's 14.8 s nine-line scene clip). The fragment is information-
+  preserved because the scene matcher requires the card's sentence to be
+  **contained** in the parent's, so the completion can never lose it
+  (`fragment-kept-in-scene`; `fragment-kept-in-cloze` when `cloze-*`
+  reconstructs it). Two pairing rules keep the card whole:
+  - a completion that would strand a fragment ruby ships checked only when
+    the parent carries a matching ruby **or** the furigana tier will rebuild
+    it in the same plan (`ruby-will-be-regenerated`, Q-D11/Q-D15); otherwise
+    it is `stale-fragment-furigana-risk` and ships unchecked;
+  - **convergence:** the completion runs only while the card is still
+    missing its scene audio. The run fills that audio, so the next run sees
+    a card that already owns its scene and leaves its sentence alone. A card
+    that already carries its own `Sentence Audio` is a scene unit in its own
+    right and is never expanded onto a longer neighbour's block; the cloze
+    anchor must still be placeable (once, or inside the card's own fragment).
+    **Known limitation — the cross-run cascade.** A completed card gains its
+    `Sentence Audio`, so it *becomes* a scene parent; a later run can then
+    fill a still-empty scene field of a neighbour from it (one extra run,
+    not a per-card repeat: the completed card's own sentence never
+    re-expands). Removing the cascade needs plan-wide convergence over the
+    post-run parent set — one plan that both completes a card and uses the
+    completed card as a source — which is the moment group's job, not this
+    rule's.
+  Verified by `test_a_jidoujisho_clip_is_scene_audio_and_completes_the_card`,
+  `test_a_stale_fragment_ruby_is_regenerated_when_the_engine_is_available`,
+  `test_a_completed_sentence_is_never_expanded_again`, and the 正道 replay.
 
 ## Correctness of decisions
 
@@ -227,17 +263,18 @@ first, with the reason.
     Because the guard is about the *source*, it does not freeze the card's
     own work — a card whose scene siblings disagree still gets its bold,
     its arrows stripped and its furigana rebuilt.
-  - **Text safety** (`fragment-not-recoverable`, `cloze-anchor-not-unique`,
-    `stale-fragment-furigana-risk`, `paired-with-expansion`) — exactly the
-    text unit is dropped; the note's independent scene fields (audio,
-    picture, translation) are still filled.
+  - **Text safety** (`cloze-anchor-not-unique`, `stale-fragment-furigana-risk`,
+    `paired-with-expansion`) — exactly the text unit is dropped; the note's
+    independent scene fields (audio, picture, translation) are still
+    filled.
   - A note with nothing safe to write is reported as *left alone* with a
     reason, never as a question. The preview report lists them all.
   - **The batch default includes both information-preserving replaces**
     (sentence completion and blob-source replacement) so the tool completes
     cards instead of merely filling blanks; `batch_expand_sentence` and
     `batch_replace_source` turn each off. Both keep their information: the
-    mined fragment survives in `cloze-*`, the blob URL is written to the run
+    mined fragment survives (in `cloze-*`, and always inside the new scene
+    sentence — Q-D16), the blob URL is written to the run
     log before the write. The subtitle-noise repair is an additional opt-in
     tier (`batch_repair_sentence`, default false); rows of a disabled tier
     make the note count as excluded by policy. The Expression repair

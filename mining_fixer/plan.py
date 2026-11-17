@@ -134,7 +134,15 @@ class Plan:
 
 
 def _fragment_recoverable(candidate: NoteRecord, cand_norm: str) -> bool:
-    """The mined fragment must survive in cloze-* before Sentence is replaced."""
+    """True when cloze-* alone reconstructs the card's own Sentence.
+
+    Only a badge label now: a completion keeps the fragment whether or not it
+    is in cloze-* — the scene matcher guarantees the card's sentence is
+    *contained* in the parent's, so replacing the Sentence with the parent's
+    scene text never loses it (``fragment-kept-in-scene``). This predicate
+    distinguishes the sentence-mined shape (cloze-* *is* the fragment,
+    ``fragment-kept-in-cloze``) from the word-mined one.
+    """
     parts = [
         strip_renderable(candidate.get("cloze-prefix")),
         strip_renderable(candidate.get("cloze-body")),
@@ -1517,8 +1525,15 @@ def _scene_writes_for(
     candidate: NoteRecord,
     matches: list[SceneMatch],
     cfg: dict,
+    ruby_regeneration_available: bool = False,
 ) -> tuple[list[PlannedWrite], str | None]:
-    """Emit scene-op writes for one candidate, or a reason string."""
+    """Emit scene-op writes for one candidate, or a reason string.
+
+    ``ruby_regeneration_available`` is true when the furigana tier will run
+    with a working reading engine this plan: a completion that would leave a
+    stale fragment ruby may then ship checked, because that tier rebuilds the
+    ruby from the completed sentence in the same plan.
+    """
     # The repair rules apply to the text this function *copies* (the parent's
     # sentence and ruby carry the subtitle's tail arrows), so the fill loop
     # and the sentence block share one definition.
@@ -1641,27 +1656,31 @@ def _scene_writes_for(
             )
         )
 
-    # Sentence expansion: the user's own transformation. Guarded:
-    #  - fragment must be recoverable from cloze-* (never lose the only copy)
-    #  - the cloze anchor must occur exactly once in the new Sentence
-    #  - stale fragment furigana must not be left behind (atomic replacement)
+    # Sentence completion: the card's mined fragment is a clip of the same
+    # scene the parent holds, and the parent's `Sentence Audio` *is* that
+    # scene's block — so a card about to receive the parent's audio must also
+    # receive the parent's text, or it would play a nine-line clip under a
+    # two-line sentence (author's 正道: 出来's 14.8 s scene clip under the
+    # card's own two-line fragment). The scene matcher already proved the
+    # fragment is contained in the parent's `Sentence`, so completing the text
+    # never loses it: the "fragment survives" guard is satisfied by that
+    # containment, not only by `cloze-*` (which holds just the tested word on
+    # a word-mined card).
+    #
+    # Convergence (one run fixes a card, a second is a no-op): the completion
+    # runs only while the card is still missing its scene audio. This run
+    # fills that audio, so the next run sees a card that already owns its
+    # scene and leaves the sentence alone. A card that already carries its own
+    # `Sentence Audio` is the same kind of unit — its audio matches its own
+    # sentence — so no longer neighbour's block is forced onto it.
     cand_norm = norm_sentence_match(candidate.get("Sentence"))
     parent_sentence = parent.get("Sentence")
     parent_furigana = parent.get("Sentence (furigana)")
-    fragment_norm = norm_sentence_match(
-        strip_renderable(candidate.get("cloze-prefix"))
-        + strip_renderable(candidate.get("cloze-body"))
-        + strip_renderable(candidate.get("cloze-suffix"))
-    )
-    already_complete = bool(
-        fragment_norm and cand_norm and cand_norm != fragment_norm and fragment_norm in cand_norm
-    )
-    if already_complete:
-        # The card's sentence already contains its own fragment (a previous
-        # run completed it, or the mining kept the whole line): expanding
-        # again would only chase longer neighbouring blocks and the next run
-        # would never be a no-op.
+    if not is_empty(candidate.get("Sentence Audio")):
         return writes, None
+    # Remaining guards: the cloze anchor must be placeable (once, or inside
+    # the card's own fragment), and a stale fragment ruby must not be left
+    # behind (atomic replacement, or regeneration when the engine is here).
     if cand_norm and cand_norm != norm_sentence_match(parent_sentence):
         unique_anchor = _unique_anchor(parent_sentence, candidate.get("cloze-body"))
         fragment_bold = (
@@ -1669,11 +1688,14 @@ def _scene_writes_for(
             if unique_anchor
             else _fragment_anchored_sentence(parent_sentence, candidate, repair_rules)
         )
-        if _fragment_recoverable(candidate, cand_norm) and (
-            unique_anchor or fragment_bold is not None
-        ):
+        if unique_anchor or fragment_bold is not None:
             checked = bool(cfg.get("replaces_autocheck", True)) and trusted
-            badges = ["expands-sentence", "fragment-kept-in-cloze", *context_badges]
+            kept_badge = (
+                "fragment-kept-in-cloze"
+                if _fragment_recoverable(candidate, cand_norm)
+                else "fragment-kept-in-scene"
+            )
+            badges = ["expands-sentence", kept_badge, *context_badges]
             if unique_anchor:
                 new_sentence, bold_badge = _retarget_bold(
                     parent_sentence,
@@ -1711,8 +1733,14 @@ def _scene_writes_for(
             if not is_empty(child_furigana):
                 if not is_empty(parent_furigana):
                     badges += ("replaces-fragment-furigana",)
+                elif ruby_regeneration_available:
+                    # The parent carries no ruby, but the furigana tier will
+                    # rebuild one from the completed sentence in this plan: the
+                    # fragment ruby is replaced, so the completion is safe.
+                    badges += ("ruby-will-be-regenerated",)
                 else:
-                    # Would leave fragment ruby under the full scene text.
+                    # Would leave fragment ruby under the full scene text and
+                    # nothing in this plan can rebuild it.
                     checked = False
                     badges += ("stale-fragment-furigana-risk",)
             writes.append(
@@ -2082,7 +2110,12 @@ def build_plan(
             target_writes.extend(moment_writes)
         elif has_scene_gap:
             matches = find_scene_parents(target, parents_by_id, window_ms, min_len, cache)
-            scene_writes, reason = _scene_writes_for(target, matches, cfg)
+            scene_writes, reason = _scene_writes_for(
+                target,
+                matches,
+                cfg,
+                ruby_regeneration_available=furigana_tier and furigana_generator is not None,
+            )
             if not scene_writes and reason == "no-parent-that-fills":
                 recovered, _recovered_reason = _word_recovered_scene_writes(target, episodes, cfg)
                 if recovered:

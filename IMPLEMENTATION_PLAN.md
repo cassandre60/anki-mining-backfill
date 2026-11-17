@@ -115,6 +115,7 @@ below, never as silent scope creep inside a coding session.
 | T13 | superseded 2026-11-16 (picker built, then removed at the owner's request); `test_plan.py` keeps the `batch_scene_propagation` gate |
 | T14 | `test_plan.py` (expression tier, word-like gate, listening predicate incl. the Frequency exception); Ring 3 battery pending |
 | T15 | `test_normalize.py` (`furigana_base`), `test_plan.py` (rewrite + every Q-D12 guard), `test_batch.py` (on-by-default tier with its opt-out key); real card 1736973220751; Ring 3 pending |
+| T16 | `test_plan.py` (word-mined fragment completed to the scene block; a card that owns its audio is left alone; a stale fragment ruby regenerated or demoted; a dictionary word recording refused); real card 正道; Ring 3 pending |
 
 - **T13 — Dimension picker in the batch window (B7) — superseded.** Built
   on 2026-11-16 with three checkboxes (scene / arrows / furigana) and pure
@@ -155,6 +156,26 @@ below, never as silent scope creep inside a coding session.
   `expression-repair-no-kanji-form`, `expression-not-word-like` in the
   left-alone report. The dictionary seam for furigana-less kana
   Expressions stays future (F2).
+- **T16 — Scene completion from the missing audio (Q-D16).** The owner's
+  正道 card (1770544325713) kept its two-line word fragment while a run
+  filled the sibling 出来's 14.8 s nine-line scene clip: the completion
+  guard required `cloze-*` to reconstruct the card's `Sentence`, which a
+  word-mined card never satisfies (its `cloze-*` holds only the tested
+  word), so the block was refused. `plan._scene_writes_for` now completes
+  any card that is still missing its `Sentence Audio` to the parent's whole
+  block — the scene matcher already proved the fragment is *contained* in
+  it, so nothing is lost (`fragment-kept-in-scene`). The `already_complete`
+  convergence guard is replaced by the audio condition: the run fills the
+  audio, so the next run sees a card that owns its scene and leaves the
+  sentence alone (one run fixes a card, a second is a no-op). A card whose
+  `Sentence Audio` is a dictionary pack's word recording (`yomitan_audio…`)
+  is still refused as a scene source; `jidoujisho-…` is not such a marker
+  (it is Jidoujisho's video-player clip export — all 683 such files in the
+  deck appear only in `Sentence Audio`, never in `Word Audio`), so
+  `matching.is_word_media` no longer lists it. When the parent lacks ruby
+  and the child has a fragment one, the completion ships checked with
+  `ruby-will-be-regenerated` if the furigana tier has an engine, and
+  unchecked (`stale-fragment-furigana-risk`) otherwise.
 
 ## Backlog
 

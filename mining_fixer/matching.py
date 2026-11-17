@@ -119,20 +119,26 @@ def _boundary_ok(candidate_norm: str, parent_norm: str, start: int) -> bool:
     return ok_start and ok_end
 
 
-#: Media that belongs to a *word* card, not to a scene: jidoujisho, Yomitan
-#: and dictionary packs name their files this way (``jidoujisho-…mp3``,
-#: ``yomitan_audio_….ogg``). Scene media are asbplayer exports or named after
-#: the source video.
-_WORD_MEDIA_MARKERS = ("jidoujisho", "yomitan", "dictionary", "forvo")
+#: Media that belongs to a *word* card, not to a scene: Yomitan and dictionary
+#: packs name their word recordings this way (``yomitan_audio_….ogg``).
+#: ``jidoujisho-…`` is deliberately NOT a marker: it is the Jidoujisho mobile
+#: video player's clip export, i.e. the scene's own audio/picture. Verified on
+#: the configured deck (2026-11-17, read-only): all 683 distinct
+#: ``jidoujisho-*`` files appear only in a ``Sentence Audio`` field and never
+#: in any ``Word Audio``; the 正道 scene's clip is 14.8 s of the nine-line
+#: speech (232 KB) while the same note's dictionary word audio is a separate
+#: 3 KB ``local audio_…oga``. Counting ``jidoujisho`` as word-level removed
+#: 683 genuine scene sources' media.
+_WORD_MEDIA_MARKERS = ("yomitan", "dictionary", "forvo")
 _MEDIA_REF_RE = re.compile(r"\[sound:([^\]]+)\]|<img[^>]+src=[\"']?([^\"'>]+)", re.IGNORECASE)
 
 
 def is_word_media(value: str) -> bool:
     """True when a media field holds word-level media rather than a scene's.
 
-    A card whose Sentence Audio or Picture is word media is a *word* card:
-    using it as a scene parent copied a dictionary mp3 onto 正道's scene
-    fields (author report). Pure.
+    A card whose Sentence Audio or Picture is a dictionary pack's word
+    recording would copy that recording onto a child's scene fields, so it is
+    refused as a scene source. Pure.
     """
     for audio_name, image_name in _MEDIA_REF_RE.findall(value or ""):
         filename = (audio_name or image_name or "").lower()

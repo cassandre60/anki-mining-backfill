@@ -24,11 +24,15 @@ and covered by tests, not just intended:
 2. **Only six approved non-empty writes, each information-preserving.**
    - `Source`: the asbplayer blob URL is replaced with the timestamped
      source — the blob URL is recorded in the run log, so nothing is lost.
-   - `Sentence`: the mined fragment is replaced with the full scene text —
-     only offered when the fragment is provably recoverable from
-     `cloze-prefix + cloze-body + cloze-suffix`, and the cloze anchor (the
-     tested word) occurs exactly once in the new text. The scene's bold
-     markup is moved to your card's word, never left on the sibling's.
+   - `Sentence`: a card missing its scene audio gets the scene's full text,
+     so the words and the clip describe the same speech. Your mined fragment
+     is never lost: the scene matcher requires the sibling's sentence to
+     *contain* it (a word-mined card keeps only the word in `cloze-*`, which
+     is why the whole block was previously refused), and the scene's bold
+     markup is moved to your card's word, never left on the sibling's. The
+     completion runs only while the card is still missing its audio, so a
+     second run is a no-op, and a card that already has its own audio keeps
+     its own sentence.
    - Bold markup repair (`bold_cloze_word`): when a card's `Sentence` has
      no bold term at all (its cloze-* hold dictionary-entry text instead
      of the subtitle span), the tested word is wrapped in `<b>` — but only
@@ -92,11 +96,13 @@ and covered by tests, not just intended:
 3. **`Sentence` and `Sentence (furigana)` are atomic.** Both always come
    from the same parent — never mixed ruby from a second note, never stale
    fragment ruby left under a full scene. If the parent has no furigana and
-   the child does, the expansion ships unchecked (`stale-fragment-furigana-risk`).
+   the child does, the furigana tier rebuilds the ruby in the same run
+   (`ruby-will-be-regenerated`); without a working engine the expansion ships
+   unchecked (`stale-fragment-furigana-risk`).
 4. **Risky rows ship unchecked, not hidden.** Guards like
-   `fragment-not-recoverable`, `cloze-anchor-not-unique`, or a furigana fill
-   paired with a guarded expansion set `default_checked=False` and carry a
-   visible badge. Silence never hides a risky write.
+   `cloze-anchor-not-unique`, `stale-fragment-furigana-risk`, or a furigana
+   fill paired with a guarded expansion set `default_checked=False` and carry
+   a visible badge. Silence never hides a risky write.
 5. **Media is checked on disk first.** A fill referencing a media file that
    no longer exists is dropped with a warning instead of producing a dead
    reference.

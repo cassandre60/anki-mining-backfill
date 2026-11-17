@@ -67,6 +67,20 @@ not have and must never be given.
   parenthetical keeps its break) and `tests/test_plan.py` (bold via the
   furigana's per-kanji spellings — 類い希 → 類いまれ; an already-completed
   sentence is never expanded again, so a second run stays a no-op).
+- **Scene completion from missing audio** (QUALITY Q-D16) is pinned in
+  `tests/test_plan.py`: a word-mined fragment (cloze-* holds only the word)
+  is completed to the parent's whole block with the word bolded
+  (`test_a_jidoujisho_clip_is_scene_audio_and_completes_the_card`), a scene
+  parent whose `Sentence Audio` is a dictionary pack's word recording
+  (`yomitan_audio…`) is still refused
+  (`test_a_dictionary_word_recording_is_not_scene_audio`), a stale fragment
+  ruby is regenerated in the same plan when the engine is present
+  (`test_a_stale_fragment_ruby_is_regenerated_when_the_engine_is_available`)
+  and demoted otherwise (`test_stale_furigana_blocks_default_checked`), and
+  the completion stops once the card owns its audio
+  (`test_a_completed_sentence_is_never_expanded_again`). The 正道 replay
+  (the real two-line fragment against 出来's nine-line scene) is kept in
+  the suite's `_ZHENGDAO_CHILD` values.
 - **The empty-definition cleanup** is pinned in `tests/test_normalize.py`
   (the Yomitan shell, variants, and every refusal: real text, media, blank)
   and `tests/test_plan.py` (a checked write per shell field, never on real

@@ -331,17 +331,10 @@ def test_add_tags_skipped_when_target_already_has_all_tags():
 
 def test_add_tags_needs_default_checked_writes():
     # Sources of UNCHECKED writes contribute nothing: a card the plan does
-    # not act on has not earned tag authority.
-    p = rec(PARENT.note_id, dict(PARENT.fields), tags=("asbplayer", "yomitan"))
-    child = dict(CHILD.fields)
-    child["Sentence Audio"] = " [sound:have.webm] "
-    child["Picture"] = '<img src="have.jpeg">'
-    child["Source"] = "Dr. Rintaro Episode 6.mp4 (20m19s)"  # not a blob
-    child["Sentence (furigana)"] = ""
-    child["cloze-prefix"] = ""  # fragment unrecoverable -> guarded expansion
-    child["cloze-body"] = ""
-    child["cloze-suffix"] = ""
-    c = rec(CHILD.note_id, child, tags=("yomitan",))
+    # not act on has not earned tag authority. A parent outside the mining
+    # session (far-from-source) demotes every row it proposes.
+    p = rec(PARENT.note_id + 86_400_000, dict(PARENT.fields), tags=("asbplayer", "yomitan"))
+    c = rec(CHILD.note_id, dict(CHILD.fields), tags=("yomitan",))
     plan = build_plan([p, c], CFG, scope_note_ids=[CHILD.note_id])
     rows = [w for w in plan.writes if w.note_id == CHILD.note_id]
     assert rows and all(not w.default_checked for w in rows)
@@ -727,9 +720,51 @@ def test_a_full_kana_sentence_keeps_the_reading_badge():
     assert bold and "bold-added-to-reading-form" in bold[0].badges
 
 
+def test_a_stale_fragment_ruby_is_regenerated_when_the_engine_is_available():
+    # The scene parent carries no ruby, so completing the card would leave its
+    # fragment ruby under the full scene text. When the furigana tier runs
+    # with a working engine, it rebuilds the ruby from the completed sentence
+    # in the same plan, so the completion ships *checked*
+    # (`ruby-will-be-regenerated`) instead of being demoted.
+    child = rec(
+        1,
+        {
+            **_ZHENGDAO_CHILD,
+            "Sentence (furigana)": "兄[あに](オレ)が 正道[せいどう]を 歩[あゆ]んだのなら",
+        },
+    )
+    parent = rec(
+        2,
+        {
+            "Expression": "出来",
+            "reading": "でき",
+            "Sentence": "兄(オレ)が正道を歩んだのなら 弟は 後をついてくればいい",
+            "Sentence Audio": " [sound:asbp_x.webm] ",
+            "Picture": '<img src="asbp_x.jpeg">',
+            "Source": "[Judas] JUJUTSU KAISEN - S03E02",
+            "Sentence (furigana)": "",
+            "cloze-prefix": "",
+            "cloze-body": "出来",
+            "cloze-suffix": "",
+        },
+        tags=("asbplayer",),
+    )
+
+    def gen(sentence: str) -> str:
+        return sentence  # base text == sentence, so the Q-D11 guard passes
+
+    regen_cfg = {**CFG, "batch_regenerate_furigana": True}
+    plan = build_plan([child, parent], regen_cfg, scope_note_ids=[1], furigana_generator=gen)
+    expansion = next(w for w in plan.writes if w.note_id == 1 and w.op == OP_EXPAND_SENTENCE)
+    assert expansion.default_checked
+    assert "ruby-will-be-regenerated" in expansion.badges
+    assert any(w.note_id == 1 and w.op == OP_REGENERATE_FURIGANA for w in plan.writes)
+
+
 def test_a_completed_sentence_is_never_expanded_again():
-    # Convergence: once the fragment sits inside a longer sentence, no parent
-    # can expand it further — otherwise run two would never be a no-op.
+    # Convergence: a card that already carries its own Sentence Audio is a
+    # scene unit in its own right — its audio matches its own sentence — so no
+    # longer neighbouring block is forced onto it (and run two stays a no-op).
     child = rec(
         1,
         {
@@ -1707,33 +1742,36 @@ def test_expression_repair_runs_alongside_non_word_writes():
     assert any(w.op == OP_BOLD_CLOZE_WORD for w in plan.writes)
 
 
-def test_a_word_media_card_is_never_a_scene_parent():
-    # 正道 was filled with 出来's dictionary mp3 as Sentence Audio: a card
-    # whose media is word-level (jidoujisho/Yomitan) is not a scene parent.
-    child = rec(
-        1,
-        {
-            "Expression": "正道",
-            "reading": "せいどう",
-            "furigana": "正[せい]道[どう]",
-            "Sentence": "兄(オレ)が正道を歩んだのなら",
-            "Sentence Audio": "",
-            "Picture": "",
-            "Source": "Show.mp4 (5m00s)",
-            "cloze-prefix": "兄(オレ)が",
-            "cloze-body": "正道",
-            "cloze-suffix": "を歩んだのなら",
-        },
-    )
+_ZHENGDAO_CHILD = {
+    "Expression": "正道",
+    "reading": "せいどう",
+    "furigana": "正[せい]道[どう]",
+    "Sentence": "兄(オレ)が正道を歩んだのなら",
+    "Sentence Audio": "",
+    "Picture": "",
+    # The real 正道 card's Source has no mining timestamp, so the moment-group
+    # path does not apply and the scene matcher runs (as it does live).
+    "Source": "[Judas] JUJUTSU KAISEN - S03E02",
+    "cloze-prefix": "",
+    "cloze-body": "正道",
+    "cloze-suffix": "",
+}
+
+
+def test_a_dictionary_word_recording_is_not_scene_audio():
+    # A parent whose Sentence Audio is a dictionary pack's word recording is a
+    # word card, not a scene: its recording is never copied onto a child's
+    # scene fields.
+    child = rec(1, dict(_ZHENGDAO_CHILD))
     word_card = rec(
         2,
         {
             "Expression": "出来",
             "reading": "でき",
             "Sentence": "兄(オレ)が正道を歩んだのなら 弟は 後をついてくればいい",
-            "Sentence Audio": " [sound:jidoujisho-20260208T104227_6236629731955619868.mp3] ",
-            "Picture": '<img src="jidoujisho-20260208T104227_653.jpg">',
-            "Source": "Show.mp4 (5m01s)",
+            "Sentence Audio": " [sound:yomitan_audio_abc.ogg] ",
+            "Picture": '<img src="dictionary_pack.jpg">',
+            "Source": "[Judas] JUJUTSU KAISEN - S03E02",
             "cloze-prefix": "",
             "cloze-body": "出来",
             "cloze-suffix": "",
@@ -1741,6 +1779,45 @@ def test_a_word_media_card_is_never_a_scene_parent():
     )
     plan = build_plan([child, word_card], CFG, scope_note_ids=[1])
     assert not [w for w in plan.writes if w.note_id == 1 and w.field == "Sentence Audio"]
+
+
+def test_a_jidoujisho_clip_is_scene_audio_and_completes_the_card():
+    # jidoujisho-* is Jidoujisho's video-player clip export — the scene's own
+    # audio/picture, not a dictionary recording (verified on the configured
+    # deck: all 683 such files appear only in Sentence Audio, never in Word
+    # Audio). The 正道 card is completed from it: the two-line word fragment
+    # is replaced by the parent's whole nine-line scene (the word bolded), and
+    # the clip and picture come along in the same run.
+    child = rec(1, dict(_ZHENGDAO_CHILD))
+    scene_parent = rec(
+        2,
+        {
+            "Expression": "出来",
+            "reading": "でき",
+            "Sentence": (
+                "デキがよかろうと<br>悪かろうと<br>兄は 弟の手本なんだ<br>兄(オレ)が"
+                "<br>道を誤ったのなら<br>弟は その道を<br>避ければいい"
+                "<br>兄(オレ)が正道を歩んだのなら<br>弟は 後をついてくればいい"
+            ),
+            "Sentence Audio": " [sound:jidoujisho-20260208T104227_6236629731955619868.mp3] ",
+            "Picture": '<img src="jidoujisho-20260208T104227_653.jpg">',
+            "Source": "[Judas] JUJUTSU KAISEN - S03E02",
+            "cloze-prefix": "",
+            "cloze-body": "出来",
+            "cloze-suffix": "",
+        },
+        tags=("asbplayer",),
+    )
+    plan = build_plan([child, scene_parent], CFG, scope_note_ids=[1])
+    rows = {(w.field, w.op): w for w in plan.writes if w.note_id == 1}
+    expansion = rows[("Sentence", OP_EXPAND_SENTENCE)]
+    assert expansion.default_checked
+    assert "<b>正道</b>" in expansion.new_value
+    assert "デキがよかろうと" in expansion.new_value
+    assert "fragment-kept-in-scene" in expansion.badges
+    audio = rows[("Sentence Audio", OP_FILL)]
+    assert audio.default_checked and "jidoujisho" in audio.new_value
+    assert rows[("Picture", OP_FILL)].default_checked
 
 
 def test_recovery_is_refused_when_the_word_is_present_in_katakana():

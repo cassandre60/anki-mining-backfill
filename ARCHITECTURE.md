@@ -106,7 +106,7 @@ it is recorded in every audit log so old and new plans are distinguishable.
 |---|---|---|
 | `fill` | no | target field is empty |
 | `replace_source` | yes | old value is an asbplayer blob URL; the URL is kept in the run log |
-| `expand_sentence` | yes | fragment recoverable from `cloze-prefix + body + suffix`; the cloze anchor occurs exactly once in the new sentence; furigana ships in the same row or the row is unchecked |
+| `expand_sentence` | yes | the card is missing its `Sentence Audio`; the scene matcher proved its sentence is contained in the new one (so the fragment is kept, Q-D16); the cloze anchor occurs exactly once — or inside the card's own fragment; furigana ships in the same row, is regenerated in the same plan, or the row is unchecked |
 | `bold_cloze_word` | yes (markup only) | `strip_renderable(new) == strip_renderable(old)`; the word occurs exactly once |
 | `repair_sentence` | yes (configured noise only) | only the configured rules change the value; no other `Sentence` write queued; tested-word occurrence count unchanged |
 | `regenerate_furigana` | yes | generated from the post-write sentence; no other `Sentence (furigana)` write queued; ruby base text must equal the sentence (`furigana_base_matches`) |

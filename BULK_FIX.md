@@ -38,7 +38,7 @@ guard that drops what cannot be proven.
 
 | # | Dimension | Status | What it fixes | Evidence / guards |
 |---|---|---|---|---|
-| 1 | Source–child fixes (scene propagation) | **shipped** | `Sentence`, `Sentence (furigana)`, scene audio, picture, `Translation`, timestamped `Source` onto children | source-confidence (`divergent-parents`, `far-from-source`), text-safety (`fragment-not-recoverable`, `cloze-anchor-not-unique`, `stale-fragment-furigana-risk`) |
+| 1 | Source–child fixes (scene propagation) | **shipped** | `Sentence`, `Sentence (furigana)`, scene audio, picture, `Translation`, timestamped `Source` onto children | source-confidence (`divergent-parents`, `far-from-source`), text-safety (`cloze-anchor-not-unique`, `stale-fragment-furigana-risk`); a child missing its scene audio is completed to the parent's whole block (the fragment is contained in it, Q-D16) |
 | 2 | Sentence repair | **shipped, on by default** | flatten nested `<div>` block wrappers to `<br>` line breaks (`flatten-div-blocks`, owner addition 2026-11-17); remove line-tail continuation arrows (`➡` / `→`); join a short speaker tag to its line (`join-speaker-lines`); `<br>` line breaks stay as mined (owner decision 2026-11-15) | config-driven rule list; the flattening refuses any rewrite that would lose a visible character; `cloze-*` fragment anchor must still be found; old → new diff in the report |
 | 3 | Furigana generation | **shipped, on by default** | rebuild `Sentence (furigana)` from the note's own post-write sentence | runs *after* repair in one plan; `reading.mecab.reading` of Japanese Support (installed, id 3918629684) — never a home-grown generator; base-text guard + engine-failure reasons |
 | 4 | Expression repair | **shipped (self-oracled variant), on by default** | rewrite an Expression kept as the subtitle's surface form (ひと握り) to the dictionary form its own `furigana` records (一握[ひとにぎ]り → 一握り); kana-only Expressions without furigana and inflections stay future | the furigana base is the oracle, cross-checked against the `reading` field (`reading_from_furigana`); base must be a word-like kanji spelling (Q-D3 gate); deferred while word-level writes are queued; old → new in the preview, run-log undo; `batch_repair_expression` escape hatch |
@@ -200,7 +200,8 @@ proof.
   `plan.py` / `batch.py`, config keys in `config.json`, diff rendering in
   `report.py`.
 - **Acceptance.** A pinned fixture (real arrow sentence → expected
-  normalised form) passes; the fragment-recoverability guard still fires;
+  normalised form) passes; the cloze anchor stays placeable (the fragment is
+  contained in the new sentence — Q-D16);
   Ring 3 run on a copy shows the old → new diff and an exact undo.
 - **Risks.** Arrows are not always noise (`➡` as a separator, `→` as a
   dialogue dash): the rule list must be config-driven and diffed before apply.

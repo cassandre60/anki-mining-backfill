@@ -367,6 +367,27 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   repair rule, it is cheap and read-only.
   Verified by: `test_repair_join_does_not_cross_a_blank_line` (fails pre-fix)
   and the sweep (non-idempotent 3 → 0).
+- [2026-11-17, OpenCode] Scene completion is keyed on the *missing audio*
+  (QUALITY Q-D16), not on `cloze-*`: a word-mined card's `cloze-*` holds only
+  the tested word, so the old "fragment recoverable from `cloze-*`" guard
+  refused every completion it should have made. A card missing its
+  `Sentence Audio` is completed to the parent's whole block (the fragment is
+  contained in it, so nothing is lost); the run fills that audio, so the card
+  never re-expands. A card that already
+  carries its own audio keeps its own sentence. Known limitation (QUALITY
+  Q-D16): a completed card becomes an audio-bearing scene parent, so a later
+  run can fill a neighbour's still-empty scene field from it — a cross-run
+  cascade, not a per-card repeat; a one-plan fixpoint over the post-run parent
+  set is the moment group's job. `jidoujisho-…` is scene
+  audio (Jidoujisho's clip export), not word media — verified 2026-11-17 on
+  the deck: all 683 such files appear only in `Sentence Audio`, never in
+  `Word Audio`, and the 正道 clip is 14.8 s (232 KB) while the same note's
+  dictionary word audio is a separate 3 KB `local audio_…oga`; the
+  `is_word_media` marker was a false positive on all of them.
+  Verified by: `test_a_jidoujisho_clip_is_scene_audio_and_completes_the_card`,
+  `test_a_dictionary_word_recording_is_not_scene_audio`,
+  `test_a_stale_fragment_ruby_is_regenerated_when_the_engine_is_available`,
+  `test_a_completed_sentence_is_never_expanded_again`, and the 正道 replay.
 
 ## Lessons Learned
 
