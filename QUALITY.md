@@ -40,7 +40,14 @@ first, with the reason.
   `Definition`/`Extended definition`/`Frequency` with `Sentence Audio`
   present (`plan._is_listening`, verified against the template). Ambiguity
   — several occurrences or several candidates — is never resolved by
-  guessing.
+  guessing. The word is located under **width folding**: a subtitle dump can
+  carry half-width katakana (`ｽﾍﾟｸﾄﾗﾑ`) where the mined word and its furigana
+  are full-width (`スペクトラム`), so the match is made on the NFKC-folded
+  text while the bold wraps the sentence's own characters (author's
+  自閉症すぺくとらむ: the bold had stayed on another card's このたび).
+  The ruby pairing (`normalize.furigana_base_matches`) deliberately does
+  **not** fold: the ruby's base characters must render exactly what the
+  `Sentence` shows.
 - **Q-D4 — Sentence and Sentence (furigana) are atomic.** Both come from the
   same parent; a furigana fill paired with a guarded expansion ships
   unchecked (`stale-fragment-furigana-risk`). This *text unit* is also the

@@ -54,7 +54,10 @@ not have and must never be given.
   `expression-not-word-like`; an over-long word is skipped too), and the
   listening predicate (tag + audio; no-gloss/no-frequency/audio shape;
   Frequency-without-glosses still repaired). The shipped-class/left-alone
-  split comes from the 2026-11-16 census (BULK_FIX slice 8).
+  split comes from the 2026-11-16 census (BULK_FIX slice 8). The word is
+  located under width folding, so a subtitle dump's half-width katakana
+  (`ｽﾍﾟｸﾄﾗﾑ`) still matches the full-width word (`スペクトラム`) —
+  `test_bold_moves_onto_a_half_width_katakana_spelling`.
 - **The expanded rule set and convergence** are pinned in
   `tests/test_normalize.py` (a speaker tag's line break joins; a long
   parenthetical keeps its break) and `tests/test_plan.py` (bold via the

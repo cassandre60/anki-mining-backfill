@@ -172,16 +172,18 @@ def main() -> int:
                     f"{word}: {squeeze(base)[:26]!r} vs {squeeze(plain)[:26]!r}"
                 )
 
-            from mining_fixer.plan import _bold_candidates
+            from mining_fixer.plan import _bold_candidates, _fold
 
-            spellings = set(
-                _bold_candidates(
+            spellings = {
+                _fold(strip_renderable(s).strip())
+                for s in _bold_candidates(
                     NoteRecord(note_id=note_id, notetype_id=0, fields=dict(card), tags=frozenset())
                 )
-            )
+            }
             spans = BOLD_RE.findall(sentence)
             if len(spans) > 1 or (
-                spans and not any(strip_renderable(span).strip() in spellings for span in spans)
+                spans
+                and not any(_fold(strip_renderable(span).strip()) in spellings for span in spans)
             ):
                 violations["D bold missing, doubled or on another word"] += 1
                 examples["D bold missing, doubled or on another word"].append(

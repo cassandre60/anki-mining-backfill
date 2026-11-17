@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import collections
 import re
+import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 
@@ -299,6 +300,74 @@ def _is_listening(target: NoteRecord) -> bool:
     )
 
 
+#: Half-width katakana base characters (a subtitle dump frequently carries
+#: them where the mined word / furigana is full-width).
+_HALFWIDTH_KATAKANA = frozenset(
+    chr(code) for code in range(0xFF61, 0xFFA0) if code not in (0xFF9E, 0xFF9F)
+)
+_HALFWIDTH_MARKS = "\uff9e\uff9f"
+
+
+def _fold(text: str) -> str:
+    """NFKC-fold for comparison (half-width katakana ↔ full-width).
+
+    A subtitle dump can carry half-width katakana (``ｽﾍﾟｸﾄﾗﾑ``) while the
+    mined word and its furigana are full-width (``スペクトラム``), so an exact
+    substring search misses the tested word (author's 自閉症すぺくとらむ).
+    Folding is used only to *compare*, never to rewrite: the sentence keeps
+    its own characters. Pure.
+    """
+    return unicodedata.normalize("NFKC", text or "")
+
+
+def _width_span_map(sentence: str) -> tuple[str, list[tuple[int, int]]]:
+    """The NFKC-folded ``sentence`` plus, per folded character, its source span.
+
+    A half-width katakana base and its voiced mark (``ﾎ`` + ``ﾟ``) fold to a
+    single character, so the map is built a source cluster at a time: each
+    folded character points at the original ``[start, end)`` it came from.
+    Pure.
+    """
+    folded: list[str] = []
+    spans: list[tuple[int, int]] = []
+    index = 0
+    length = len(sentence)
+    while index < length:
+        end = index + 1
+        if (
+            sentence[index] in _HALFWIDTH_KATAKANA
+            and end < length
+            and sentence[end] in _HALFWIDTH_MARKS
+        ):
+            end += 1
+        piece = unicodedata.normalize("NFKC", sentence[index:end]) or sentence[index:end]
+        for _ in piece:
+            spans.append((index, end))
+        folded.append(piece)
+        index = end
+    return "".join(folded), spans
+
+
+def _word_span(sentence: str, word: str) -> tuple[int, int] | None:
+    """The unique location of ``word`` in ``sentence`` under width folding.
+
+    Returns the original ``[start, end)`` span, or ``None`` when the word does
+    not occur or occurs more than once — ambiguity is never resolved by
+    guessing. The span points at the sentence's *own* characters, so a bold
+    inserted there keeps the rendered text byte-identical. Pure.
+    """
+    if not word:
+        return None
+    folded, spans = _width_span_map(sentence)
+    target = _fold(word)
+    if not target:
+        return None
+    first = folded.find(target)
+    if first < 0 or folded.find(target, first + 1) >= 0:
+        return None
+    return spans[first][0], spans[first + len(target) - 1][1]
+
+
 def _bold_normalized_sentence(
     sentence: str, candidates: list[str], body: str = ""
 ) -> tuple[str, str] | None:
@@ -306,17 +375,32 @@ def _bold_normalized_sentence(
 
     The deck convention is exactly one bold item — the tested word. Cases
     seen on the author's cards: two bold items (校 and ぜひ), a block with no
-    bold at all (the same-moment restore), and a bold on another word.
-    Returns ``(new_value, chosen_word)``; the rendered text is unchanged.
+    bold at all (the same-moment restore), and a bold on another word. The
+    word is located under width folding (:func:`_word_span` — a subtitle dump
+    may write half-width katakana, 自閉症すぺくとらむ), but the inserted bold
+    wraps the sentence's own characters, so the rendered text is unchanged.
+    Returns ``(new_value, chosen_word)``.
     """
-    wanted = {strip_renderable(cand).strip() for cand in candidates if cand}
-    word = strip_renderable(body).strip() or next(iter(sorted(wanted)), "")
+    ordered = [c for c in (strip_renderable(cand).strip() for cand in candidates) if c]
+    wanted = {_fold(c) for c in ordered}
+    body_word = strip_renderable(body).strip()
+
+    def locate(text: str) -> tuple[str, tuple[int, int]] | None:
+        for candidate in ([body_word] if body_word else []) + ordered:
+            span = _word_span(text, candidate)
+            if span is not None:
+                return candidate, span
+        return None
+
     spans = _BOLD_RE.findall(sentence)
     if not spans:
-        if word and sentence.count(word) == 1:
-            return sentence.replace(word, f"<b>{word}</b>", 1), word
-        return None
-    matching = [span for span in spans if strip_renderable(span).strip() in wanted]
+        found = locate(sentence)
+        if found is None:
+            return None
+        _word, (start, end) = found
+        bolded = sentence[:start] + f"<b>{sentence[start:end]}</b>" + sentence[end:]
+        return bolded, sentence[start:end]
+    matching = [span for span in spans if _fold(strip_renderable(span).strip()) in wanted]
     if len(spans) > 1:
         if len(matching) != 1:
             return None
@@ -335,10 +419,12 @@ def _bold_normalized_sentence(
     if matching:
         return None  # already one bold, on the tested word
     without_bold = _BOLD_RE.sub(lambda match: match.group(1), sentence)
-    if word and without_bold.count(word) == 1:
-        new_value = without_bold.replace(word, f"<b>{word}</b>", 1)
-        return (new_value, word) if new_value != sentence else None
-    return None
+    found = locate(without_bold)
+    if found is None:
+        return None
+    _word, (start, end) = found
+    new_value = without_bold[:start] + f"<b>{without_bold[start:end]}</b>" + without_bold[end:]
+    return (new_value, without_bold[start:end]) if new_value != sentence else None
 
 
 def _bold_repair_for(
@@ -391,8 +477,8 @@ def _bold_repair_for(
         if reading:
             candidates.append(reading)
         span_list = _BOLD_RE.findall(sentence)
-        wanted = {strip_renderable(cand).strip() for cand in candidates if cand}
-        if len(span_list) == 1 and strip_renderable(span_list[0]).strip() in wanted:
+        wanted = {_fold(strip_renderable(cand).strip()) for cand in candidates if cand}
+        if len(span_list) == 1 and _fold(strip_renderable(span_list[0]).strip()) in wanted:
             # Already exactly one bold, and it wraps the tested word: done.
             return None, None, None
         normalised = _bold_normalized_sentence(
@@ -1176,19 +1262,24 @@ def _single_bold(value: str, body: str, extras: tuple[str, ...] = ()) -> str:
     scene's own bold (ぜひ's ``<b>ぜひ</b>``) and the child's word on top of
     it (two bold items, author report on 校), or no bold at all (a block
     written by the same-moment restore) — both are fixed here, markup only.
+    The word is located under width folding (:func:`_word_span`); the bold
+    wraps the sentence's own characters.
     """
     names = [c for c in (strip_renderable(body).strip(), *extras) if c]
+    known = {_fold(c) for c in names}
+    chosen_span: tuple[int, int] | None = None
     chosen = ""
     for candidate in sorted(dict.fromkeys(names), key=len, reverse=True):
-        if value.count(candidate) == 1:
-            chosen = candidate
+        span = _word_span(value, candidate)
+        if span is not None:
+            chosen_span = span
+            chosen = value[span[0] : span[1]]
             break
-    known = {c.strip() for c in names}
-    if not chosen:
+    if chosen_span is None:
         # The word repeats in the block (校 in 校 and 医学校): keep the one
         # existing bold that wraps it and drop the others (ぜひ).
         spans = _BOLD_RE.findall(value)
-        wanted = [span for span in spans if strip_renderable(span).strip() in known]
+        wanted = [span for span in spans if _fold(strip_renderable(span).strip()) in known]
         if len(spans) <= 1 or len(wanted) != 1:
             return value
         keep = wanted[0]
@@ -1204,18 +1295,23 @@ def _single_bold(value: str, body: str, extras: tuple[str, ...] = ()) -> str:
         return _BOLD_RE.sub(only_kept, value)
     if not _BOLD_RE.search(value):
         # No bold at all: place it where the word is unambiguous.
-        return value.replace(chosen, f"<b>{chosen}</b>", 1)
+        start, end = chosen_span
+        return value[:start] + f"<b>{value[start:end]}</b>" + value[end:]
 
     def keep_wanted(match: re.Match) -> str:
         inner = match.group(1)
-        return match.group(0) if strip_renderable(inner).strip() in known else inner
+        return match.group(0) if _fold(strip_renderable(inner).strip()) in known else inner
 
     kept = _BOLD_RE.sub(keep_wanted, value)
     if _BOLD_RE.search(kept):
         return kept
     # Every bold was foreign (ぜひ next to 校): bold the word instead.
     without = _BOLD_RE.sub(lambda match: match.group(1), value)
-    return without.replace(chosen, f"<b>{chosen}</b>", 1) if without.count(chosen) == 1 else kept
+    span = _word_span(without, chosen)
+    if span is None:
+        return kept
+    start, end = span
+    return without[:start] + f"<b>{without[start:end]}</b>" + without[end:]
 
 
 def _fragment_anchored_sentence(

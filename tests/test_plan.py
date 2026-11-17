@@ -19,6 +19,7 @@ from mining_fixer.plan import (
     OP_STRIP_EMPTY_GLOSSARY,
     PLAN_VERSION,
     PlannedWrite,
+    _bold_repair_for,
     _furigana_write_for,
     _retarget_bold,
     build_plan,
@@ -190,6 +191,24 @@ def test_furigana_generation_uses_the_sentence_that_will_be_written():
     write, _reason, _detail = _furigana_write_for(CHILD, gen, writes)
     assert seen == [CHILD.get("Sentence")]
     assert write is not None and write.default_checked
+
+
+def test_bold_moves_onto_a_half_width_katakana_spelling():
+    # A subtitle dump can carry half-width katakana (ｽﾍﾟｸﾄﾗﾑ) while the mined
+    # word and its furigana are full-width (スペクトラム): the bold must still
+    # land on the card's own word, in the sentence's own characters (author's
+    # 自閉症すぺくとらむ: the bold stayed on このたび from another card).
+    child = dict(CHILD.fields)
+    child["Expression"] = "自閉症すぺくとらむ"
+    child["cloze-body"] = "自閉症スペクトラム"
+    child["furigana"] = "自閉症[じへいしょう]すぺくとらむ"
+    child["Sentence"] = "深也くんは自閉症ｽﾍﾟｸﾄﾗﾑでありながら<br><b>このたび</b> 受賞しました。"
+    c = rec(CHILD.note_id, child, tags=("yomitan",))
+    write, _reason, _detail = _bold_repair_for(c)
+    assert write is not None and write.default_checked
+    assert "<b>自閉症ｽﾍﾟｸﾄﾗﾑ</b>" in write.new_value
+    assert write.new_value.count("<b>") == 1
+    assert strip_renderable(write.new_value) == strip_renderable(child["Sentence"])
 
 
 def test_a_foreign_ruby_is_never_copied_onto_a_different_sentence():
