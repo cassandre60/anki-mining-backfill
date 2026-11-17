@@ -221,14 +221,9 @@ first, with the reason.
     that already carries its own `Sentence Audio` is a scene unit in its own
     right and is never expanded onto a longer neighbour's block; the cloze
     anchor must still be placeable (once, or inside the card's own fragment).
-    **Known limitation — the cross-run cascade.** A completed card gains its
-    `Sentence Audio`, so it *becomes* a scene parent; a later run can then
-    fill a still-empty scene field of a neighbour from it (one extra run,
-    not a per-card repeat: the completed card's own sentence never
-    re-expands). Removing the cascade needs plan-wide convergence over the
-    post-run parent set — one plan that both completes a card and uses the
-    completed card as a source — which is the moment group's job, not this
-    rule's.
+    The cross-run cascade (a card completed in one pass becoming a scene parent
+    for a neighbour) is resolved in the **same Apply** by the fixpoint controller
+    (`collection_io.apply_plan_to_fixpoint`, QUALITY Q-A2).
   Verified by `test_a_jidoujisho_clip_is_scene_audio_and_completes_the_card`,
   `test_a_stale_fragment_ruby_is_regenerated_when_the_engine_is_available`,
   `test_a_completed_sentence_is_never_expanded_again`, and the 正道 replay.

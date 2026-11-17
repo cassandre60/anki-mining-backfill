@@ -10,7 +10,6 @@ exactly what is written.
 
 from __future__ import annotations
 
-import collections
 import re
 import unicodedata
 from collections.abc import Iterable, Sequence
@@ -1383,181 +1382,6 @@ def _fragment_anchored_sentence(
     return parent.replace(fragment, bolded, 1)
 
 
-#: Cards within this many seconds of each other were mined from the same
-#: subtitle moment.
-MOMENT_TOLERANCE_SECONDS = 1
-
-
-def _moment_group(
-    target: NoteRecord,
-    episodes: dict[str, list[NoteRecord]],
-    tolerance: int = MOMENT_TOLERANCE_SECONDS,
-) -> list[NoteRecord]:
-    """The cards mined at the same moment as ``target`` (plus itself).
-
-    A card's timestamped Source says exactly where it came from; the cards at
-    that moment are the ones that can be trusted to agree, because they mined
-    the same subtitle line. Empty when the card's Source names no episode.
-    """
-    episode = _episode_key(target.get("Source"))
-    moment = _source_seconds(target.get("Source"))
-    if episode is None or moment is None:
-        return []
-    mates = [
-        record
-        for record in episodes.get(episode, [])
-        if (other := _source_seconds(record.get("Source"))) is not None
-        and abs(other - moment) <= tolerance
-    ]
-    return mates
-
-
-def _modal(values: list[str], minimum: int = 2) -> str | None:
-    """The value at least ``minimum`` cards agree on, or None."""
-    counted = collections.Counter(value for value in values if value.strip())
-    if not counted:
-        return None
-    value, count = counted.most_common(1)[0]
-    return value if count >= minimum else None
-
-
-def _moment_group_writes(
-    target: NoteRecord,
-    mates: list[NoteRecord],
-    cfg: dict,
-) -> tuple[list[PlannedWrite], str | None]:
-    """Harmonise a card with the moment it was mined from.
-
-    The moment's cards are the oracle for every scene field: two or more of
-    them agreeing byte-identically is evidence a single parent cannot give.
-    The sentence is taken first (the bold is recomputed for *this* card's
-    word), then the ruby that describes it, then the audio and picture the
-    moment used — replacing a value that belongs to another moment (the
-    author's wrong-audio and stale-ruby cards). When the moment's sentence
-    does not contain this card's word, the card was mined from another line:
-    nothing is written and the why is returned.
-
-    Returns ``(writes, reason)``. Pure.
-    """
-    if len(mates) < 2:
-        return [], None
-    repair_rules = tuple(
-        rule for rule in cfg.get("sentence_repair_rules", ()) if rule in REPAIR_RULES
-    )
-    moment_sentence = _modal([record.get("Sentence") or "" for record in mates])
-    if moment_sentence is None:
-        return [], None
-    representative = next(
-        record for record in mates if (record.get("Sentence") or "") == moment_sentence
-    )
-    current_sentence = target.get("Sentence") or ""
-    writes: list[PlannedWrite] = []
-
-    def same(left: str, right: str) -> bool:
-        return norm_sentence_match(left) == norm_sentence_match(right)
-
-    # A card that already carries its own Sentence Audio is a scene unit in its
-    # own right (QUALITY Q-D16) — its text and audio match what was mined, so a
-    # neighbouring card's sentence must NEVER overwrite it.
-    if not is_empty(target.get("Sentence Audio")):
-        return [], None
-
-    planned_sentence = _single_bold(
-        moment_sentence,
-        strip_renderable(target.get("cloze-body")),
-        tuple(_bold_candidates(target)),
-    )
-    if repair_rules:
-        planned_sentence, _applied = repair_sentence(planned_sentence, repair_rules)
-    if same(current_sentence, moment_sentence):
-        # Same text, but the bold may belong to another card of the moment
-        # (このたび bold on a card that tests 自閉症スペクトラム): normalise the
-        # markup only — the rendered text is unchanged.
-        if planned_sentence != current_sentence and same(planned_sentence, current_sentence):
-            writes.append(
-                PlannedWrite(
-                    note_id=target.note_id,
-                    field="Sentence",
-                    op=OP_BOLD_CLOZE_WORD,
-                    old_value=current_sentence,
-                    new_value=planned_sentence,
-                    source_note_id=representative.note_id,
-                    default_checked=True,
-                    badges=("moment-group", "bold-for-this-card"),
-                )
-            )
-        return writes, None
-    if not same(current_sentence, moment_sentence):
-        folded = kana_fold(norm_sentence_match(moment_sentence))
-        if not any(
-            kana_fold(norm_sentence_match(word)) in folded
-            for word in _bold_candidates(target)
-            if word
-        ):
-            return [], "moment-sentence-lacks-the-word"
-        writes.append(
-            PlannedWrite(
-                note_id=target.note_id,
-                field="Sentence",
-                op=OP_EXPAND_SENTENCE,
-                old_value=current_sentence,
-                new_value=planned_sentence,
-                source_note_id=representative.note_id,
-                default_checked=True,
-                badges=("moment-group", f"source-note:{representative.note_id}"),
-            )
-        )
-
-    current_ruby = target.get(FURIGANA_FIELD) or ""
-    if not (current_ruby.strip() and furigana_base_matches(current_ruby, planned_sentence)):
-        usable = [
-            record.get(FURIGANA_FIELD) or ""
-            for record in mates
-            if record.get(FURIGANA_FIELD)
-            and furigana_base_matches(record.get(FURIGANA_FIELD) or "", planned_sentence)
-        ]
-        cleaned = [
-            repair_sentence(value, repair_rules)[0] if repair_rules else value for value in usable
-        ]
-        moment_ruby = _modal(cleaned)
-        if cleaned and moment_ruby is None:
-            moment_ruby = max(cleaned, key=len)
-        if moment_ruby:
-            writes.append(
-                PlannedWrite(
-                    note_id=target.note_id,
-                    field=FURIGANA_FIELD,
-                    op=OP_FILL if is_empty(current_ruby) else OP_EXPAND_SENTENCE,
-                    old_value="" if is_empty(current_ruby) else current_ruby,
-                    new_value=moment_ruby,
-                    source_note_id=representative.note_id,
-                    default_checked=True,
-                    badges=("moment-group", f"source-note:{representative.note_id}"),
-                )
-            )
-
-    for field_name in ("Sentence Audio", "Picture"):
-        current = target.get(field_name) or ""
-        if not is_empty(current):
-            continue  # Fills only touch empty fields (QUALITY Q-D1): never overwrite audio/picture
-        moment_value = _modal([record.get(field_name) or "" for record in mates])
-        if moment_value is None:
-            continue
-        writes.append(
-            PlannedWrite(
-                note_id=target.note_id,
-                field=field_name,
-                op=OP_FILL,
-                old_value="",
-                new_value=moment_value,
-                source_note_id=representative.note_id,
-                default_checked=True,
-                badges=("moment-group", f"source-note:{representative.note_id}"),
-            )
-        )
-    return writes, None
-
-
 def _scene_writes_for(
     candidate: NoteRecord,
     matches: list[SceneMatch],
@@ -2173,16 +1997,11 @@ def build_plan(
             )
             or is_blob_source(target.get("Source"))
         )
-        # The moment group is the oracle: the cards mined at the same
-        # timestamp agree on the sentence, the ruby, the audio and the
-        # picture. It replaces the parent search for those fields — mixing the
-        # two paths is what made a second run change things again.
-        moment_writes, moment_reason = _moment_group_writes(
-            target, _moment_group(target, episodes), cfg
-        )
-        if moment_writes:
-            target_writes.extend(moment_writes)
-        elif has_scene_gap:
+        # Incomplete cards (missing audio/picture/ruby/translation or blob Source)
+        # find their scene parent in creation order (session clustering).
+        # Complete cards already have their own audio/picture/sentence and are
+        # anchors/sources: they are NEVER overwritten by another scene.
+        if has_scene_gap:
             matches = find_scene_parents(target, parents_by_id, window_ms, min_len, cache)
             scene_writes, reason = _scene_writes_for(
                 target,
@@ -2196,8 +2015,6 @@ def build_plan(
                     scene_writes, reason = recovered, None
             if reason:
                 reasons[target.note_id] = reason
-        elif moment_reason:
-            reasons[target.note_id] = moment_reason
         # Sentence Audio is fill-only (QUALITY Q-D1): a card that already has its
         # own audio is a scene unit and is never overwritten.
         for w in scene_writes:
