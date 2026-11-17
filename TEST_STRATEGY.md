@@ -96,6 +96,15 @@ not have and must never be given.
   a clause is never bolded, junk data is reported not guessed. It exists
   because synthetic fixtures passed while real cards stayed broken; it
   caught the ruby-arrow and copied-ruby bugs the day it was written.
+- **One-run convergence** (QUALITY Q-A2; owner requirement 2026-11-17: "it
+  should fix everything in 1 run") is enforced by `scripts/scene_audit.py`
+  class **F**: one run is applied to a copy, the same scope is re-planned,
+  and the audit **fails if the second run has any row**. The same property
+  is pinned per card in `tests/test_real_cards.py` (second run = no-op) and
+  in the property tests (re-running a plan is a no-op); the audit extends it
+  from a fixed fixture to a whole selection, because a cross-run cascade only
+  appears *across* cards (a completed card becoming a source for a
+  neighbour). The gate is **red** until class F is 0. Never weaken it.
 - **Word-anchored scene recovery** (QUALITY Q-D14) is pinned in
   `tests/test_plan.py`: a mis-mined sentence is recovered from the word's
   own spellings, the tighter of two nested same-episode blocks wins, the

@@ -67,6 +67,15 @@ enriched siblings. Two halves:
    real captures from the author's collection; keep them minimal.
 10. **Import-time safety.** Anything in `__init__.py` that raises is what users
     see as "add-on failed to load". Guard it, print instead of throwing.
+11. **One Apply is the whole fix; a second Apply writes nothing** (owner
+    requirement, QUALITY Q-A2). The plan is a fixpoint, not a first pass:
+    - no cross-run cascade — if fixing card A makes card B fixable, B is
+      fixed in the **same** run;
+    - no step ordered after one it depends on (arrow/line cleanup before
+      bold, a sentence before its ruby, a completion's audio and its text).
+    The gate is `scripts/scene_audit.py` class **F**: after one applied run,
+    the same scope re-plans to **0 rows**. Never ship a change that leaves a
+    second run with work — that is a defect, not a limitation.
 
 ## 3. Environment (verified on the author's machine)
 

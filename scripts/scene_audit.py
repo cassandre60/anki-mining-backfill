@@ -19,7 +19,11 @@ Invariants (a card fails if any is broken):
      (compared under width folding — a subtitle dump's half-width katakana
      still counts as the word);
   E  no block-level markup survives in the sentence fields (the .vtt/.srt
-     ``<div>`` nesting is rewritten to ``<br>`` by the repair).
+     ``<div>`` nesting is rewritten to ``<br>`` by the repair);
+  F  **one run is the whole fix** (QUALITY Q-A2): after applying a run, a
+     second plan over the same cards must be **empty** — zero rows. Any row
+     is follow-up work the first run should have done in the same pass
+     (cross-run cascade or misordered steps). This is a release gate.
 
 Output is a count per class with examples. Zero on every line means the
 corpus is coherent; the author's reported cards would appear under B, C, D.
@@ -168,6 +172,27 @@ def main() -> int:
 
         violations: collections.Counter[str] = collections.Counter()
         examples: dict[str, list[str]] = collections.defaultdict(list)
+        # Convergence gate (QUALITY Q-A2, "one run is the whole fix"): re-plan
+        # the same scope on the updated copy — the second run must find zero
+        # rows. Anything here is follow-up work the first run should have done
+        # in the same pass (a cross-run cascade, or a step ordered after one it
+        # depends on). This is a release gate, not a note.
+        updated = records_from_collection(col, cfg["deck_name"], cfg["note_type_name"])
+        plan2 = build_plan(
+            updated,
+            cfg,
+            scope_note_ids=scope,
+            media_exists=media_exists,
+            furigana_generator=fake_engine if args.engine == "fake" else None,
+        )
+        second = select(plan2, default_ops(cfg))
+        if second.rows:
+            violations["F second run still has work (Q-A2)"] = len(second.rows)
+            by_field = collections.Counter(w.field for w in second.rows)
+            examples["F second run still has work (Q-A2)"].append(
+                f"{len(second.rows)} rows on {len({w.note_id for w in second.rows})} "
+                f"cards: {dict(by_field)}"
+            )
         for note_id in scope:
             card = fields[note_id]
             sentence = card.get("Sentence") or ""

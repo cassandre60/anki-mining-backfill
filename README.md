@@ -205,8 +205,11 @@ Apply is safe by construction:
 - **Per-note atomicity.** Every checked row of a note is re-asserted against
   the collection first; if the card changed since the preview, *no* row of
   that note is written. A half-applied card is worse than an untouched one.
-- **Re-running is a no-op.** Rows that already hold their target value are
-  recognised as done, not re-written.
+- **One Apply fixes everything; a second Apply writes nothing.** The run is a
+  complete pass: it never leaves a card for a later press to finish — no
+  cascade (a card completed here must not make a neighbour fillable only next
+  time), no step deferred. A row already holding its target value is
+  recognised as done, never rewritten.
 - **Undo log.** Each apply writes `run-<timestamp>.json` under
   `<profile>/mining_fixer/undo/` — old values, applied values, and the
   tags involved. Undo restores only notes whose values are still exactly

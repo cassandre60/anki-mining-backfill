@@ -292,8 +292,24 @@ first, with the reason.
 - **Q-A1 — Per-note atomicity.** If any accepted row of a note is stale at
   apply time, *no* row of that note is written; the note is reported as
   `changed since preview`.
-- **Q-A2 — Re-running is a no-op.** Rows already at their target value are
-  reported as `already applied`, never rewritten.
+- **Q-A2 — One run is the whole fix; a second run writes nothing.** The first
+  Apply must leave the collection at a fixpoint: a second Apply finds
+  **zero rows** — not "the same rows are already applied", but *no new work of
+  any kind*. Two consequences, both release gates:
+  - **no cross-run cascade:** if fixing card A in this run would make card B
+    fixable, B is fixed in the **same** run;
+  - **complete ordering inside the plan:** a step that another depends on
+    (arrow/line cleanup before bold, a sentence before its ruby, a
+    completion's audio and its text) happens in this run, never the next.
+
+  A row already at its target value is reported as `already applied`, never
+  rewritten. Measured by `scripts/scene_audit.py` (class **F**): one run is
+  applied to a copy, the same scope is re-planned, and **run 2 must be 0**.
+  This is a number, not a description. The 2026-11-17 measurement on the
+  newest 300 cards found rows still changing on the second pass (cascade,
+  bold-not-yet, glossary, recovered-ruby), so the current code does **not**
+  yet meet this rule; it is tracked and must be driven to 0 before the
+  dimension is called finished.
 - **Q-A3 — Undo is exact and conservative.** It restores only fields still
   holding the applied value, removes only the tags the run added, and reports
   `changed since the run` instead of clobbering a later edit. Undo is itself
