@@ -219,8 +219,12 @@ first, with the reason.
     missing its scene audio. The run fills that audio, so the next run sees
     a card that already owns its scene and leaves its sentence alone. A card
     that already carries its own `Sentence Audio` is a scene unit in its own
-    right and is never expanded onto a longer neighbour's block; the cloze
-    anchor must still be placeable (once, or inside the card's own fragment).
+    right and is never expanded onto a longer neighbour's block (its audio and
+    picture are never overwritten); the cloze anchor must still be placeable
+    (once, or inside the card's own fragment). It still receives all other
+    applicable repairs: subtitle noise cleaning (arrows, div blocks, speaker lines,
+    Q-D10), furigana regeneration (Q-D11), bold repair (Q-D3), word-level fills,
+    and expression spelling repair (Q-D12).
     The cross-run cascade (a card completed in one pass becoming a scene parent
     for a neighbour) is resolved in the **same Apply** by the fixpoint controller
     (`collection_io.apply_plan_to_fixpoint`, QUALITY Q-A2).
