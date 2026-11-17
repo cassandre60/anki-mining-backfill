@@ -14,8 +14,8 @@ asserts the properties the author actually cares about:
 2. **No subtitle arrow survives, in either sentence field.** The `Sentence`
    *and* the `Sentence (furigana)` ruby are checked, because the author
    found arrows still showing after the first field was cleaned.
-3. **A definition never keeps a junk-only shell** — it is either filled with
-   a sibling's value (in the same run) or cleared.
+3. **A definition never keeps a junk-only shell** — empty glossary shells are
+   cleared, and definitions are never copied from sibling cards.
 4. **A clause-like `Expression` is never bolded** (the author's own invalid
    case), and every bold write stays markup-only.
 5. **Nothing is written to a card whose data is junk** — a dictionary entry
@@ -60,13 +60,18 @@ CFG = {
     "scene_replace_fields": ["Source", "Sentence"],
     "scene_optin_fields": ["Notes", "context", "Kanji Notes"],
     "word_fill_fields": [
-        "Definition",
-        "Extended definition",
         "Pitch Accent",
         "Frequency",
         "Word Audio",
         "furigana",
         "reading",
+    ],
+    "never_copy_fields": [
+        "cloze-prefix",
+        "cloze-body",
+        "cloze-suffix",
+        "Definition",
+        "Extended definition",
     ],
     "replaces_autocheck": True,
     "optout_tag": "no-autofill",

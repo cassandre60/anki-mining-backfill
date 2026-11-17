@@ -2,7 +2,7 @@
 
 The core is deliberately importable with no Anki installed, which is what
 lets the headless audit builder and the test suite run anywhere. Only the
-three Qt-facing modules may touch Anki; everything else stays pure.
+four Qt/Anki-facing modules may touch Anki; everything else stays pure.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 PACKAGE = "mining_fixer"
 
 # The only modules allowed to import anki/aqt/PyQt: the menu entry point,
-# the collection adapter, and the preview dialog.
+# the collection adapter, and the two dialogs.
 AQT_FACING = ("__init__.py", "collection_io.py", "preview_dialog.py", "batch_dialog.py")
 
 FORBIDDEN = ("anki", "aqt", "PyQt5", "PyQt6")

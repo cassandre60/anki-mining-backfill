@@ -49,8 +49,9 @@ logged afterwards so it can be undone.
 pure core (no Anki)                 adapters (Anki / Qt)
 normalize · fieldconfig             collection_io  ← reads the collection,
 matching · plan · report              executes a decision, writes run logs
-applier                             preview_dialog ← the dialog
-                                    __init__       ← the Tools menu entries
+applier · batch                     preview_dialog ← per-row preview dialog
+                                    batch_dialog   ← one-click bulk dialog
+                                    __init__       ← Tools + Browser menus
 ```
 
 The seam is drawn at "needs a collection or a widget". Consequences:
@@ -74,7 +75,8 @@ or the answer is "pass it in".
    (the latter is what proves a bold write changed no text).
 2. **`fieldconfig.py`** — what a field *is*: empty (`is_empty`), an asbplayer
    blob (`is_blob_source`), media references (`sound_files`, `image_files`),
-   and `FIELD_NEVER_COPY` (`cloze-prefix/body/suffix`).
+   and `FIELD_NEVER_COPY` (`cloze-prefix/body/suffix` and
+   `Definition`/`Extended definition`).
 3. **`matching.py`** — the two matchers. Scene: candidate = unenriched card,
    parent = enriched card whose normalized sentence contains it, searched
    inside a hard time window and ranked (exact → tightest → smallest gap),

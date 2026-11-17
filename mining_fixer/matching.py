@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass
 
 from .fieldconfig import (
+    FIELD_NEVER_COPY,
     eligible_source,
     is_blob_source,
     is_empty,
@@ -36,6 +37,9 @@ from .normalize import (
 )
 
 __all__ = [
+    "DEFAULT_SCENE_FILL_FIELDS",
+    "DEFAULT_SCENE_OPTIN_FIELDS",
+    "DEFAULT_SCENE_REPLACE_FIELDS",
     "NoteRecord",
     "SceneMatch",
     "WordSource",
@@ -197,29 +201,47 @@ def find_scene_parents(
     return matches
 
 
+DEFAULT_SCENE_FILL_FIELDS = ("Sentence Audio", "Picture", "Sentence (furigana)", "Translation")
+DEFAULT_SCENE_REPLACE_FIELDS = ("Source", "Sentence")
+DEFAULT_SCENE_OPTIN_FIELDS = ("Notes", "context", "Kanji Notes")
+
+
 def _fillable_and_payload(
-    candidate: NoteRecord, parent: NoteRecord, optin_fields: tuple[str, ...]
+    candidate: NoteRecord,
+    parent: NoteRecord,
+    optin_fields: tuple[str, ...],
+    fill_fields: tuple[str, ...] = DEFAULT_SCENE_FILL_FIELDS,
+    replace_fields: tuple[str, ...] = DEFAULT_SCENE_REPLACE_FIELDS,
+    never_copy: frozenset[str] = FIELD_NEVER_COPY,
 ) -> tuple[int, tuple]:
     """Count gaps this parent can fill and the exact payload it would write."""
     payload: list[tuple[str, str]] = []
     count = 0
-    for fname in ("Sentence Audio", "Picture", "Sentence (furigana)", "Translation", *optin_fields):
-        if not is_empty(candidate.get(fname)):
+    for fname in (*fill_fields, *optin_fields):
+        if fname in never_copy or not is_empty(candidate.get(fname)):
             continue
         value = parent.get(fname)
         if not eligible_source(fname, value):
             continue
         payload.append((fname, value))
         count += 1
-    if is_blob_source(candidate.get("Source")) and not is_blob_source(parent.get("Source")):
+    if (
+        "Source" in replace_fields
+        and "Source" not in never_copy
+        and is_blob_source(candidate.get("Source"))
+        and not is_blob_source(parent.get("Source"))
+    ):
         payload.append(("Source", parent.get("Source")))
         count += 1
     # The sentence expansion is a write too: a card whose fragment is much
     # shorter than the same-episode block gains the full sentence (and its
     # bold), even when every scene field is already present — the author's
     # 校 card should take the long block from ぜひ's scene.
-    if norm_sentence_match(parent.get("Sentence")) != norm_sentence_match(
-        candidate.get("Sentence")
+    if (
+        "Sentence" in replace_fields
+        and "Sentence" not in never_copy
+        and norm_sentence_match(parent.get("Sentence"))
+        != norm_sentence_match(candidate.get("Sentence"))
     ):
         count += 1
     return count, tuple(payload)
@@ -228,7 +250,10 @@ def _fillable_and_payload(
 def rank_scene_parents(
     matches: list[SceneMatch],
     candidate: NoteRecord,
-    optin_fields: tuple[str, ...] = ("Notes", "context", "Kanji Notes"),
+    optin_fields: tuple[str, ...] = DEFAULT_SCENE_OPTIN_FIELDS,
+    fill_fields: tuple[str, ...] = DEFAULT_SCENE_FILL_FIELDS,
+    replace_fields: tuple[str, ...] = DEFAULT_SCENE_REPLACE_FIELDS,
+    never_copy: frozenset[str] = FIELD_NEVER_COPY,
 ) -> list[SceneMatch]:
     """Order matches by: exact-equality, fillability, tightness, recency.
 
@@ -239,7 +264,14 @@ def rank_scene_parents(
     """
     scored: list[SceneMatch] = []
     for m in matches:
-        fillable, payload = _fillable_and_payload(candidate, m.parent, optin_fields)
+        fillable, payload = _fillable_and_payload(
+            candidate,
+            m.parent,
+            optin_fields,
+            fill_fields=fill_fields,
+            replace_fields=replace_fields,
+            never_copy=never_copy,
+        )
         if fillable == 0:
             continue
         m.fillable = fillable

@@ -17,8 +17,9 @@ the mining run was interrupted it ends up missing some of:
   mis-mined),
 - `Sentence (furigana)`, `Sentence Audio`, `Picture`, the timestamped
   `Source` (still the asbplayer blob URL),
-- word-level fields (`Definition`, `Extended definition`, `Pitch Accent`,
-  `Frequency`, `Word Audio`, `furigana`, `reading`),
+- word-level fields (`Pitch Accent`, `Frequency`, `Word Audio`, `furigana`,
+  `reading` — `Definition` and `Extended definition` are unique per card and
+  never copied, though empty `<ol></ol>` glossary shells are cleared),
 - the **bold** term inside `Sentence` that marks the word being studied.
 
 Fixing these by hand costs minutes per card, and the information already
@@ -48,9 +49,13 @@ anything and without risking a field they have hand-edited.
 ## Principles
 
 - **The user's data is never destroyed.** Fills only touch empty fields; the
-  four non-empty writes each keep their information (`Source` blob URL is
-  logged, the mined fragment survives in `cloze-*`, the bold repair is
-  markup-only, tags only grow).
+  eight approved non-empty writes each keep their information (`Source` blob
+  URL is logged, the mined fragment survives inside the completed scene and in
+  `cloze-*`, bold repair is markup-only, noise repair touches only configured
+  subtitle noise, furigana regeneration preserves sentence base text,
+  `Expression` repair completes missing kanji from the card's own furigana
+  with the prior spelling logged, empty glossary shells render as nothing, and
+  tags only grow).
 - **Preview before apply.** Nothing is written until the user accepts rows.
 - **Report, don't guess.** Ambiguity (two plausible bold targets, divergent
   parents, unreadable provenance) becomes a visible reason or warning.

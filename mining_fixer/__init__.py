@@ -120,6 +120,9 @@ def _on_undo() -> None:
             showInfo("Mining Fixer: that run is already undone.")
             return
         notes = apply_decision(mw.col, decision)
+        if decision.row_count() and not notes:
+            showWarning("Mining Fixer: undo could not write to the collection — undo log kept.")
+            return
         if notes:
             notify_collection_changed()
         lines = [f"Restored {decision.row_count()} value(s) across {notes} note(s)."]

@@ -67,7 +67,7 @@ class BatchDialog(QDialog):
         self.cfg = cfg if cfg is not None else load_config()
         self.browser = browser
         self.preview: Preview = plan_preview(col, self.cfg, scope_note_ids)
-        self.pending: tuple[ApplyDecision, dict] | None = None
+        self.pending: tuple[ApplyDecision, dict, dict, tuple[int, ...]] | None = None
         self._changes_total = 0
         self._left_total = 0
 
@@ -149,6 +149,11 @@ class BatchDialog(QDialog):
             breakdown = _op_breakdown(selection)
             if breakdown:
                 parts.append(f"{len(selection.rows)} write(s): {breakdown}")
+        elif selection.tag_only_notes:
+            parts.append(f"{selection.tag_only_notes} note(s) have tag updates only")
+            breakdown = _op_breakdown(selection)
+            if breakdown:
+                parts.append(f"{len(selection.rows)} write(s): {breakdown}")
         else:
             parts.append("Nothing to fix")
         if selection.untouched:
@@ -181,7 +186,8 @@ class BatchDialog(QDialog):
                 )
             )
 
-        self.apply_button.setText(f"Fix {selection.field_notes} note(s)")
+        target_count = selection.field_notes or selection.notes
+        self.apply_button.setText(f"Fix {target_count} note(s)")
         self.apply_button.setEnabled(bool(selection.rows))
 
     def _toggle_changes(self) -> None:
@@ -270,7 +276,7 @@ def _finish_batch(col, pending, browser=None, parent=None) -> None:
     # One Apply is the whole fix (QUALITY Q-A2): keep re-planning on the real
     # post-write state until a pass writes nothing, then report the total.
     result = apply_plan_to_fixpoint(col, cfg, scope, meta, first_decision=decision)
-    if result.writes:
+    if result.modified:
         notify_collection_changed(browser=browser)
     if not result.writes:
         lines = ["Nothing was written."]
@@ -286,7 +292,7 @@ def _finish_batch(col, pending, browser=None, parent=None) -> None:
         return
     if result.problems and result.log_path is None:
         showInfo(
-            "Nothing was written — the safety backup could not be created:\n\n"
+            "Nothing was written — preflight or safety backup aborted the run:\n\n"
             + "\n".join(result.problems),
             parent=parent,
         )

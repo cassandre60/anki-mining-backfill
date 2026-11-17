@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -37,10 +38,12 @@ from .plan import Plan, build_plan, scope_from_selection
 __all__ = [
     "Preview",
     "apply_decision",
+    "apply_plan_to_fixpoint",
     "build_decision",
     "deck_records",
     "latest_run_log",
     "load_config",
+    "media_exists",
     "notify_collection_changed",
     "plan_preview",
     "read_state",
@@ -116,11 +119,14 @@ def deck_records(col, deck_name: str, note_type_name: str) -> list[NoteRecord] |
     return out
 
 
-def _media_exists(col, filename: str) -> bool:
+def media_exists(col, filename: str) -> bool:
     try:
         return (Path(col.media.dir()) / filename).exists()
     except Exception:
         return True  # never drop a fill because the check itself failed
+
+
+_media_exists = media_exists
 
 
 def _record_for_note(note) -> NoteRecord:
@@ -543,23 +549,32 @@ MAX_APPLY_PASSES = 4
 
 
 def apply_plan_to_fixpoint(
-    col, cfg: dict, scope, meta: dict, first_decision: ApplyDecision | None = None
+    col,
+    cfg: dict,
+    scope,
+    meta: dict,
+    first_decision: ApplyDecision | None = None,
+    *,
+    take_backup: bool = True,
+    excluded_keys: AbstractSet[tuple[int, str]] = frozenset(),
 ) -> BatchResult:
     """One Apply is the whole fix (QUALITY Q-A2).
 
     A card completed by this pass becomes a scene source; a neighbour that
     needs its media would otherwise wait for the next Apply. So each pass
     re-plans on the *current* collection (real post-write state, never a
-    simulation), selects the default rows, decides and writes — and the loop
-    stops when a pass has nothing to write. It backs up once, before the
-    first real pass, and reports a residual if the pass bound is hit. The
-    per-pass undo logs are merged into one, so Undo reverses the whole Apply.
+    simulation), selects the default rows (minus any ``excluded_keys`` the user
+    explicitly unchecked in the preview dialog), decides and writes — and the
+    loop stops when a pass has nothing to write. When ``take_backup`` is true,
+    it backs up once before the first real pass. It reports a residual if the
+    pass bound is hit, and merges the per-pass undo logs into one so Undo
+    reverses the whole Apply.
     """
     combined = BatchResult()
     log_paths: list[Path] = []
     decision = first_decision
     cleared = False
-    backed_up = False
+    backed_up = not take_backup
     for _pass in range(MAX_APPLY_PASSES):
         if decision is None:
             preview = plan_preview(col, cfg, scope_note_ids=list(scope))
@@ -567,12 +582,17 @@ def apply_plan_to_fixpoint(
                 combined.problems.append(preview.error or "could not rebuild the plan")
                 break
             selection = select(preview.plan, default_ops(cfg))
-            decision = build_batch_decision(col, preview.plan, selection.rows, cfg)
+            rows = (
+                [w for w in selection.rows if (w.note_id, w.field) not in excluded_keys]
+                if excluded_keys
+                else selection.rows
+            )
+            decision = build_batch_decision(col, preview.plan, rows, cfg)
         if not decision.row_count():
             cleared = True
             break
         result = apply_batch(col, decision, meta, take_backup=not backed_up)
-        backed_up = True  # one backup per Apply, before its first real pass
+        backed_up = True  # at most one backup per Apply, before its first real pass
         combined.writes += result.writes
         combined.modified += result.modified
         combined.problems.extend(result.problems)
@@ -589,12 +609,19 @@ def apply_plan_to_fixpoint(
         preview = plan_preview(col, cfg, scope_note_ids=list(scope))
         if preview.plan is not None:
             remaining = select(preview.plan, default_ops(cfg))
-            if remaining.rows:
+            residual = (
+                [w for w in remaining.rows if (w.note_id, w.field) not in excluded_keys]
+                if excluded_keys
+                else remaining.rows
+            )
+            if residual:
                 combined.problems.append(
-                    f"still {len(remaining.rows)} row(s) to write after "
+                    f"still {len(residual)} row(s) to write after "
                     f"{MAX_APPLY_PASSES} passes — press Apply again"
                 )
     merge_run_logs(log_paths)
+    if log_paths:
+        combined.log_path = log_paths[-1]
     return combined
 
 

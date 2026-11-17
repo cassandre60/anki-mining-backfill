@@ -113,8 +113,6 @@ CFG = {
     "scene_replace_fields": ["Source", "Sentence"],
     "scene_optin_fields": ["Notes", "context", "Kanji Notes"],
     "word_fill_fields": [
-        "Definition",
-        "Extended definition",
         "Pitch Accent",
         "Frequency",
         "Word Audio",

@@ -7,12 +7,12 @@ first, with the reason.
 
 ## Data safety
 
-- **Q-D1 — Fills only touch fields that render as nothing.** A field with
-  visible content is never written by a `fill`; markup-only values like
-  `<hr>` count as occupied. One exception, guarded by a pure predicate
-  (Q-D13): a *definition* field holding only empty container markup — the
-  Yomitan `<ol></ol>` shell — is treated as empty, so the fill replaces the
-  shell in one run.
+- **Q-D1 — Fills only touch empty fields.** A field with any non-whitespace
+  content is never written by a `fill` (`old_value == ""`); markup-only values
+  like `<hr>` count as occupied. `cloze-*` and `Definition` / `Extended
+  definition` belong to `FIELD_NEVER_COPY` and are never copied from sibling
+  cards; empty container markup in definition fields (`<ol></ol>`) is cleared
+  solely by `strip_empty_glossary` (Q-D13).
 - **Q-D2 — Eight approved non-empty writes, each information-preserving.**
   `replace_source` (blob URL is logged), `expand_sentence` (the card's mined
   fragment survives: the scene matcher proved it is contained in the new
@@ -65,8 +65,9 @@ first, with the reason.
 - **Q-D7 — Every write carries its old value in a run log.** Undo depends on
   it; the audit builder emits the same for dry runs.
 - **Q-D8 — Junk is never a source.** Doubled-reading pitch-accent artefacts,
-  attribution-only definitions, `<hr>`-only fields and placeholder values are
-  excluded; the singleton-kanji guard refuses `尾ける`-style sense fills.
+  attribution-only values, `<hr>`-only fields and placeholder values are
+  excluded across all scene and word fills (including word-anchored scene
+  recovery). Definitions are never copied at all (`FIELD_NEVER_COPY`).
 - **Q-D9 — Media is verified on disk** before a media fill is offered; a
   missing file drops the row with a warning instead of writing a dead
   reference.
@@ -94,7 +95,8 @@ first, with the reason.
   note, and it is dropped when it would change how often the tested word
   (`cloze-body`) occurs. The transformation is idempotent. By owner
   decision (2026-11-16) the dimension runs by default: the tool fixes on
-  its own (`batch_repair_sentence: true`, rules `strip-arrows`); the
+  its own (`batch_repair_sentence: true`, rules `flatten-div-blocks`,
+  `strip-arrows`, `join-speaker-lines`); the
   config key remains the escape hatch to switch it off, and every guard
   above still applies.
 - **Q-D11 — Furigana regeneration uses Japanese Support as the only
@@ -153,37 +155,32 @@ first, with the reason.
   like every other write.
 
 - **Q-D14 — A mis-mined sentence is recovered by the word, never by the
-  episode's mood.** When a card's own `Sentence` contains none of the word's
-  spellings (the author's 類い希: the wrong subtitle block was mined), the
-  scene is recovered by anchoring on the **word**, with every guard from the
-  author's own cards:
+  episode's mood.** When a card is still missing its `Sentence Audio` (Q-D16)
+  and its own `Sentence` contains none of the word's spellings (the author's
+  類い希: the wrong subtitle block was mined), the scene is recovered by
+  anchoring on the **word**, with every guard from the author's own cards:
   - the spelling candidates come from the note's own furigana — every mix of
     "kanji kept / kanji written in kana" (`類い希` → 類いまれ, たぐい希, …);
-  - the `Source` must name an episode (a bare blob link is refused: the
-    episode is unknowable and attaching a scene would be a guess);
+  - the `Source` must name an episode, or — for a blob link — every matching
+    candidate card must agree on **one** identifiable episode;
   - each candidate must occur **exactly once** in a same-episode,
     audio-bearing card's sentence;
   - at least **two** same-episode cards must match, and their sentences must
-    be **nested** (the same block at different clips) — the tighter clip
-    wins; a genuinely different scene is refused;
+    be byte-identical or **nested** (the same block at different clips) — the
+    tighter clip wins; a genuinely different scene is refused;
   - the write is checked (`recovered-sentence`, `word-in-sentence` badges),
-    carries the paired ruby (arrow-cleaned), and the scene's audio/picture/
-    source fill the card's empty ones in the same run.
-- **Q-D13 — A definition that renders as nothing may be rewritten.** The
+    cleans both the recovered sentence and its paired ruby with the configured
+    repair rules, checks `eligible_source` on every scene fill (Q-D8), and
+    fills the card's empty audio/picture/source in the same run.
+- **Q-D13 — Empty definition shells are cleared, never copied over.**
+  `Definition` and `Extended definition` belong to `FIELD_NEVER_COPY`: the
+  add-on never copies definitions from sibling cards. The
   `strip_empty_glossary` op clears a definition field only when it holds
   nothing but empty container markup (the Yomitan `<ol></ol>` shell) — the
-  rendered text is empty before and after, so nothing is lost. Any media
-  (`[sound:...]`, `<img>`, `[anki:...]`) or any visible character means no
-  write: a real definition is never touched
+  rendered text is empty before and after, so nothing is lost, and a second
+  run is a no-op. Any media (`[sound:...]`, `<img>`, `[anki:...]`) or any
+  visible character means no write: a real definition is never touched
   (`normalize.is_empty_glossary_shell`, pure).
-
-  A definition field in that state is also **fillable in the same run**: the
-  word-fill writes *through* the shell (`old_value` = the shell,
-  `filled-through-empty-shell` badge), so one run fixes the card — the shell
-  is gone and the real definition is in — and a second run is a no-op
-  (owner requirement, 2026-11-16: "it should run on a card once, fix it").
-  `strip_empty_glossary` remains the fallback for a shell with no sibling
-  value to fill it with, and leaves the field empty for a later fill.
 - **Q-D15 — A ruby always describes the sentence the card ends up with.** The
   ruby is *derived* from the sentence, so a `Sentence (furigana)` value that
   does not carry the final Sentence's characters
@@ -290,8 +287,8 @@ first, with the reason.
     `batch_replace_source` turn each off. Both keep their information: the
     mined fragment survives (in `cloze-*`, and always inside the new scene
     sentence — Q-D16), the blob URL is written to the run
-    log before the write. The subtitle-noise repair is an additional opt-in
-    tier (`batch_repair_sentence`, default false); rows of a disabled tier
+    log before the write. The subtitle-noise repair runs by default too
+    (`batch_repair_sentence`, default true); rows of a disabled tier
     make the note count as excluded by policy. The Expression repair
     likewise runs by default (owner decision 2026-11-16;
     `batch_repair_expression` is the escape hatch, Q-D12).

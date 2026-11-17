@@ -228,8 +228,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **254 passed** |
-| CI / a venv without Anki | **252 passed, 2 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **264 passed** |
+| CI / a venv without Anki | **262 passed, 2 skipped** |
 
 Both are green; the difference is exactly two self-skipping import checks
 (the dialog modules need a real `aqt`).
@@ -272,8 +272,8 @@ ln -s "$HOME/.local/share/Anki2/User 1/collection.media" /tmp/opencode/probe/col
 
 ## Static guards
 
-- `test_layer_boundary.py` — no `anki`/`aqt`/PyQt import outside the three
-  Qt-facing modules, relative intra-package imports only (flat module names
+- `test_layer_boundary.py` — no `anki`/`aqt`/PyQt import outside the four
+  Qt/Anki-facing modules, relative intra-package imports only (flat module names
   would collide across add-ons in Anki's shared `sys.path`).
 - `ruff` — lint (`E,F,I,UP,B,SIM`) plus formatting, line length 100.
 - `test_addon_load.py` also asserts the menu labels contain no Qt mnemonic

@@ -30,8 +30,10 @@ from .applier import ApplyDecision, run_after_editor_saved, verify_writes
 from .collection_io import (
     Preview,
     apply_decision,
+    apply_plan_to_fixpoint,
     build_decision,
     load_config,
+    media_exists,
     notify_collection_changed,
     plan_preview,
     preflight_fields,
@@ -78,7 +80,7 @@ class PreviewDialog(QDialog):
         self.cfg = cfg if cfg is not None else load_config()
         self.browser = browser
         self.preview: Preview = plan_preview(col, self.cfg, scope_note_ids)
-        self.pending: tuple[ApplyDecision, dict] | None = None
+        self.pending: tuple | None = None
         self.checks: dict[tuple[int, str], bool] = {}
 
         self.setWindowTitle("Mining Fixer — preview")
@@ -274,7 +276,9 @@ class PreviewDialog(QDialog):
         plan = self.preview.plan
         if plan is None:
             return
-        decision = build_decision(self.col, plan, self._checked_keys(), self.cfg)
+        checked_keys = set(self._checked_keys())
+        declined_keys = frozenset({(w.note_id, w.field) for w in plan.writes} - checked_keys)
+        decision = build_decision(self.col, plan, checked_keys, self.cfg)
         if not decision.row_count() and not decision.skipped:
             showInfo("Nothing to apply: no row is selected.", parent=self)
             return
@@ -290,12 +294,24 @@ class PreviewDialog(QDialog):
                 "scope": list(self.preview.scope),
                 "rows": decision.row_count(),
             },
+            self.cfg,
+            tuple(self.preview.scope),
+            declined_keys,
         )
         self.accept()
 
 
-def _finish_apply(col, decision: ApplyDecision, meta: dict, browser=None, parent=None) -> None:
-    """Preflight, log, write, verify — in that order (runs outside the dialog)."""
+def _finish_apply(
+    col,
+    decision: ApplyDecision,
+    meta: dict,
+    browser=None,
+    parent=None,
+    cfg: dict | None = None,
+    scope: tuple[int, ...] = (),
+    excluded_keys: frozenset[tuple[int, str]] = frozenset(),
+) -> None:
+    """Preflight, log, write to fixpoint, verify — outside the dialog (Q-A2/Q-A5)."""
     field_problems = preflight_fields(col, decision)
     if field_problems:
         showInfo(
@@ -304,13 +320,32 @@ def _finish_apply(col, decision: ApplyDecision, meta: dict, browser=None, parent
             parent=parent,
         )
         return
-    # Log first: even a crash mid-run stays exactly reversible.
-    log_path = write_run_log(decision, meta) if decision.row_count() else None
-    modified = apply_decision(col, decision)
+    if cfg is not None and scope:
+        result = apply_plan_to_fixpoint(
+            col,
+            cfg,
+            scope,
+            meta,
+            first_decision=decision,
+            take_backup=False,
+            excluded_keys=excluded_keys,
+        )
+        writes = result.writes
+        modified = result.modified
+        log_path = result.log_path
+        problems = result.problems
+    else:
+        log_path = write_run_log(decision, meta) if decision.row_count() else None
+        modified = apply_decision(col, decision)
+        writes = decision.row_count()
+        problems = verify_writes(
+            decision,
+            lambda nid: read_state(col, nid),
+            media_exists=lambda name: media_exists(col, name),
+        )
     if modified:
         notify_collection_changed(browser=browser)
-    problems = verify_writes(decision, lambda nid: read_state(col, nid))
-    lines = [f"Applied {decision.row_count()} write(s) to {modified} note(s)."]
+    lines = [f"Applied {writes} write(s) to {modified} note(s)."]
     if decision.skipped:
         by_reason: dict[str, int] = {}
         for skipped in decision.skipped:
@@ -337,10 +372,23 @@ def apply_pending(col, pending, browser=None, parent=None) -> None:
     loses the save callback (torn-down editor); the write is once-only either
     way.
     """
-    decision, meta = pending
+    if len(pending) == 5:
+        decision, meta, cfg, scope, excluded_keys = pending
+    else:
+        decision, meta = pending
+        cfg, scope, excluded_keys = None, (), frozenset()
     run_after_editor_saved(
         browser,
-        lambda: _finish_apply(col, decision, meta, browser=browser, parent=parent),
+        lambda: _finish_apply(
+            col,
+            decision,
+            meta,
+            browser=browser,
+            parent=parent,
+            cfg=cfg,
+            scope=scope,
+            excluded_keys=excluded_keys,
+        ),
         schedule=lambda once: QTimer.singleShot(1500, once),
     )
 

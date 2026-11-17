@@ -21,7 +21,7 @@ and covered by tests, not just intended:
 1. **Fills only touch empty fields.** A field with any non-whitespace
    content is never written. Markup-only values like `<hr>` count as
    occupied and are never overwritten.
-2. **Only six approved non-empty writes, each information-preserving.**
+2. **Only eight approved non-empty writes, each information-preserving.**
    - `Source`: the asbplayer blob URL is replaced with the timestamped
      source — the blob URL is recorded in the run log, so nothing is lost.
    - `Sentence`: a card missing its scene audio gets the scene's full text,
@@ -129,12 +129,12 @@ parent, then smallest id gap. When several parents would write identical
 values they collapse into one agreement group (`N-siblings-agree`); genuine
 divergence needs manual review.
 
-**Word backfill** — notes are grouped by `(Expression, reading)`. There is
-deliberately no reading-only matching: 氏/詩/師/死 all read し. Sense fields
-(`Definition`, `Extended definition`) are default-checked only with Yomitan
-gloss provenance or 2+ sibling agreement; a singleton kanji expression
-whose reading has a 2+ kana twin (`尾ける`-style Yomitan attribution
-artifacts) is refused sense fills entirely.
+**Word backfill** — notes are grouped by `(Expression, reading)` (with a
+`furigana`-derived reading fallback when `reading` is blank). There is
+deliberately no reading-only matching: 氏/詩/師/死 all read し. Empty
+word-level fields (`Pitch Accent`, `Frequency`, `Word Audio`, `furigana`,
+`reading`) are filled from the highest-provenance / highest-consensus sibling;
+`Definition` and `Extended definition` are unique per card and never copied.
 
 ## Installing it in Anki
 
@@ -190,9 +190,9 @@ you press Apply.
   The config keys remain the escape hatch if you ever want a dimension
   off: `batch_expand_sentence`, `batch_replace_source`,
   `batch_scene_propagation`, `batch_repair_sentence` (with
-  `sentence_repair_rules`), `batch_regenerate_furigana` — all default
-  true. Without the Japanese Support add-on the furigana step reports
-  itself unavailable and writes nothing.
+  `sentence_repair_rules`), `batch_regenerate_furigana`,
+  `batch_repair_expression` — all default true. Without the Japanese Support
+  add-on the furigana step reports itself unavailable and writes nothing.
   **View report** opens the full one-page human-readable summary inside Anki
   (word, note, what changes, what was left alone) without touching your
   collection — **Save to file…** inside the viewer keeps a copy under
@@ -277,14 +277,14 @@ After auditing: delete the audit deck and the cloned note type.
 ## Development
 
 ```
-python3 -m pytest         # 116 tests with Anki; 114 + 2 self-skipping without
+python3 -m pytest         # 264 tests with Anki; 262 + 2 self-skipping without
 ruff check . && ruff format --check .
 ```
 
 The golden test (`tests/test_golden_scene.py`) reproduces a real manual fix
 from the author's collection **byte-for-byte on all five fields** — media,
 source, furigana, and the sentence with the bold retargeted to the card's
-own word. The core (`mining_fixer/` minus the three Qt-facing modules)
+own word. The core (`mining_fixer/` minus the four Qt/Anki-facing modules)
 imports no `anki`/`aqt` — enforced by an AST test — so the same code runs
 headless, in tests, and inside Anki. `tests/test_addon_load.py` imports the
 package the way Anki does, with a stubbed `aqt`, which is what catches a

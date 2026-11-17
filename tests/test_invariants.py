@@ -23,19 +23,23 @@ from mining_fixer.plan import (
     OP_EXPAND_SENTENCE,
     OP_FILL,
     OP_REGENERATE_FURIGANA,
+    OP_REPAIR_EXPRESSION,
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
+    OP_STRIP_EMPTY_GLOSSARY,
     Plan,
     PlannedWrite,
 )
 
-FIELDS = ["Sentence", "Sentence (furigana)", "Source", "Definition"]
+FIELDS = ["Sentence", "Sentence (furigana)", "Source", "Definition", "Expression"]
 VALUE_OPS = [
     OP_REPLACE_SOURCE,
     OP_EXPAND_SENTENCE,
     OP_BOLD_CLOZE_WORD,
     OP_REPAIR_SENTENCE,
     OP_REGENERATE_FURIGANA,
+    OP_REPAIR_EXPRESSION,
+    OP_STRIP_EMPTY_GLOSSARY,
 ]
 
 
@@ -52,9 +56,12 @@ def plans(draw):
             else:
                 old = draw(st.text(min_size=1, max_size=16))
                 op = draw(st.sampled_from(VALUE_OPS))
-            new = draw(st.text(min_size=1, max_size=16))
-            if new == old:
-                new = new + "!"
+            if op == OP_STRIP_EMPTY_GLOSSARY:
+                new = ""
+            else:
+                new = draw(st.text(min_size=1, max_size=16))
+                if new == old:
+                    new = new + "!"
             writes.append(
                 PlannedWrite(
                     note_id=note_id,

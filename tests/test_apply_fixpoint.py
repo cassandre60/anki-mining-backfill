@@ -94,3 +94,46 @@ def test_fixpoint_reports_a_residual_when_the_pass_bound_is_hit(controller):
     result = ci.apply_plan_to_fixpoint(None, {}, [1], {})
     assert len(applied) == ci.MAX_APPLY_PASSES  # the bound is reached
     assert any("press Apply again" in problem for problem in result.problems)
+
+
+def test_fixpoint_populates_merged_log_path_and_respects_excluded_keys(controller, tmp_path):
+    ci = controller
+    p1 = tmp_path / "run-1.json"
+    p2 = tmp_path / "run-2.json"
+    p1.write_text('{"records": []}', encoding="utf-8")
+    p2.write_text('{"records": []}', encoding="utf-8")
+    logs = [p1, p2]
+    seen_rows: list[list] = []
+
+    row_a = types.SimpleNamespace(note_id=1, field="Sentence")
+    row_b = types.SimpleNamespace(note_id=1, field="Translation")
+    ci.plan_preview = lambda col, cfg, scope_note_ids=None: types.SimpleNamespace(
+        plan=object(), error=None
+    )
+    ci.select = lambda plan, ops: types.SimpleNamespace(rows=[row_a, row_b])
+
+    def build_batch_decision(col, plan, rows, cfg):
+        seen_rows.append(list(rows))
+        return _Decision(len(rows) if len(seen_rows) == 1 else 0)
+
+    def apply_batch(col, decision, meta, *, take_backup=True):
+        return ci.BatchResult(
+            writes=decision.row_count(),
+            modified=1,
+            log_path=logs.pop(0) if logs else None,
+        )
+
+    ci.build_batch_decision = build_batch_decision
+    ci.apply_batch = apply_batch
+    result = ci.apply_plan_to_fixpoint(
+        None,
+        {},
+        [1],
+        {},
+        first_decision=_Decision(1),
+        take_backup=False,
+        excluded_keys=frozenset({(1, "Translation")}),
+    )
+    assert seen_rows[0] == [row_a]
+    assert result.log_path == p2
+    assert not p1.exists()

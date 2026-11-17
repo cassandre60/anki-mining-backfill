@@ -238,3 +238,28 @@ def test_japanese_support_lookup_is_none_without_the_addon(loaded_addon, monkeyp
     monkeypatch.delitem(sys.modules, "3918629684", raising=False)
     monkeypatch.delitem(sys.modules, "3918629684.reading", raising=False)
     assert collection_io._japanese_support_mecab() is None
+
+
+def test_undo_keeps_run_log_when_all_writes_fail(loaded_addon, monkeypatch, tmp_path):
+    from mining_fixer import collection_io
+    from mining_fixer.applier import ApplyDecision, FieldWrite
+
+    log_file = tmp_path / "run-20261117-120000-000000.json"
+    log_file.write_text('{"records": []}', encoding="utf-8")
+    warnings: list[str] = []
+    sys.modules["aqt"].mw.col = object()
+    sys.modules["aqt.utils"].showWarning = lambda msg, *a, **k: warnings.append(msg)
+
+    monkeypatch.setattr(collection_io, "latest_run_log", lambda: (log_file, {"records": []}))
+    monkeypatch.setattr(
+        collection_io,
+        "restore_from_log",
+        lambda col, log: ApplyDecision(
+            field_writes=[FieldWrite(1, "Sentence", "restore", "new", "old")]
+        ),
+    )
+    monkeypatch.setattr(collection_io, "apply_decision", lambda col, dec: 0)
+
+    loaded_addon._on_undo()
+    assert log_file.exists(), "undo log must not be archived when no writes landed"
+    assert any("undo log kept" in msg for msg in warnings)

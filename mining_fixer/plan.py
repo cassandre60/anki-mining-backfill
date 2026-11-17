@@ -17,6 +17,7 @@ from dataclasses import dataclass, field, replace
 
 from .fieldconfig import (
     FIELD_NEVER_COPY,
+    eligible_source,
     image_files,
     is_blob_source,
     is_empty,
@@ -24,6 +25,9 @@ from .fieldconfig import (
 )
 from .matching import (
     DAY_MS,
+    DEFAULT_SCENE_FILL_FIELDS,
+    DEFAULT_SCENE_OPTIN_FIELDS,
+    DEFAULT_SCENE_REPLACE_FIELDS,
     MAX_WINDOW_MS,
     NoteRecord,
     SceneMatch,
@@ -33,7 +37,6 @@ from .matching import (
     is_word_media,
     kana_spelling_candidates,
     rank_scene_parents,
-    singleton_kanji_guard,
     word_groups,
 )
 from .normalize import (
@@ -50,7 +53,14 @@ from .normalize import (
     word_key,
 )
 
-__all__ = ["PlannedWrite", "Plan", "build_plan", "PLAN_VERSION", "scope_from_selection"]
+__all__ = [
+    "OPS_TOUCHING_NONEMPTY",
+    "PLAN_VERSION",
+    "Plan",
+    "PlannedWrite",
+    "build_plan",
+    "scope_from_selection",
+]
 
 PLAN_VERSION = 5
 
@@ -94,17 +104,19 @@ OPS_TOUCHING_NONEMPTY = frozenset(
 
 @dataclass(frozen=True)
 class PlannedWrite:
-    """One field change. ``old_value`` empty <=> OP_FILL in almost all cases.
+    """One field change. ``old_value`` empty <=> OP_FILL.
 
-    Seven ops may write a non-empty value, each guarded: the two approved
+    Eight ops may write a non-empty value, each guarded: the two approved
     replaces (blob Source — the blob URL is recorded in the audit log;
-    fragment Sentence — the fragment survives in cloze-*), the markup-only
-    bold repair (``strip_renderable`` of both values must be equal), the
-    subtitle-noise repair (only the configured noise classes change,
-    QUALITY Q-D10), the furigana regeneration (the ruby layer must carry
-    exactly the sentence's characters, QUALITY Q-D11), the Expression
-    spelling repair (the new value is the note's own furigana base,
-    QUALITY Q-D12) and the tags union (``new_value`` is a superset of
+    fragment Sentence — the fragment survives in the scene text and in
+    cloze-* on sentence-mined cards), the markup-only bold repair
+    (``strip_renderable`` of both values must be equal), the subtitle-noise
+    repair (only the configured noise classes change, QUALITY Q-D10), the
+    furigana regeneration (the ruby layer must carry exactly the sentence's
+    characters, QUALITY Q-D11), the Expression spelling repair (the new value
+    is the note's own furigana base, QUALITY Q-D12), the empty-glossary
+    cleanup (clears only a definition shell that renders as nothing,
+    QUALITY Q-D13), and the tags union (``new_value`` is a superset of
     ``old_value``). All carry badges.
     """
 
@@ -253,7 +265,21 @@ def _wrap_first_occurrence(sentence: str, word: str) -> str | None:
     return f"{sentence[:start]}<b>{word}</b>{sentence[start + len(word) :]}"
 
 
-_BOLD_TAG_RE = re.compile(r"<b[\s>]|<strong")
+_BOLD_TAG_RE = re.compile(r"<(?:b(?:\s|>)|strong\b)", re.IGNORECASE)
+_OPEN_BOLD_RE = re.compile(r"<(?:b|strong)\b[^>]*>", re.IGNORECASE)
+
+
+def _has_complex_bold_markup(text: str) -> bool:
+    """True when ``text`` contains bold markup outside simple ``<b>…</b>`` spans.
+
+    ``_BOLD_RE`` only matches ``<b>([^<]{1,80})</b>``; if the sentence carries
+    ``<strong>``, attributed ``<b …>``, or HTML nested inside ``<b>`` (such as
+    ``<b>foo<br>bar</b>``), rewriting bold spans could wrap a second ``<b>``
+    instead of replacing the existing one. Under rule 5 (never guess), leave
+    non-simple bold markup alone. Pure.
+    """
+    return len(_OPEN_BOLD_RE.findall(text)) != len(_BOLD_RE.findall(text))
+
 
 #: Conservative word-vs-clause gate for expression-derived bold repair
 #: (QUALITY Q-D3). The honest oracle is MeCab tokenization of the Expression
@@ -477,30 +503,47 @@ def _bold_repair_for(
         # Bold present: normally left alone — unless it is foreign or
         # duplicated, in which case normalise the markup only (rendered text
         # unchanged) so exactly the tested word carries the bold.
-        if _is_listening(target):
+        if _is_listening(target) or _has_complex_bold_markup(sentence):
             return None, None, None
-        candidates = [strip_renderable(target.get("cloze-body")).strip()]
-        candidates += [strip_renderable(target.get("Expression")).strip()]
-        candidates += kana_spelling_candidates(
-            target.get("Expression") or "", target.get("furigana") or ""
-        )
+        expr_raw = strip_renderable(target.get("Expression")).strip()
+        word_like_expr = _expression_is_word_like(expr_raw)
         reading = kana_fold(norm_reading(target.get("reading") or ""))
-        if reading:
-            candidates.append(reading)
+        if len(reading) < 3:
+            furi_reading = kana_fold(reading_from_furigana(target.get("furigana")) or "")
+            if len(furi_reading) > len(reading):
+                reading = furi_reading
+        recognized = [strip_renderable(target.get("cloze-body")).strip()]
+        if word_like_expr:
+            recognized.append(expr_raw)
+            recognized += kana_spelling_candidates(
+                target.get("Expression") or "", target.get("furigana") or ""
+            )
+            recognized += _mixed_form_candidates(
+                target.get("Expression") or "", target.get("reading") or ""
+            )
+            if reading:
+                recognized.append(reading)
         span_list = _BOLD_RE.findall(sentence)
-        wanted = {_fold(strip_renderable(cand).strip()) for cand in candidates if cand}
+        wanted = {_fold(strip_renderable(cand).strip()) for cand in recognized if cand}
         if len(span_list) == 1 and _fold(strip_renderable(span_list[0]).strip()) in wanted:
             # Already exactly one bold, and it wraps the tested word: done.
             return None, None, None
+        placeable = _placeable_bold_candidates(target)
+        work_sentence = sentence
+        noise_rules: tuple[str, ...] = ()
+        if rules:
+            cleaned, noise_rules = repair_sentence(sentence, rules)
+            if noise_rules:
+                work_sentence = cleaned
         normalised = _bold_normalized_sentence(
-            sentence,
-            [c for c in candidates if c],
+            work_sentence,
+            placeable,
             strip_renderable(target.get("cloze-body")),
         )
         if normalised is None:
             return None, None, None
-        new_value, chosen = normalised
-        if strip_renderable(new_value) != strip_renderable(sentence):
+        new_value, _chosen = normalised
+        if strip_renderable(new_value) != strip_renderable(work_sentence):
             return None, None, None
         write = PlannedWrite(
             note_id=target.note_id,
@@ -509,7 +552,7 @@ def _bold_repair_for(
             old_value=raw_sentence,
             new_value=new_value,
             default_checked=True,
-            badges=("bold-normalized-to-one",),
+            badges=("bold-normalized-to-one", *noise_rules),
         )
         return write, None, None
     if _is_listening(target):
@@ -979,64 +1022,6 @@ def _episode_key(source: str) -> str | None:
     return None
 
 
-#: A timestamped Source ends with the mining moment: ``… (15m20s)``.
-_SOURCE_TIME_RE = re.compile(r"\((\d+)m(\d+)s\)")
-
-
-def _source_seconds(source: str) -> int | None:
-    match = _SOURCE_TIME_RE.search(source or "")
-    if not match:
-        return None
-    return int(match.group(1)) * 60 + int(match.group(2))
-
-
-def _same_moment_sentence(
-    target: NoteRecord,
-    same_episode: list[NoteRecord],
-    rules: tuple[str, ...] = (),
-    tolerance: int = 20,
-) -> tuple[str, NoteRecord] | None:
-    """The sentence the cards mined at the *same moment* agree on.
-
-    Earlier runs could copy another moment's block onto a card (author's
-    自閉症すぺくとらむ kept the 親御 scene while its audio and Source stayed
-    at 15m20s). A card's own timestamp is the ground truth: siblings within
-    ``tolerance`` seconds that agree byte-identically (two or more) tell us
-    which sentence belongs here. ``None`` when they agree on nothing or on
-    the sentence the card already holds.
-    """
-    moment = _source_seconds(target.get("Source"))
-    if moment is None:
-        return None
-    near = [
-        record
-        for record in same_episode
-        if record.note_id != target.note_id
-        and (other := _source_seconds(record.get("Source"))) is not None
-        and abs(other - moment) <= tolerance
-    ]
-    groups: dict[str, list[NoteRecord]] = {}
-    for record in near:
-        sentence = record.get("Sentence") or ""
-        if not sentence.strip():
-            continue
-        # Group and compare on the *cleaned* text: the plan writes the defects
-        # fixed, so comparing raw values would restore the arrows on every run.
-        cleaned = repair_sentence(sentence, rules)[0] if rules else sentence
-        groups.setdefault(norm_sentence_match(cleaned), []).append(record)
-    if not groups:
-        return None
-    best_text, members = max(groups.items(), key=lambda kv: len(kv[1]))
-    if len(members) < 2:
-        return None
-    current = target.get("Sentence") or ""
-    current_cleaned = repair_sentence(current, rules)[0] if rules else current
-    if norm_sentence_match(current_cleaned) == best_text:
-        return None
-    representative = members[0]
-    return representative.get("Sentence") or "", representative
-
-
 def _word_recovered_scene_writes(
     target: NoteRecord,
     episodes: dict[str, list[NoteRecord]],
@@ -1049,21 +1034,29 @@ def _word_recovered_scene_writes(
     the same episode mined elsewhere. Recovery therefore anchors on the word,
     not on the card's sentence:
 
-    - only for a timestamped ``Source`` (the episode is identifiable; a blob
-      link is refused);
+    - only when the card is still missing its ``Sentence Audio`` (QUALITY
+      Q-D16: a card that already owns its audio is a scene unit and is never
+      overwritten by another scene);
     - every spelling of the word from its own furigana is tried
       (:func:`matching.kana_spelling_candidates`), plus the cloze body and
       the reading;
     - each candidate must occur **exactly once** in a same-episode,
       audio-bearing card's sentence;
     - at least **two** such cards must agree on the sentence byte-identically
-      (the corroboration rule that replaced the divergence refusal) — one
-      card alone is a suggestion the author can act on by hand, never an
-      automatic write.
+      or by nested clipping — one card alone is never an automatic write.
 
     Returns ``(writes, reason)``; writes are checked and carry
     ``recovered-sentence``.
     """
+    replace_fields = tuple(cfg.get("scene_replace_fields", DEFAULT_SCENE_REPLACE_FIELDS))
+    never_copy = FIELD_NEVER_COPY | frozenset(cfg.get("never_copy_fields", ()))
+    if (
+        "Sentence" not in replace_fields
+        or "Sentence" in never_copy
+        or not is_empty(target.get("Sentence Audio"))
+    ):
+        return [], "no-parent-that-fills"
+
     episode = _episode_key(target.get("Source"))
     if episode is not None:
         pools = episodes.get(episode, [])
@@ -1151,10 +1144,18 @@ def _word_recovered_scene_writes(
         return [], "no-parent-that-fills"
     representative, best_sentence = min(members, key=lambda item: len(item[1]))
     written = best_cand
+    repair_rules = tuple(
+        rule for rule in cfg.get("sentence_repair_rules", ()) if rule in REPAIR_RULES
+    )
     new_sentence, bold_badge = _retarget_bold(
         best_sentence, representative.get("cloze-body"), written
     )
-    new_sentence = _single_bold(new_sentence, written, tuple(_bold_candidates(target)))
+    new_sentence = _single_bold(new_sentence, written, tuple(_placeable_bold_candidates(target)))
+    applied_rules: tuple[str, ...] = ()
+    if repair_rules:
+        repaired, applied_rules = repair_sentence(new_sentence, repair_rules)
+        if applied_rules:
+            new_sentence = repaired
     current = target.get("Sentence")
     writes: list[PlannedWrite] = []
     if new_sentence != current:
@@ -1166,6 +1167,7 @@ def _word_recovered_scene_writes(
         ]
         if bold_badge:
             badges.append(bold_badge)
+        badges.extend(f"expanded-{rule}" for rule in applied_rules)
         writes.append(
             PlannedWrite(
                 note_id=target.note_id,
@@ -1178,11 +1180,8 @@ def _word_recovered_scene_writes(
                 badges=tuple(badges),
             )
         )
-    repair_rules = tuple(
-        rule for rule in cfg.get("sentence_repair_rules", ()) if rule in REPAIR_RULES
-    )
-    for field_name in tuple(cfg.get("scene_fill_fields", ())):
-        if field_name == "Sentence":
+    for field_name in tuple(cfg.get("scene_fill_fields", DEFAULT_SCENE_FILL_FIELDS)):
+        if field_name == "Sentence" or field_name in never_copy:
             continue
         value = representative.get(field_name)
         current_value = target.get(field_name)
@@ -1194,12 +1193,17 @@ def _word_recovered_scene_writes(
         )
         if not stale_ruby and (not is_empty(current_value) or is_empty(value)):
             continue
+        if not eligible_source(field_name, value):
+            continue
         if field_name in (FURIGANA_FIELD,) and repair_rules:
             value, _applied = repair_sentence(value, repair_rules)
         if field_name == "Sentence Audio":
             refs = sound_files(value)
             if not refs:
                 continue
+        default_checked = (
+            bool(cfg.get("translation_autocheck", True)) if field_name == "Translation" else True
+        )
         writes.append(
             PlannedWrite(
                 note_id=target.note_id,
@@ -1208,12 +1212,18 @@ def _word_recovered_scene_writes(
                 old_value=current_value if stale_ruby else "",
                 new_value=value,
                 source_note_id=representative.note_id,
-                default_checked=True,
+                default_checked=default_checked,
                 badges=("recovered-sentence", f"source-note:{representative.note_id}"),
             )
         )
     source_value = representative.get("Source")
-    if is_blob_source(target.get("Source")) and not is_empty(source_value):
+    if (
+        "Source" in replace_fields
+        and "Source" not in never_copy
+        and is_blob_source(target.get("Source"))
+        and not is_empty(source_value)
+        and not is_blob_source(source_value)
+    ):
         writes.append(
             PlannedWrite(
                 note_id=target.note_id,
@@ -1222,55 +1232,11 @@ def _word_recovered_scene_writes(
                 old_value=target.get("Source"),
                 new_value=source_value,
                 source_note_id=representative.note_id,
-                default_checked=True,
+                default_checked=bool(cfg.get("replaces_autocheck", True)),
                 badges=("recovered-sentence", f"source-note:{representative.note_id}"),
             )
         )
     return writes, None
-
-
-def _ruby_for_sentence(
-    sentence: str,
-    representative: NoteRecord,
-    same_episode: list[NoteRecord],
-    rules: tuple[str, ...] = (),
-) -> str:
-    """A ruby that describes ``sentence``, from the representative or any
-    same-episode card that has one (cleaned of subtitle noise)."""
-    candidates = [representative, *same_episode]
-    for record in candidates:
-        ruby = record.get(FURIGANA_FIELD) or ""
-        if not ruby.strip():
-            continue
-        cleaned = repair_sentence(ruby, rules)[0] if rules else ruby
-        if furigana_base_matches(cleaned, sentence):
-            return cleaned
-    return ""
-
-
-def _ruby_write_for(
-    target: NoteRecord,
-    sentence: str,
-    ruby: str,
-    representative: NoteRecord,
-    rules: tuple[str, ...] = (),
-) -> PlannedWrite | None:
-    """The ruby write paired with a restored sentence, or ``None``."""
-    if not ruby.strip():
-        return None
-    current = target.get(FURIGANA_FIELD) or ""
-    if current.strip() and furigana_base_matches(current, sentence):
-        return None  # already correct
-    return PlannedWrite(
-        note_id=target.note_id,
-        field=FURIGANA_FIELD,
-        op=OP_FILL if is_empty(current) else OP_EXPAND_SENTENCE,
-        old_value="" if is_empty(current) else current,
-        new_value=ruby,
-        source_note_id=representative.note_id,
-        default_checked=True,
-        badges=("sentence-restored-from-same-moment", f"source-note:{representative.note_id}"),
-    )
 
 
 def _bold_candidates(target: NoteRecord) -> list[str]:
@@ -1291,16 +1257,53 @@ def _bold_candidates(target: NoteRecord) -> list[str]:
     return sorted(out, key=len, reverse=True)
 
 
+def _placeable_bold_candidates(target: NoteRecord) -> list[str]:
+    """Spellings safe to *place* a new bold onto unbolded sentence text.
+
+    Enforces the Q-D3 word-like gate on Expression-derived spellings and the
+    >=3-kana minimum on reading-only fallbacks so short readings (し, する) and
+    clauses are never bolded by guesswork. Pure.
+    """
+    out: list[str] = []
+    body = strip_renderable(target.get("cloze-body")).strip()
+    if body:
+        out.append(body)
+    expr = strip_renderable(target.get("Expression")).strip()
+    if _expression_is_word_like(expr):
+        reading = kana_fold(norm_reading(target.get("reading") or ""))
+        if len(reading) < 3:
+            furi_reading = kana_fold(reading_from_furigana(target.get("furigana")) or "")
+            if len(furi_reading) > len(reading):
+                reading = furi_reading
+        candidates = [
+            expr,
+            *(
+                cand
+                for cand in kana_spelling_candidates(
+                    target.get("Expression") or "", target.get("furigana") or ""
+                )
+                if len(cand) >= 2
+            ),
+            *_mixed_form_candidates(target.get("Expression") or "", target.get("reading") or ""),
+            *([reading] if len(reading) >= 3 else []),
+        ]
+        for cand in candidates:
+            if cand and cand not in out:
+                out.append(cand)
+    return sorted(out, key=len, reverse=True)
+
+
 def _single_bold(value: str, body: str, extras: tuple[str, ...] = ()) -> str:
     """Exactly one bold span — around the tested word — in ``value``.
 
     The deck convention is one bold term. An expanded block can carry the
     scene's own bold (ぜひ's ``<b>ぜひ</b>``) and the child's word on top of
-    it (two bold items, author report on 校), or no bold at all (a block
-    written by the same-moment restore) — both are fixed here, markup only.
-    The word is located under width folding (:func:`_word_span`); the bold
-    wraps the sentence's own characters.
+    it (two bold items, author report on 校), or no bold at all — both are
+    fixed here, markup only. The word is located under width folding
+    (:func:`_word_span`); the bold wraps the sentence's own characters.
     """
+    if _BOLD_TAG_RE.search(value) and _has_complex_bold_markup(value):
+        return value
     names = [c for c in (strip_renderable(body).strip(), *extras) if c]
     known = {_fold(c) for c in names}
     chosen_span: tuple[int, int] | None = None
@@ -1401,10 +1404,17 @@ def _scene_writes_for(
     repair_rules = tuple(
         rule for rule in cfg.get("sentence_repair_rules", ()) if rule in REPAIR_RULES
     )
+    optin_fields = tuple(cfg.get("scene_optin_fields", DEFAULT_SCENE_OPTIN_FIELDS))
+    fill_fields = tuple(cfg.get("scene_fill_fields", DEFAULT_SCENE_FILL_FIELDS))
+    replace_fields = tuple(cfg.get("scene_replace_fields", DEFAULT_SCENE_REPLACE_FIELDS))
+    never_copy = FIELD_NEVER_COPY | frozenset(cfg.get("never_copy_fields", ()))
     ranked = rank_scene_parents(
         matches,
         candidate,
-        optin_fields=tuple(cfg.get("scene_optin_fields", ())),
+        optin_fields=optin_fields,
+        fill_fields=fill_fields,
+        replace_fields=replace_fields,
+        never_copy=never_copy,
     )
     if not ranked:
         return [], "no-parent-that-fills"
@@ -1489,8 +1499,10 @@ def _scene_writes_for(
             )
             continue
         default_checked = trusted
-        if fname in ("Notes", "context", "Kanji Notes"):
-            default_checked = False
+        if fname in optin_fields:
+            default_checked = trusted and bool(cfg.get("notes_autocheck", False))
+        elif fname == "Translation":
+            default_checked = trusted and bool(cfg.get("translation_autocheck", True))
         # Sentence fields get the same cleanup as the expansion's copy: the
         # parent's subtitle dump carries line-tail arrows, and writing them
         # means the next run has work (one run fixes a card). The sentence
@@ -1537,7 +1549,11 @@ def _scene_writes_for(
     cand_norm = norm_sentence_match(candidate.get("Sentence"))
     parent_sentence = parent.get("Sentence")
     parent_furigana = parent.get("Sentence (furigana)")
-    if not is_empty(candidate.get("Sentence Audio")):
+    if (
+        not is_empty(candidate.get("Sentence Audio"))
+        or "Sentence" not in replace_fields
+        or "Sentence" in never_copy
+    ):
         return writes, None
     # Remaining guards: the cloze anchor must be placeable (once, or inside
     # the card's own fragment), and a stale fragment ruby must not be left
@@ -1566,7 +1582,7 @@ def _scene_writes_for(
                 new_sentence = _single_bold(
                     new_sentence,
                     candidate.get("cloze-body"),
-                    tuple(_bold_candidates(candidate)),
+                    tuple(_placeable_bold_candidates(candidate)),
                 )
             else:
                 # The word occurs more than once in the block (校 in 精神医学
@@ -1575,7 +1591,7 @@ def _scene_writes_for(
                 new_sentence = _single_bold(
                     fragment_bold,
                     candidate.get("cloze-body"),
-                    tuple(_bold_candidates(candidate)),
+                    tuple(_placeable_bold_candidates(candidate)),
                 )
                 bold_badge = "bold-added-to-cloze-word"
             if bold_badge:
@@ -1709,54 +1725,40 @@ def _scene_writes_for(
 def _word_writes_for(
     candidate: NoteRecord,
     group: list[NoteRecord],
-    groups: dict,
     cfg: dict,
 ) -> list[PlannedWrite]:
-    """Fill empty word-level fields from best siblings."""
+    """Fill empty word-level fields from best siblings.
+
+    Definitions (``Definition``, ``Extended definition``) belong to
+    :data:`FIELD_NEVER_COPY` and are never copied between cards.
+    """
     writes: list[PlannedWrite] = []
-    guard = singleton_kanji_guard(candidate, groups)
-    sense_fields = {"Definition", "Extended definition"}
-    definition_fields = set(cfg.get("definition_fields", ("Definition", "Extended definition")))
+    never_copy = FIELD_NEVER_COPY | frozenset(cfg.get("never_copy_fields", ()))
     for fname in cfg.get("word_fill_fields", ()):
-        if fname in FIELD_NEVER_COPY:
+        if fname in never_copy:
             continue
         current = candidate.get(fname)
-        # A definition field holding only empty container markup renders as
-        # nothing (the Yomitan `<ol></ol>` shell): the fill goes *through* it
-        # in the same run, so one run fixes the card and a second run is a
-        # no-op (the check below proves it).
-        through_shell = fname in definition_fields and is_empty_glossary_shell(current)
-        if not is_empty(current) and not through_shell:
+        if not is_empty(current):
             continue
         src = best_word_source(fname, candidate, group)
         if src is None:
             continue
         badges: list[str] = [f"source-note:{src.record.note_id}"]
-        if guard and fname in sense_fields:
-            badges.append("kanji-attribution-guard")
-            continue
         if fname in ("Pitch Accent", "Frequency"):
             badges.append("dictionary-version-may-differ")
-        if through_shell:
-            badges.append("filled-through-empty-shell")
         if src.provenance:
             badges.append("yomitan-gloss")
         elif src.consensus >= 2:
             badges.append(f"{src.consensus}-siblings-agree")
         else:
             badges.append("single-source-user-authored")
-            if fname in sense_fields:
-                # Sense fields need provenance or consensus to be default.
-                badges.append("review-sense-field")
-        default_checked = bool(cfg.get("replaces_autocheck", True)) and (
-            src.provenance or src.consensus >= 2 or fname not in sense_fields
-        )
+        default_checked = bool(cfg.get("replaces_autocheck", True))
         writes.append(
             PlannedWrite(
                 note_id=candidate.note_id,
                 field=fname,
                 op=OP_FILL,
-                old_value=current if through_shell else "",
+                old_value="",
                 new_value=src.value,
                 source_note_id=src.record.note_id,
                 default_checked=default_checked,
@@ -1916,6 +1918,53 @@ def _demote_completion_with_stale_ruby(
     ]
 
 
+def _append_local_sentence_writes(
+    target: NoteRecord,
+    target_writes: list[PlannedWrite],
+    repair_rules: tuple[str, ...],
+    reasons: dict[int, str],
+    warnings: list[str],
+) -> None:
+    """Append in-place bold and subtitle-noise repairs when Sentence is free."""
+    bold_write, bold_reason, bold_detail = _bold_repair_for(target, repair_rules)
+    queued_expansion = any(
+        w.field == "Sentence" and w.op == OP_EXPAND_SENTENCE and w.default_checked
+        for w in target_writes
+    )
+    if bold_write is not None and not queued_expansion:
+        target_writes.append(bold_write)
+    elif bold_reason is not None:
+        suffix = " (Sentence is also queued for scene expansion)" if queued_expansion else ""
+        expr = target.get("Expression") or "(sentence card)"
+        warnings.append(
+            f"note {target.note_id} ({expr}): no bold in Sentence — {bold_detail}{suffix}"
+        )
+        if not target_writes and (
+            target.note_id not in reasons
+            # A more specific verdict beats the generic scene reason: a
+            # sentence that does not contain its own word is a mis-mine
+            # the author must see (類い希-shaped cards).
+            or (
+                bold_reason == "cloze-word-not-in-sentence"
+                and reasons.get(target.note_id) == "no-parent-that-fills"
+            )
+        ):
+            reasons[target.note_id] = bold_reason
+    # Subtitle-noise repair (dimension 2). Only when no *checked* other
+    # Sentence write is queued for this note — expansion and bold own the
+    # field first, and two applied writes to one field would fight. A
+    # guarded row never applies, so it must not block the repair.
+    if repair_rules and not any(w.field == "Sentence" and w.default_checked for w in target_writes):
+        repair_write, repair_reason, repair_detail = _sentence_repair_write(target, repair_rules)
+        if repair_write is not None:
+            target_writes.append(repair_write)
+        elif repair_reason is not None:
+            expr = target.get("Expression") or "(sentence card)"
+            warnings.append(
+                f"note {target.note_id} ({expr}): sentence repair skipped — {repair_detail}"
+            )
+
+
 def build_plan(
     records: list[NoteRecord],
     cfg: dict,
@@ -1974,6 +2023,8 @@ def build_plan(
     if unknown_rules:
         warnings.append(f"unknown sentence_repair_rules ignored: {', '.join(unknown_rules)}")
     repair_rules = tuple(rule for rule in raw_repair_rules if rule in REPAIR_RULES)
+    # Minimal test configs omit `batch_regenerate_furigana` when exercising
+    # non-furigana tiers headless; the shipped `config.json` sets it to true.
     furigana_tier = bool(cfg.get("batch_regenerate_furigana", False))
     expression_tier = bool(cfg.get("batch_repair_expression", True))
     # Fields whose queued values come from the old spelling's word group;
@@ -1983,6 +2034,8 @@ def build_plan(
     groups = word_groups(records)
     parent_usage: dict[int, int] = {}
     scene_dimension = bool(cfg.get("batch_scene_propagation", True))
+    scene_fill_fields = tuple(cfg.get("scene_fill_fields", DEFAULT_SCENE_FILL_FIELDS))
+    scene_replace_fields = tuple(cfg.get("scene_replace_fields", DEFAULT_SCENE_REPLACE_FIELDS))
 
     for target in scope:
         if optout in target.tags:
@@ -1991,11 +2044,8 @@ def build_plan(
         target_writes: list[PlannedWrite] = []
         scene_writes, reason = [], None
         has_scene_gap = scene_dimension and (
-            any(
-                is_empty(target.get(f))
-                for f in ("Sentence Audio", "Picture", "Sentence (furigana)", "Translation")
-            )
-            or is_blob_source(target.get("Source"))
+            any(is_empty(target.get(f)) for f in scene_fill_fields)
+            or ("Source" in scene_replace_fields and is_blob_source(target.get("Source")))
         )
         # Incomplete cards (missing audio/picture/ruby/translation or blob Source)
         # find their scene parent in creation order (session clustering).
@@ -2021,7 +2071,7 @@ def build_plan(
             if w.source_note_id:
                 parent_usage[w.source_note_id] = parent_usage.get(w.source_note_id, 0) + 1
             if media_exists is not None and w.op == OP_FILL:
-                refs = sound_files(w.new_value) or image_files(w.new_value)
+                refs = [*sound_files(w.new_value), *image_files(w.new_value)]
                 if refs and not all(media_exists(f) for f in refs):
                     warnings.append(
                         f"drop fill note:{w.note_id} field:{w.field} missing media {refs}"
@@ -2047,10 +2097,9 @@ def build_plan(
         if key is not None:
             group = groups.get(key, [])
             if len(group) > 1:
-                target_writes.extend(_word_writes_for(target, group, groups, cfg))
-        # Empty-glossary shells with nothing to fill them are cleared; a shell
-        # that a word-fill already wrote through is skipped (one field, one
-        # applied row, one run).
+                target_writes.extend(_word_writes_for(target, group, cfg))
+        # Empty-glossary shells (Yomitan `<ol></ol>`) render as nothing and are
+        # cleared; definitions are never copied from sibling cards.
         target_writes.extend(
             _empty_glossary_writes(
                 target, cfg, {w.field for w in target_writes if w.default_checked}
@@ -2059,8 +2108,7 @@ def build_plan(
         # Expression spelling repair (dimension 4, self-oracled). Deferred
         # while a word-level write is queued: those values come from the old
         # spelling's word group, and the rewrite must not land in the same
-        # run as them (F2 risk 4) — a deliberate second-run step for that pair
-        # (the only remaining one: everything else here is single-run).
+        # run as them (F2 risk 4).
         if expression_tier and not any(w.field in word_fields for w in target_writes):
             repair_expr_write, repair_expr_reason, repair_expr_detail = _expression_repair_for(
                 target
@@ -2075,64 +2123,35 @@ def build_plan(
                 )
                 if not target_writes and target.note_id not in reasons:
                     reasons[target.note_id] = repair_expr_reason
-        # Markup-only bold repair. Never issued when a *checked* Sentence
-        # write is queued for the same note: the two ops would fight over the
-        # field. A guarded (unchecked) row never applies, so it must not
-        # suppress the repair — the card's own text is not the suspect part.
-        bold_write, bold_reason, bold_detail = _bold_repair_for(target, repair_rules)
-        queued_expansion = any(
-            w.field == "Sentence" and w.op == OP_EXPAND_SENTENCE and w.default_checked
-            for w in target_writes
-        )
-        if bold_write is not None and not queued_expansion:
-            target_writes.append(bold_write)
-        elif bold_reason is not None:
-            suffix = " (Sentence is also queued for scene expansion)" if queued_expansion else ""
-            expr = target.get("Expression") or "(sentence card)"
-            warnings.append(
-                f"note {target.note_id} ({expr}): no bold in Sentence — {bold_detail}{suffix}"
-            )
-            if not target_writes and (
-                target.note_id not in reasons
-                # A more specific verdict beats the generic scene reason: a
-                # sentence that does not contain its own word is a mis-mine
-                # the author must see (類い希-shaped cards).
-                or (
-                    bold_reason == "cloze-word-not-in-sentence"
-                    and reasons.get(target.note_id) == "no-parent-that-fills"
-                )
-            ):
-                reasons[target.note_id] = bold_reason
-        # Subtitle-noise repair (dimension 2). Only when no *checked* other
-        # Sentence write is queued for this note — expansion and bold own the
-        # field first, and two applied writes to one field would fight. A
-        # guarded row never applies, so it must not block the repair.
-        if repair_rules and not any(
-            w.field == "Sentence" and w.default_checked for w in target_writes
-        ):
-            repair_write, repair_reason, repair_detail = _sentence_repair_write(
-                target, repair_rules
-            )
-            if repair_write is not None:
-                target_writes.append(repair_write)
-            elif repair_reason is not None:
-                expr = target.get("Expression") or "(sentence card)"
-                warnings.append(
-                    f"note {target.note_id} ({expr}): sentence repair skipped — {repair_detail}"
-                )
+        # Markup-only bold repair and subtitle-noise repair when no checked
+        # scene expansion already owns Sentence.
+        _append_local_sentence_writes(target, target_writes, repair_rules, reasons, warnings)
         # The ruby must describe the Sentence this card ends up with: drop a
         # checked ruby copied from another card's line *before* the ruby
         # repair / regeneration steps, so the field is either cleaned or
         # correctly regenerated rather than carrying the wrong text.
         target_writes = _drop_rubies_that_do_not_describe_the_sentence(target, target_writes)
+        had_checked_expansion = any(
+            w.field == "Sentence" and w.op == OP_EXPAND_SENTENCE and w.default_checked
+            for w in target_writes
+        )
+        effective_sentence = next(
+            (w.new_value for w in target_writes if w.field == "Sentence" and w.default_checked),
+            target.get("Sentence") or "",
+        )
         # The ruby field carries the same subtitle arrows (owner report
         # 2026-11-16): clean it too, unless a checked write already targets it
-        # (a furigana regeneration or a scene fill replaces the whole value).
+        # or a checked expansion changed Sentence to text this ruby no longer
+        # describes (in which case furigana regeneration must own the field).
         if repair_rules and not any(
             w.field == FURIGANA_FIELD and w.default_checked for w in target_writes
         ):
             ruby_write, _ruby_reason, _ruby_detail = _ruby_repair_write(target, repair_rules)
-            if ruby_write is not None:
+            if ruby_write is not None and (
+                not had_checked_expansion
+                or not effective_sentence.strip()
+                or furigana_base_matches(ruby_write.new_value, effective_sentence)
+            ):
                 target_writes.append(ruby_write)
         # Furigana regeneration (dimension 3). Runs after any queued
         # Sentence write — the ruby layer must match the text the plan
@@ -2161,8 +2180,22 @@ def build_plan(
                     )
         # A completion must never ship checked under a ruby that still
         # describes the card's old text (Q-D4/Q-D15): if the regeneration
-        # engine was present but produced nothing, demote it.
+        # engine was present but produced nothing, demote it (keeping the
+        # unchecked expansion visible with `stale-fragment-furigana-risk`), and
+        # still clean subtitle noise in the kept fragment ruby.
         target_writes = _demote_completion_with_stale_ruby(target, target_writes)
+        if (
+            had_checked_expansion
+            and not any(
+                w.field == "Sentence" and w.op == OP_EXPAND_SENTENCE and w.default_checked
+                for w in target_writes
+            )
+            and repair_rules
+            and not any(w.field == FURIGANA_FIELD and w.default_checked for w in target_writes)
+        ):
+            ruby_write, _ruby_reason, _ruby_detail = _ruby_repair_write(target, repair_rules)
+            if ruby_write is not None:
+                target_writes.append(ruby_write)
         # Tags: union of the target's tags with every contributing source's.
         tags_write = _tags_write_for(target, target_writes, by_id, cfg)
         if tags_write is not None:

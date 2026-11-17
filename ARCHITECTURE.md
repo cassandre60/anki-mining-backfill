@@ -97,19 +97,21 @@ the first write, chunked apply, post-write verification.
 - `NoteState`, `ApplyDecision` (`applier.py`) — the live values read back at
   apply time and the resulting writes/skips.
 
-`PLAN_VERSION` (currently **4**) is bumped whenever the plan's meaning changes;
+`PLAN_VERSION` (currently **5**) is bumped whenever the plan's meaning changes;
 it is recorded in every audit log so old and new plans are distinguishable.
 
-## The six ops
+## The nine ops
 
 | op | may write non-empty? | guard |
 |---|---|---|
-| `fill` | no | target field is empty |
+| `fill` | no | target field is empty (`old_value == ""`) and not in `FIELD_NEVER_COPY` / `never_copy_fields` |
 | `replace_source` | yes | old value is an asbplayer blob URL; the URL is kept in the run log |
 | `expand_sentence` | yes | the card is missing its `Sentence Audio`; the scene matcher proved its sentence is contained in the new one (so the fragment is kept, Q-D16); the cloze anchor occurs exactly once — or inside the card's own fragment; furigana ships in the same row, is regenerated in the same plan, or the row is unchecked |
-| `bold_cloze_word` | yes (markup only) | `strip_renderable(new) == strip_renderable(old)`; the word occurs exactly once |
+| `bold_cloze_word` | yes (markup / noise only) | `strip_renderable(new) == strip_renderable(cleaned_old)`; the word occurs exactly once |
 | `repair_sentence` | yes (configured noise only) | only the configured rules change the value; no other `Sentence` write queued; tested-word occurrence count unchanged |
 | `regenerate_furigana` | yes | generated from the post-write sentence; no other `Sentence (furigana)` write queued; ruby base text must equal the sentence (`furigana_base_matches`) |
+| `repair_expression` | yes | self-oracled from the note's own `furigana` base; reading matches `reading_from_furigana`; word-like kanji completion only; deferred while word fills are queued |
+| `strip_empty_glossary` | yes | clears a definition field holding only empty container markup (`normalize.is_empty_glossary_shell`) |
 | `add_tags` | yes | `new_value` tags ⊇ `old_value` tags; reserved tags excluded |
 
 `OPS_TOUCHING_NONEMPTY` in `plan.py` is the single list of ops allowed to
@@ -126,9 +128,9 @@ overwrite content; a test asserts nothing else ever does.
   (`N-siblings-agree`), divergence is left for the user.
 - **Word.** Grouped by a key derived from `(Expression, reading, furigana)`
   (`normalize.word_key`). No reading-only matching: 氏/詩/師/死 all read し.
-  Sense fields (`Definition`, `Extended definition`) need Yomitan gloss
-  provenance or 2+ sibling agreement; the singleton-kanji guard refuses
-  sense fills for `尾ける`-style Yomitan attribution artefacts.
+  `Definition` and `Extended definition` belong to `FIELD_NEVER_COPY` and are
+  never copied between cards; empty Yomitan `<ol></ol>` shells in definition
+  fields are cleared by `strip_empty_glossary`.
 - **Bold repair** (`plan._bold_repair_for`). Tier 1: the `cloze-body` occurs
   exactly once in `Sentence` → wrap it. Tier 2 (body absent, i.e. `cloze-*`
   hold dictionary-entry text): try mixed-kana spellings derived from
@@ -166,11 +168,13 @@ overwrite content; a test asserts nothing else ever does.
 `mining_fixer/config.json` is both the shippable default and Anki's config
 default; user edits live in `meta.json` and are merged over it by
 `mw.addonManager.getConfig`. Keys: `config_version`, `deck_name`,
-`note_type_name`, `window_days`, `preview_last_n`, `min_sentence_len`,
-`min_nonspace_chars`, `scene_fill_fields`, `scene_replace_fields`,
-`scene_optin_fields`, `word_fill_fields`, `never_copy_fields`,
-`translation_autocheck`, `notes_autocheck`, `replaces_autocheck`,
-`optout_tag`, `applied_tag`.
+`note_type_name`, `window_days`, `preview_last_n`, `scene_auto_gap_hours`,
+`batch_expand_sentence`, `batch_replace_source`, `batch_scene_propagation`,
+`batch_repair_sentence`, `sentence_repair_rules`, `batch_regenerate_furigana`,
+`batch_repair_expression`, `min_sentence_len`, `scene_fill_fields`,
+`scene_replace_fields`, `scene_optin_fields`, `word_fill_fields`,
+`never_copy_fields`, `definition_fields`, `translation_autocheck`,
+`notes_autocheck`, `replaces_autocheck`, `optout_tag`, `applied_tag`.
 
 ## Why the package layout
 

@@ -23,15 +23,17 @@ __all__ = [
     "sound_files",
     "image_files",
     "has_media_ref",
-    "is_meaningful_definition",
+    "eligible_source",
     "FIELD_CLOZE",
+    "FIELD_DEFINITIONS",
     "FIELD_NEVER_COPY",
 ]
 
 # Fields whose values describe the mined sentence fragment itself; they are
 # never copied anywhere.
 FIELD_CLOZE = ("cloze-prefix", "cloze-body", "cloze-suffix")
-FIELD_NEVER_COPY = frozenset(FIELD_CLOZE)
+FIELD_DEFINITIONS = ("Definition", "Extended definition")
+FIELD_NEVER_COPY = frozenset((*FIELD_CLOZE, *FIELD_DEFINITIONS))
 
 _PLACEHOLDERS = {
     "-",
@@ -154,16 +156,6 @@ def looks_yomitan_gloss(value: str) -> bool:
     # leftover text (English monolingual glosses) once scaffolding is gone.
     has_cjk = any("\u3040" <= ch <= "\u30ff" or "\u4e00" <= ch <= "\u9fff" for ch in plain)
     return has_cjk or len(plain) >= 4
-
-
-def is_meaningful_definition(value: str) -> bool:
-    """True when a definition field carries real gloss text."""
-    if is_junk_value(value):
-        return False
-    if looks_yomitan_gloss(value):
-        return True
-    plain = strip_renderable(value).strip()
-    return len(plain) >= 2
 
 
 def is_blob_source(value: str) -> bool:

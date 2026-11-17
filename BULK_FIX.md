@@ -45,14 +45,12 @@ guard that drops what cannot be proven.
 | 5 | Indentation / formatting | **partly shipped** — the `<div>` block flattening (dimension 2, 2026-11-17) | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
 | 6 | Bold from expression | **shipped (verbatim only)**; inflected matching future | on **non-listening** cards whose `Sentence` has no bold term, bold the expression's occurrence (including from a missing/junk `cloze-body`); an inflected surface (読む → 読め) is the open part | expression must look like a word (clause-like expressions such as 漢字は読めるようになりたいかな are rejected, never bolded); occurrence must be unique; ambiguity reported, never guessed; listening predicate mirrors the card template (see below) |
 
-Dimension 1 is what `batch.py` + `collection_io.apply_batch` ship today.
-Dimensions 2 and 3 have code (`normalize.repair_sentence` /
-`normalize.furigana_base_matches`, the `repair_sentence` and
-`regenerate_furigana` ops) and run **by default** (owner decision 2026-11-16)
-(`sentence_repair_rules: []` / `batch_repair_sentence: false`,
-`batch_regenerate_furigana: false`) until their Ring 3 battery on a copy; the
-remaining dimensions are on the backlog (B6 the source-first pipeline, B7
-this vision); none has code yet, and none will ship enabled by default.
+Dimensions 1–4 and the verbatim half of dimension 6 ship enabled **by
+default** in `mining_fixer/config.json` (owner decision 2026-11-16); the
+`batch_*` config keys remain the escape hatch to switch individual dimensions
+off. The remaining dimensions (B6 source-first pipeline, B9 dictionary kana
+lookup, B10 inflected bolding via MeCab) are on the backlog and have no code
+yet.
 
 ## Listening cards (template-defined)
 

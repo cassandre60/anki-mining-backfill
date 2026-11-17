@@ -5,7 +5,7 @@ from __future__ import annotations
 from test_golden_scene import CFG, CHILD, CHILD_ID, PARENT, PARENT_ID
 
 from mining_fixer.matching import NoteRecord
-from mining_fixer.normalize import furigana_base_matches, is_empty_glossary_shell, strip_renderable
+from mining_fixer.normalize import furigana_base_matches, strip_renderable
 from mining_fixer.plan import (
     FURIGANA_FIELD,
     OP_ADD_TAGS,
@@ -17,6 +17,7 @@ from mining_fixer.plan import (
     OP_REPAIR_SENTENCE,
     OP_REPLACE_SOURCE,
     OP_STRIP_EMPTY_GLOSSARY,
+    OPS_TOUCHING_NONEMPTY,
     PLAN_VERSION,
     PlannedWrite,
     _bold_repair_for,
@@ -44,30 +45,18 @@ def test_plan_version_and_determinism():
 
 
 def test_never_overwrite_invariant():
-    # A fill writes into a field that renders as nothing: empty, or only
-    # empty container markup (the Yomitan shell, QUALITY Q-D13).
+    # A fill only ever writes into an empty field (QUALITY Q-D1).
     plan = build_plan([PARENT, CHILD], CFG, scope_note_ids=[CHILD_ID])
     for w in plan.writes:
         if w.op == OP_FILL:
-            assert w.old_value == "" or is_empty_glossary_shell(w.old_value), (
-                w.field,
-                w.new_value,
-            )
+            assert w.old_value == "", (w.field, w.new_value)
 
 
 def test_replaces_only_approved_ops():
     plan = build_plan([PARENT, CHILD], CFG, scope_note_ids=[CHILD_ID])
     for w in plan.writes:
         if w.old_value:
-            assert w.op in (
-                OP_REPLACE_SOURCE,
-                OP_EXPAND_SENTENCE,
-                OP_BOLD_CLOZE_WORD,
-                OP_REPAIR_SENTENCE,
-                OP_REGENERATE_FURIGANA,
-                OP_REPAIR_EXPRESSION,
-                OP_ADD_TAGS,
-            ), w.field
+            assert w.op in OPS_TOUCHING_NONEMPTY, w.field
 
 
 def test_expansion_guard_when_fragment_not_recoverable():
@@ -1502,9 +1491,10 @@ def test_expansion_cleans_the_copied_sentence_in_the_same_write():
     ]
 
 
-def test_a_shell_definition_is_filled_in_the_same_run_and_then_is_a_noop():
-    # One run fixes the card: the fill writes *through* the junk shell. A
-    # second run must have nothing left to do.
+def test_a_shell_definition_is_cleared_never_filled_from_sibling():
+    # Definitions are unique to each card (FIELD_NEVER_COPY): the add-on never
+    # copies definitions from sibling cards. An empty glossary shell is
+    # cleared (OP_STRIP_EMPTY_GLOSSARY), never filled from a sibling.
     shell = '<div class="yomitan-glossary"><ol></ol></div>'
     good = '<div class="yomitan-glossary"><ol><li>いっぱく【一白】しろい着物</li></ol></div>'
     target = rec(
@@ -1529,11 +1519,16 @@ def test_a_shell_definition_is_filled_in_the_same_run_and_then_is_a_noop():
     fills = [
         w for w in plan.writes if w.note_id == 1 and w.op == OP_FILL and w.field == "Definition"
     ]
-    assert len(fills) == 1
-    assert fills[0].old_value == shell
-    assert fills[0].new_value == good
-    assert "filled-through-empty-shell" in fills[0].badges
-    assert not [w for w in plan.writes if w.note_id == 1 and w.op == OP_STRIP_EMPTY_GLOSSARY]
+    assert fills == []  # Definition is NEVER copied from siblings
+    clears = [
+        w
+        for w in plan.writes
+        if w.note_id == 1 and w.op == OP_STRIP_EMPTY_GLOSSARY and w.field == "Definition"
+    ]
+    assert len(clears) == 1
+    assert clears[0].old_value == shell
+    assert clears[0].new_value == ""
+    assert "cleared-empty-glossary" in clears[0].badges
 
     # Idempotence: the card the plan leaves behind has nothing left to fix.
     applied = dict(target.fields)
@@ -1884,9 +1879,9 @@ def test_expression_repair_ignores_html_ruby_furigana():
 
 
 def test_expression_repair_is_deferred_while_word_writes_are_queued():
-    # F2 risk 4: a Definition fill is sourced from the old spelling's word
-    # group; the rewrite must not land in the same run. The next run, with
-    # the Definition filled, picks the rewrite up.
+    # F2 risk 4: a word-level fill (e.g. Frequency) is sourced from the old
+    # spelling's word group; the rewrite must not land in the same run. The
+    # next pass, with the word field filled, picks the rewrite up.
     sibling = rec(
         7,
         {
@@ -1894,7 +1889,7 @@ def test_expression_repair_is_deferred_while_word_writes_are_queued():
             "Expression": "ひと握り",
             "reading": "ひとにぎり",
             "furigana": "一握[ひとにぎ]り",
-            "Definition": "one handful",
+            "Frequency": "14200",
         },
     )
     target = rec(
@@ -1905,11 +1900,11 @@ def test_expression_repair_is_deferred_while_word_writes_are_queued():
             "reading": "ひとにぎり",
             "furigana": "一握[ひとにぎ]り",
             "Sentence": "ほんの<b>ひと握り</b>の怪物たち",
-            "Definition": "",
+            "Frequency": "",
         },
     )
     plan = build_plan([sibling, target], EXPR_REPAIR_CFG, scope_note_ids=[8])
-    assert any(w.field == "Definition" for w in plan.writes)  # the word tier ran
+    assert any(w.field == "Frequency" for w in plan.writes)  # the word tier ran
     assert expression_rows(plan) == []
 
 
@@ -2122,3 +2117,273 @@ def test_sentence_audio_is_strictly_fill_only_never_overwritten():
     ]
     plan = build_plan([target, *mates], CFG, scope_note_ids=[1])
     assert not [w for w in plan.writes if w.note_id == 1 and w.field == "Sentence Audio"]
+
+
+def test_word_recovery_never_overwrites_card_that_owns_sentence_audio():
+    # A card with its own Sentence Audio and an inflected spelling (読め) is a
+    # complete scene unit even when Translation is empty (Q-D16); same-episode
+    # cards mentioning 読む in another scene must never overwrite its Sentence.
+    target = rec(
+        1,
+        {
+            "Expression": "読む",
+            "reading": "よむ",
+            "furigana": "読[よ]む",
+            "Sentence": "この本を<b>読め</b>と言われた。",
+            "Sentence Audio": " [sound:scene_15m01s.webm] ",
+            "Picture": '<img src="scene_15m01s.jpg">',
+            "Translation": "",
+            "Source": "Show.mp4 (15m01s)",
+            "cloze-body": "",
+        },
+    )
+    other1 = rec(
+        2,
+        {
+            "Expression": "趣味",
+            "Sentence": "毎日新聞を読むのが私の<b>趣味</b>です。",
+            "Sentence Audio": " [sound:scene_20m00s.webm] ",
+            "Picture": '<img src="scene_20m00s.jpg">',
+            "Source": "Show.mp4 (20m00s)",
+            "cloze-body": "趣味",
+        },
+    )
+    other2 = rec(
+        3,
+        {
+            "Expression": "新聞",
+            "Sentence": "毎日<b>新聞</b>を読むのが私の趣味です。",
+            "Sentence Audio": " [sound:scene_20m00s.webm] ",
+            "Picture": '<img src="scene_20m00s.jpg">',
+            "Source": "Show.mp4 (20m00s)",
+            "cloze-body": "新聞",
+        },
+    )
+    plan = build_plan([target, other1, other2], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if w.note_id == 1 and w.field == "Sentence"]
+
+
+def test_word_recovery_skips_junk_sources_and_cleans_recovered_sentence():
+    # Q-D8 + Q-A2: recovered scene sentences strip configured noise in the same
+    # write, and placeholder/separator values in scene fill fields are ignored.
+    target = rec(
+        1,
+        {
+            "Expression": "類い希",
+            "reading": "たぐいまれ",
+            "furigana": "類[たぐ]い 希[まれ]",
+            "Sentence": "関係のない文です。",
+            "Sentence Audio": "",
+            "Picture": "",
+            "Translation": "",
+            "Sentence (furigana)": "",
+            "Source": "Show.mp4 (15m01s)",
+            "cloze-body": "類い希",
+        },
+    )
+    shared_ruby = (
+        "その 立体[りったい] 造形[ぞうけい]に<br> 類[たぐ]いまれなる 才能[さいのう]を 持[も]ち➡"
+    )
+    s1 = rec(
+        2,
+        {
+            "Expression": "造形",
+            "Sentence": "その立体<b>造形</b>に<br>類いまれなる才能を持ち➡",
+            "Sentence (furigana)": shared_ruby,
+            "Sentence Audio": " [sound:a.webm] ",
+            "Picture": '<img src="a.jpg">',
+            "Translation": "<hr>",
+            "Source": "Show.mp4 (15m20s)",
+            "cloze-body": "造形",
+        },
+    )
+    s2 = rec(
+        3,
+        {
+            "Expression": "才能",
+            "Sentence": "その立体造形に<br>類いまれなる<b>才能</b>を持ち➡",
+            "Sentence (furigana)": shared_ruby,
+            "Sentence Audio": " [sound:a.webm] ",
+            "Picture": '<img src="a.jpg">',
+            "Translation": "<hr>",
+            "Source": "Show.mp4 (15m20s)",
+            "cloze-body": "才能",
+        },
+    )
+    cfg = {**CFG, "sentence_repair_rules": ["strip-arrows"]}
+    plan = build_plan([target, s1, s2], cfg, scope_note_ids=[1])
+    by_field = {w.field: w for w in plan.writes if w.note_id == 1}
+    assert "➡" not in by_field["Sentence"].new_value
+    assert "expanded-strip-arrows" in by_field["Sentence"].badges
+    assert "Sentence (furigana)" in by_field
+    assert "➡" not in by_field["Sentence (furigana)"].new_value
+    assert "Translation" not in by_field  # <hr> is junk, never copied
+
+
+def test_existing_bold_normalization_strips_noise_and_respects_guards():
+    # Moving a foreign bold must also strip tail arrows in one pass, and must
+    # never place a new bold via a 2-kana reading or a clause-like Expression.
+    cfg = {**CFG, "sentence_repair_rules": ["strip-arrows"]}
+    card = rec(
+        1,
+        {
+            "Expression": "診察",
+            "reading": "しんさつ",
+            "furigana": "診察[しんさつ]",
+            "cloze-body": "診察",
+            "Sentence": "<b>至急</b> 先生は今 診察中ですので➡",
+        },
+    )
+    plan = build_plan([card], cfg, scope_note_ids=[1])
+    rows = [w for w in plan.writes if w.field == "Sentence"]
+    assert len(rows) == 1
+    assert rows[0].new_value == "至急 先生は今 <b>診察</b>中ですので"
+    assert "strip-arrows" in rows[0].badges
+
+    short_reading = rec(
+        2,
+        {
+            "Expression": "為る",
+            "reading": "する",
+            "furigana": "",
+            "cloze-body": "",
+            "Sentence": "<b>それ</b>をするつもりです。",
+        },
+    )
+    assert not build_plan([short_reading], cfg, scope_note_ids=[2]).writes
+
+    clause_expr = rec(
+        3,
+        {
+            "Expression": "漢字は読めるようになりたいかな",
+            "reading": "",
+            "furigana": "",
+            "cloze-body": "",
+            "Sentence": "<b>別の語</b> 漢字は読めるようになりたいかな",
+        },
+    )
+    assert not build_plan([clause_expr], cfg, scope_note_ids=[3]).writes
+
+
+def test_existing_complex_bold_markup_is_not_double_wrapped():
+    # Nested HTML inside <b> or <strong> tags is left untouched rather than
+    # wrapping a second <b> that would fail post-write verification.
+    card = rec(
+        1,
+        {
+            "Expression": "診察",
+            "reading": "しんさつ",
+            "cloze-body": "診察",
+            "Sentence": "<b>至急<br>連絡</b> 先生は今 診察中ですので",
+        },
+    )
+    plan = build_plan([card], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+
+
+def test_demoted_completion_keeps_guard_visible_and_cleans_fragment_ruby_arrows():
+    # If furigana regeneration fails on a completion that needed a rebuilt ruby,
+    # the completion is demoted with `stale-fragment-furigana-risk` kept visible
+    # on Sentence (never silently replaced), while subtitle arrows in the kept
+    # fragment ruby are still cleaned.
+    child = rec(
+        1,
+        {
+            **_ZHENGDAO_CHILD,
+            "Sentence": "兄(オレ)が<b>正道</b>を歩んだのなら",
+            "Sentence (furigana)": "兄[あに](オレ)が 正道[せいどう]を 歩[あゆ]んだのなら➡",
+        },
+    )
+    parent = rec(
+        2,
+        {
+            "Expression": "出来",
+            "reading": "でき",
+            "Sentence": "兄(オレ)が正道を歩んだのなら 弟は 後をついてくればいい",
+            "Sentence Audio": " [sound:asbp_x.webm] ",
+            "Picture": '<img src="asbp_x.jpeg">',
+            "Source": "[Judas] JUJUTSU KAISEN - S03E02",
+            "Sentence (furigana)": "",
+            "cloze-body": "出来",
+        },
+    )
+    cfg = {
+        **CFG,
+        "batch_regenerate_furigana": True,
+        "sentence_repair_rules": ["strip-arrows"],
+    }
+    plan = build_plan([child, parent], cfg, scope_note_ids=[1], furigana_generator=lambda _s: "")
+    expansion = next(w for w in plan.writes if w.note_id == 1 and w.op == OP_EXPAND_SENTENCE)
+    assert not expansion.default_checked
+    assert "stale-fragment-furigana-risk" in expansion.badges
+    checked = {(w.field, w.op): w for w in plan.writes if w.note_id == 1 and w.default_checked}
+    assert ("Sentence (furigana)", OP_REPAIR_SENTENCE) in checked
+    assert "➡" not in checked[("Sentence (furigana)", OP_REPAIR_SENTENCE)].new_value
+
+
+def test_fragment_ruby_arrow_does_not_block_furigana_regeneration_on_expansion():
+    # When a card expands to the full scene and its old fragment ruby carries a
+    # tail arrow, ruby noise-repair must not claim FURIGANA_FIELD with the old
+    # fragment and block furigana regeneration for the expanded sentence.
+    child = rec(
+        1,
+        {
+            **_ZHENGDAO_CHILD,
+            "Sentence (furigana)": "兄[あに](オレ)が 正道[せいどう]を 歩[あゆ]んだのなら➡",
+        },
+    )
+    parent = rec(
+        2,
+        {
+            "Expression": "出来",
+            "reading": "でき",
+            "Sentence": "兄(オレ)が正道を歩んだのなら 弟は 後をついてくればいい",
+            "Sentence Audio": " [sound:asbp_x.webm] ",
+            "Picture": '<img src="asbp_x.jpeg">',
+            "Source": "[Judas] JUJUTSU KAISEN - S03E02",
+            "Sentence (furigana)": "",
+            "cloze-body": "出来",
+        },
+    )
+    cfg = {
+        **CFG,
+        "batch_regenerate_furigana": True,
+        "sentence_repair_rules": ["strip-arrows"],
+    }
+    plan = build_plan([child, parent], cfg, scope_note_ids=[1], furigana_generator=lambda s: s)
+    checked = {(w.field, w.op): w for w in plan.writes if w.note_id == 1 and w.default_checked}
+    assert ("Sentence", OP_EXPAND_SENTENCE) in checked
+    assert ("Sentence (furigana)", OP_REGENERATE_FURIGANA) in checked
+
+
+def test_missing_image_alongside_valid_sound_still_drops_fill():
+    parent_f = dict(PARENT.fields)
+    parent_f["Picture"] = '[sound:ok.webm] <img src="missing.jpeg">'
+    p = rec(PARENT.note_id, parent_f, tags=("asbplayer", "yomitan"))
+    plan = build_plan(
+        [p, CHILD],
+        CFG,
+        scope_note_ids=[CHILD.note_id],
+        media_exists=lambda name: name != "missing.jpeg",
+    )
+    assert not [w for w in plan.writes if w.note_id == CHILD.note_id and w.field == "Picture"]
+
+
+def test_config_field_and_autocheck_overrides_are_respected():
+    parent_f = dict(PARENT.fields)
+    parent_f["Translation"] = "The doctor is in an examination."
+    parent_f["Notes"] = "polite context"
+    p = rec(PARENT.note_id, parent_f, tags=("asbplayer", "yomitan"))
+    cfg = {
+        **CFG,
+        "translation_autocheck": False,
+        "notes_autocheck": True,
+        "never_copy_fields": ["Picture"],
+        "scene_replace_fields": ["Sentence"],  # Source replacement switched off
+    }
+    plan = build_plan([p, CHILD], cfg, scope_note_ids=[CHILD.note_id])
+    by_field = {w.field: w for w in plan.writes if w.note_id == CHILD.note_id}
+    assert "Picture" not in by_field
+    assert "Source" not in by_field
+    assert by_field["Translation"].default_checked is False
+    assert by_field["Notes"].default_checked is True
