@@ -9,11 +9,10 @@ invariants over every card in scope, after applying a run to the copy.
 
 Invariants (a card fails if any is broken):
   A  every ``[sound:...]`` / ``<img src=...>`` file referenced exists;
-  B  the Sentence Audio belongs to the card's *own* moment — the asbplayer
-     export encodes the source millisecond, and it must sit within a few
-     seconds of the timestamped Source (cards sharing a sentence but mined
-     at different moments legitimately differ, so the sentence is not the
-     audio oracle);
+  B  the Sentence is the oracle for its own clip: cards sharing one
+     Sentence are the same speech, so a card whose Sentence Audio differs
+     from a majority (two or more) of its sentence group holds the wrong
+     capture (the minority is corrected by the plan);
   C  a non-empty ruby describes the sentence (base text matches);
   D  exactly one bold span, wrapping one of the card's own spellings
      (compared under width folding — a subtitle dump's half-width katakana
@@ -50,10 +49,9 @@ from mining_fixer.applier import NoteState, decide  # noqa: E402
 from mining_fixer.batch import default_ops, select  # noqa: E402
 from mining_fixer.matching import NoteRecord  # noqa: E402
 from mining_fixer.normalize import furigana_base_matches, strip_renderable  # noqa: E402
-from mining_fixer.plan import _source_seconds, build_plan  # noqa: E402
+from mining_fixer.plan import build_plan  # noqa: E402
 
 SOUND_RE = re.compile(r"\[sound:([^\]]+)\]")
-AUDIO_STAMP_RE = re.compile(r"asbp_.*?_(\d{4,})_[^/]+$")
 IMG_RE = re.compile(r"<img[^>]+src=[\"']?([^\"'>]+)", re.IGNORECASE)
 
 
@@ -184,6 +182,9 @@ def main() -> int:
                 col.update_note(note)
 
         fields = {note_id: dict(col.get_note(note_id).items()) for note_id in scope}
+        by_sentence: dict[str, list[int]] = collections.defaultdict(list)
+        for note_id in scope:
+            by_sentence[strip_renderable(fields[note_id].get("Sentence"))].append(note_id)
 
         violations: collections.Counter[str] = collections.Counter()
         examples: dict[str, list[str]] = collections.defaultdict(list)
@@ -220,22 +221,25 @@ def main() -> int:
                 violations["A media file missing"] += 1
                 examples["A media file missing"].append(word)
 
-            # B: the Sentence Audio belongs to the card's *own* moment. The
-            # asbplayer export encodes the source millisecond in its filename,
-            # so it must sit within a few seconds of the timestamped Source.
-            # Cards sharing a Sentence but mined at different moments
-            # legitimately differ — the sentence is not the audio oracle.
-            source_ms = _source_seconds(card.get("Source"))
-            for name in SOUND_RE.findall(card.get("Sentence Audio") or ""):
-                stamp = AUDIO_STAMP_RE.search(name)
-                if (
-                    source_ms is not None
-                    and stamp
-                    and abs(int(stamp.group(1)) - source_ms * 1000) > 5000
-                ):
-                    violations["B audio from another moment"] += 1
-                    examples["B audio from another moment"].append(word)
-                    break
+            # B: the Sentence is the oracle for its own clip (QUALITY Q-D17).
+            # Cards sharing one Sentence are the same speech, so they must
+            # carry the same audio; a card whose clip differs from a majority
+            # of two or more is the wrong capture (author's 類い希/自閉症/自負:
+            # a 15m01s clip on a block seven cards hold at 15m20s). A clip no
+            # group agrees on is not judged here — it has no reference.
+            mates = [m for m in by_sentence[strip_renderable(sentence)] if m != note_id]
+            own = tuple(sorted(SOUND_RE.findall(card.get("Sentence Audio") or "")))
+            if own and mates:
+                counted = collections.Counter(
+                    tuple(sorted(SOUND_RE.findall(fields[m].get("Sentence Audio") or "")))
+                    for m in mates
+                )
+                counted.pop((), None)
+                if counted:
+                    best, agree = counted.most_common(1)[0]
+                    if agree >= 2 and own != best:
+                        violations["B audio disagrees with its sentence group"] += 1
+                        examples["B audio disagrees with its sentence group"].append(word)
 
             if ruby.strip() and sentence.strip() and not furigana_base_matches(ruby, sentence):
                 violations["C ruby does not match its sentence"] += 1

@@ -1421,6 +1421,38 @@ def _modal(values: list[str], minimum: int = 2) -> str | None:
     return value if count >= minimum else None
 
 
+def _sentence_audio_writes(target: NoteRecord, group: list[NoteRecord]) -> list[PlannedWrite]:
+    """The Sentence is the oracle for its own audio (QUALITY Q-D17).
+
+    Cards that share one Sentence are the same speech, so they must carry the
+    same clip. When two or more of them agree on a different ``Sentence Audio``
+    the minority value is the wrong capture — a neighbouring line exported at
+    the mining moment (author's 類い希 / 自閉症 / 自負: a 15m01s clip on a block
+    the other seven cards hold at 15m20s). Replace it with the majority; a clip
+    no two cards agree on is never guessed. Pure.
+    """
+    field = "Sentence Audio"
+    current = target.get(field) or ""
+    values = [record.get(field) or "" for record in group if record.note_id != target.note_id]
+    counted = collections.Counter(value for value in values if value.strip())
+    if not counted:
+        return []
+    best, count = counted.most_common(1)[0]
+    if count < 2 or best.strip() == current.strip():
+        return []
+    return [
+        PlannedWrite(
+            note_id=target.note_id,
+            field=field,
+            op=OP_FILL if is_empty(current) else OP_EXPAND_SENTENCE,
+            old_value="" if is_empty(current) else current,
+            new_value=best,
+            default_checked=True,
+            badges=("sentence-group-audio", f"{count}-cards-agree"),
+        )
+    ]
+
+
 def _moment_group_writes(
     target: NoteRecord,
     mates: list[NoteRecord],
@@ -2105,6 +2137,11 @@ def build_plan(
     min_len = int(cfg.get("min_sentence_len", 6))
     cache: dict[int, str] = {}
     by_id = {r.note_id: r for r in records}
+    by_sentence: dict[str, list[NoteRecord]] = {}
+    for record in records:
+        sentence_key = strip_renderable(record.get("Sentence"))
+        if sentence_key:
+            by_sentence.setdefault(sentence_key, []).append(record)
 
     parents_by_id = {
         r.note_id: r
@@ -2190,6 +2227,15 @@ def build_plan(
                 reasons[target.note_id] = reason
         elif moment_reason:
             reasons[target.note_id] = moment_reason
+        # The Sentence is the oracle for its own clip (QUALITY Q-D17): the
+        # cards sharing this sentence must agree on the audio; the minority is
+        # the wrong capture and is replaced, never guessed.
+        sentence_audio = _sentence_audio_writes(
+            target, by_sentence.get(strip_renderable(target.get("Sentence")), [])
+        )
+        if sentence_audio:
+            target_writes = [w for w in target_writes if w.field != "Sentence Audio"]
+            target_writes.extend(sentence_audio)
         for w in scene_writes:
             if w.source_note_id:
                 parent_usage[w.source_note_id] = parent_usage.get(w.source_note_id, 0) + 1
