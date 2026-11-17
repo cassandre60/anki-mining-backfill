@@ -306,10 +306,12 @@ first, with the reason.
   rewritten. Measured by `scripts/scene_audit.py` (class **F**): one run is
   applied to a copy, the same scope is re-planned, and **run 2 must be 0**.
   This is a number, not a description. The 2026-11-17 measurement on the
-  newest 300 cards found rows still changing on the second pass (cascade,
-  bold-not-yet, glossary, recovered-ruby), so the current code does **not**
-  yet meet this rule; it is tracked and must be driven to 0 before the
-  dimension is called finished.
+  newest 300 cards is **21 rows on 10 cards** (Picture 6, Sentence 4, ruby 4,
+  audio 3, tags 2, translation 1, source 1), down from 33 after the bold
+  `old_value` fix (`59f2db6`). Every row is a cross-run cascade: a card this
+  run completes becomes a source, and its neighbour is only filled on the
+  next Apply. The current code therefore does **not** yet meet this rule; it
+  is tracked and must be driven to 0 before the dimension is called finished.
 - **Q-A3 — Undo is exact and conservative.** It restores only fields still
   holding the applied value, removes only the tags the run added, and reports
   `changed since the run` instead of clobbering a later edit. Undo is itself
