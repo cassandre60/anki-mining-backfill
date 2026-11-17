@@ -226,7 +226,12 @@ def _text_guard_reason(guarded: list[PlannedWrite]) -> str:
     for badge, reason in TEXT_GUARDS:
         if badge in badges:
             return reason
-    return "sentence left alone — guard did not pass"
+    if "review-sense-field" in badges:
+        return "definition left alone — unverified single source (needs review)"
+    if "kanji-attribution-guard" in badges:
+        return "definition left alone — single-kanji attribution guard"
+    fields = ", ".join(sorted({w.field for w in guarded}))
+    return f"{fields} left alone — guard did not pass"
 
 
 def select(plan: Plan, ops: frozenset[str]) -> BatchSelection:
