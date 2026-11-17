@@ -2062,31 +2062,63 @@ def test_recovery_is_refused_when_the_word_is_present_in_katakana():
     assert not [w for w in plan.writes if "recovered-sentence" in w.badges]
 
 
-def test_a_wrong_audio_is_replaced_by_its_sentence_group_majority():
-    # Cards sharing one Sentence are the same speech, so they must agree on the
-    # audio. The author's 類い希/自閉症/自負 carried a 15m01s clip while seven
-    # cards of the same sentence held the 15m20s clip — the minority is the
-    # wrong capture, not a different moment.
-    from mining_fixer.plan import _sentence_audio_writes
-
-    good = " [sound:asbp_show_920476_good.webm] "
-    bad = " [sound:asbp_show_901356_bad.webm] "
-    target = rec(1, {"Sentence": "同じ 文です", "Sentence Audio": bad})
-    mates = [rec(i, {"Sentence": "同じ 文です", "Sentence Audio": good}) for i in (2, 3, 4)]
-    writes = _sentence_audio_writes(target, mates)
-    assert len(writes) == 1
-    assert writes[0].new_value == good
-    assert writes[0].default_checked
-    assert "sentence-group-audio" in writes[0].badges
-
-
-def test_audio_is_never_guessed_without_a_sentence_group_majority():
-    from mining_fixer.plan import _sentence_audio_writes
-
-    target = rec(1, {"Sentence": "同じ 文です", "Sentence Audio": "[sound:a.webm]"})
-    # Three different clips: no two cards agree, so there is no reference.
-    mates = [
-        rec(2, {"Sentence Audio": "[sound:b.webm]"}),
-        rec(3, {"Sentence Audio": "[sound:c.webm]"}),
+def test_card_with_existing_audio_is_never_overwritten_by_moment_group():
+    # A card that already carries its own Sentence Audio is a scene unit in its
+    # own right (QUALITY Q-D16) — neither its sentence nor its audio may ever
+    # be overwritten by a neighbouring card mined at the same moment.
+    target = rec(
+        1,
+        {
+            "Expression": "自負",
+            "reading": "じふ",
+            "Sentence": "本日は皆さんに研究に関してお願いがあります。自負しております。",
+            "Sentence Audio": " [sound:asbp_dr._rintaro_episode_7__1_901356_x830iyzy.webm] ",
+            "Source": "Dr. Rintaro Episode 7 (1).mp4 (15m01s)",
+            "cloze-body": "自負",
+        },
+    )
+    mate = rec(
+        2,
+        {
+            "Expression": "別の言葉",
+            "Sentence": "全く別の文です。",
+            "Sentence Audio": " [sound:asbp_show_other.webm] ",
+            "Source": "Dr. Rintaro Episode 7 (1).mp4 (15m01s)",
+            "cloze-body": "別の言葉",
+        },
+    )
+    plan = build_plan([target, mate], CFG, scope_note_ids=[1])
+    assert not [
+        w for w in plan.writes if w.note_id == 1 and w.field in ("Sentence", "Sentence Audio")
     ]
-    assert _sentence_audio_writes(target, mates) == []
+
+
+def test_sentence_audio_is_strictly_fill_only_never_overwritten():
+    # QUALITY Q-D1: Fills only touch empty fields. An existing, non-empty
+    # Sentence Audio must never be overwritten even if neighbouring cards agree
+    # on a different clip.
+    target = rec(
+        1,
+        {
+            "Expression": "単語",
+            "Sentence": "共通の文です。",
+            "Sentence Audio": " [sound:clip_a.webm] ",
+            "Source": "Video.mp4 (10m00s)",
+            "cloze-body": "単語",
+        },
+    )
+    mates = [
+        rec(
+            i,
+            {
+                "Expression": f"単語{i}",
+                "Sentence": "共通の文です。",
+                "Sentence Audio": " [sound:clip_b.webm] ",
+                "Source": "Video.mp4 (10m00s)",
+                "cloze-body": f"単語{i}",
+            },
+        )
+        for i in (2, 3, 4)
+    ]
+    plan = build_plan([target, *mates], CFG, scope_note_ids=[1])
+    assert not [w for w in plan.writes if w.note_id == 1 and w.field == "Sentence Audio"]
