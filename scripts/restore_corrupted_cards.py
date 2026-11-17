@@ -110,8 +110,8 @@ RESTORATIONS = {
     1794831801529: {
         "name": "類い希",
         "fields": {
-            "Sentence Audio": " [sound:asbp_dr._rintaro_episode_7__1_901356_7gwwhbhy.webm] ",
-            "Source": "Dr. Rintaro Episode 7 (1).mp4 (15m01s)",
+            "Sentence Audio": " [sound:asbp_dr._rintaro_episode_7__1_920476_hu1ngyk7.webm] ",
+            "Source": "Dr. Rintaro Episode 7 (1).mp4 (15m20s)",
         },
     },
 }
