@@ -414,13 +414,19 @@ def preflight_fields(col, decision: ApplyDecision) -> list[str]:
     return problems
 
 
-def apply_batch(col, decision: ApplyDecision, meta: dict) -> BatchResult:
+def apply_batch(
+    col, decision: ApplyDecision, meta: dict, *, take_backup: bool = True
+) -> BatchResult:
     """Write a bulk decision: preflight, backup, log first, chunk, verify.
 
     The run log is written *before* the first write, so an interrupted or
     crashed run is still exactly reversible — undo only restores fields that
     still hold the value this run wrote. A failed backup aborts the run: no
     write happens without the safety net the user was promised.
+
+    ``take_backup=False`` skips the backup for a *later* pass of one Apply:
+    the fixpoint backs up once, before its first pass, not once per pass (a
+    full copy per pass would be four collection copies of one Apply).
     """
     result = BatchResult(writes=decision.row_count())
     if not decision.row_count():
@@ -430,11 +436,12 @@ def apply_batch(col, decision: ApplyDecision, meta: dict) -> BatchResult:
         result.problems.extend(field_problems)
         result.problems.append("nothing was written")
         return result
-    created, error = _take_backup(col)
-    result.backup_created = created
-    if error is not None:
-        result.problems.append(f"backup failed, nothing was written: {error}")
-        return result
+    if take_backup:
+        created, error = _take_backup(col)
+        result.backup_created = created
+        if error is not None:
+            result.problems.append(f"backup failed, nothing was written: {error}")
+            return result
     result.log_path = write_run_log(decision, meta)
     notes = decision.touched_notes
     for start in range(0, len(notes), BATCH_CHUNK_NOTES):
@@ -464,12 +471,15 @@ def apply_plan_to_fixpoint(
     needs its media would otherwise wait for the next Apply. So each pass
     re-plans on the *current* collection (real post-write state, never a
     simulation), selects the default rows, decides and writes — and the loop
-    stops when a pass has nothing to write. The per-pass undo logs are merged
-    into one, so Undo reverses the whole Apply.
+    stops when a pass has nothing to write. It backs up once, before the
+    first real pass, and reports a residual if the pass bound is hit. The
+    per-pass undo logs are merged into one, so Undo reverses the whole Apply.
     """
     combined = BatchResult()
     log_paths: list[Path] = []
     decision = first_decision
+    cleared = False
+    backed_up = False
     for _pass in range(MAX_APPLY_PASSES):
         if decision is None:
             preview = plan_preview(col, cfg, scope_note_ids=list(scope))
@@ -479,8 +489,10 @@ def apply_plan_to_fixpoint(
             selection = select(preview.plan, default_ops(cfg))
             decision = build_batch_decision(col, preview.plan, selection.rows, cfg)
         if not decision.row_count():
+            cleared = True
             break
-        result = apply_batch(col, decision, meta)
+        result = apply_batch(col, decision, meta, take_backup=not backed_up)
+        backed_up = True  # one backup per Apply, before its first real pass
         combined.writes += result.writes
         combined.modified += result.modified
         combined.problems.extend(result.problems)
@@ -491,6 +503,17 @@ def apply_plan_to_fixpoint(
         if result.problems:
             break
         decision = None  # next pass plans again on the state this pass wrote
+    if not cleared and not combined.problems:
+        # The pass bound was hit while the last pass still wrote. Re-plan once
+        # and say so; a silent residual would break Q-A2 without a trace.
+        preview = plan_preview(col, cfg, scope_note_ids=list(scope))
+        if preview.plan is not None:
+            remaining = select(preview.plan, default_ops(cfg))
+            if remaining.rows:
+                combined.problems.append(
+                    f"still {len(remaining.rows)} row(s) to write after "
+                    f"{MAX_APPLY_PASSES} passes — press Apply again"
+                )
     merge_run_logs(log_paths)
     return combined
 
