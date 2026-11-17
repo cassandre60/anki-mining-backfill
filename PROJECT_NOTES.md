@@ -73,7 +73,7 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   Recorded in `BULK_FIX.md` (open questions).
   Verified by: the census script's printed aggregates.
 - [2026-11-15, OpenCode] The collection has a second, empty deck-tree path
-  `Mansour Mohamed Mehdi Life Decks::Japanese::My New Japanese Deck`;
+  `<Legacy Profile> Life Decks::Japanese::My New Japanese Deck`;
   `config.json` points at the populated `My Life Decks…` one. No action
   taken — data observation only.
   Verified by: the `decks` table listing (0 vs 17,589 notes).
