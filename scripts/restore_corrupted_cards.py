@@ -7,26 +7,32 @@ overwrote the sentences of 自負, 自閉症, and 予て with neighbouring scene
 Then at 12:40 (run-20261117-124026) a buggy audio-majority rule overwrote the
 audio of 自負, 自閉症, and 類い希 with the 15m20s clip.
 
-This script restores those four cards to their true, pre-corruption state:
+This script inspects or restores those four cards on a **working copy** of a
+profile (never mutating a live profile directly — see AGENTS.md Hard Rule 1):
 - 自負 (1794831660430): 15m01s sentence with bold 自負, audio 901356, pic 901556
 - 自閉症 (1794831715530): 15m01s sentence with bold 自閉症, audio 901356, pic 901556
 - 予て (1794831385615): 14m50s sentence with bold かねて, audio 889878, pic 890078
-- 類い希 (1794831801529): original 40.7s audio 901356_7gwwhbhy.webm
+- 類い希 (1794831801529): 15m20s audio 920476_hu1ngyk7.webm
 
 Usage:
-    python3 scripts/restore_corrupted_cards.py --profile-dir "<profile>" [--apply]
+    python3 scripts/restore_corrupted_cards.py --profile-dir "<profile>" \
+        [--work-dir /tmp/opencode/mb_restore --apply]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from build_audit_package import prepare_work_dir  # noqa: E402
 
 RESTORATIONS = {
     1794831385615: {
@@ -117,20 +123,73 @@ RESTORATIONS = {
 }
 
 
+def _read_only_fields(col_path: Path, note_id: int) -> dict[str, str] | None:
+    """Read one note's fields via immutable read-only SQLite (never locks Anki)."""
+    con = sqlite3.connect(f"file:{col_path}?mode=ro&immutable=1", uri=True, timeout=30)
+    try:
+        row = con.execute("select mid, flds from notes where id=?", (note_id,)).fetchone()
+        if row is None:
+            return None
+        ntid, flds = row
+        names = [
+            name
+            for _ord, name in con.execute(
+                "select ord, name from fields where ntid=? order by ord", (ntid,)
+            )
+        ]
+        return dict(zip(names, flds.split("\x1f"), strict=False))
+    finally:
+        con.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile-dir", required=True, type=Path)
-    parser.add_argument("--apply", action="store_true", help="write to the collection")
+    parser.add_argument(
+        "--work-dir",
+        type=Path,
+        default=None,
+        help="scratch directory to copy the collection into when --apply is set",
+    )
+    parser.add_argument("--apply", action="store_true", help="write to the --work-dir copy")
     args = parser.parse_args()
-
-    from anki.collection import Collection
 
     col_path = args.profile_dir / "collection.anki2"
     if not col_path.is_file():
         print(f"Error: collection not found at {col_path}", file=sys.stderr)
         return 1
 
-    col = Collection(str(col_path))
+    if not args.apply:
+        for nid, info in RESTORATIONS.items():
+            current_fields = _read_only_fields(col_path, nid)
+            if current_fields is None:
+                print(f"Note {nid} ({info['name']}): not found")
+                continue
+            changes = [
+                (field_name, current_fields.get(field_name, ""), target_value)
+                for field_name, target_value in info["fields"].items()
+                if current_fields.get(field_name, "").strip() != target_value.strip()
+            ]
+            print(f"\nNote {nid} ({info['name']}): {len(changes)} field(s) to restore")
+            for field_name, cur, target_value in changes:
+                print(f"  {field_name:20}: {cur[:35]!r} -> {target_value[:35]!r}")
+        print("\nDry-run complete (read-only). Pass --work-dir <dir> --apply to write to a copy.")
+        return 0
+
+    if args.work_dir is None:
+        print(
+            "Error: --apply requires --work-dir (never write directly to --profile-dir).",
+            file=sys.stderr,
+        )
+        return 2
+    if args.work_dir.resolve() == args.profile_dir.resolve():
+        print("Error: --work-dir must differ from --profile-dir.", file=sys.stderr)
+        return 2
+
+    from anki.collection import Collection
+
+    work_col_path = prepare_work_dir(args.profile_dir, args.work_dir)
+    col = Collection(str(work_col_path))
     try:
         log_records: list[dict] = []
         for nid, info in RESTORATIONS.items():
@@ -151,7 +210,7 @@ def main() -> int:
             for field_name, cur, target_value in changes:
                 print(f"  {field_name:20}: {cur[:35]!r} -> {target_value[:35]!r}")
 
-            if changes and args.apply:
+            if changes:
                 for field_name, _, target_value in changes:
                     note[field_name] = target_value
                 col.update_note(note)
@@ -164,9 +223,9 @@ def main() -> int:
                     }
                 )
 
-        if args.apply and log_records:
+        if log_records:
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-            log_dir = args.profile_dir / "mining_fixer" / "undo"
+            log_dir = args.work_dir / "mining_fixer" / "undo"
             log_dir.mkdir(parents=True, exist_ok=True)
             log_file = log_dir / f"run-{stamp}.json"
             log_data = {
@@ -178,9 +237,9 @@ def main() -> int:
             log_file.write_text(
                 json.dumps(log_data, ensure_ascii=False, indent=2), encoding="utf-8"
             )
-            print(f"\nRestored {len(log_records)} note(s). Undo log written to:\n  {log_file}")
-        elif not args.apply:
-            print("\nDry-run complete. Run with --apply to write changes.")
+            print(
+                f"\nRestored {len(log_records)} note(s) in copy. Undo log written to:\n  {log_file}"
+            )
         return 0
     finally:
         col.close()
