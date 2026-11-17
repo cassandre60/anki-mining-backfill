@@ -467,6 +467,10 @@ def _bold_repair_for(
     ``reason``/``detail`` explain a miss for the report.
     """
     sentence = target.get("Sentence")
+    # The apply-time check compares against the field as it stands *now* (it
+    # still carries the subtitle arrows); the word is located in the cleaned
+    # text, so new_value strips them and old_value must not.
+    raw_sentence = sentence
     # <br> must not read as a bold tag: match <b>/<b attrs>/<strong only.
     if is_empty(sentence):
         return None, None, None
@@ -503,7 +507,7 @@ def _bold_repair_for(
             note_id=target.note_id,
             field="Sentence",
             op=OP_BOLD_CLOZE_WORD,
-            old_value=sentence,
+            old_value=raw_sentence,
             new_value=new_value,
             default_checked=True,
             badges=("bold-normalized-to-one",),
@@ -531,7 +535,7 @@ def _bold_repair_for(
                     note_id=target.note_id,
                     field="Sentence",
                     op=OP_BOLD_CLOZE_WORD,
-                    old_value=sentence,
+                    old_value=raw_sentence,
                     new_value=new_value,
                     default_checked=True,
                     badges=("bold-added-to-cloze-word", *noise_rules),
@@ -567,7 +571,7 @@ def _bold_repair_for(
                 note_id=target.note_id,
                 field="Sentence",
                 op=OP_BOLD_CLOZE_WORD,
-                old_value=sentence,
+                old_value=raw_sentence,
                 new_value=new_value,
                 default_checked=True,
                 badges=("bold-added-to-expression", *noise_rules),
@@ -589,7 +593,7 @@ def _bold_repair_for(
                 note_id=target.note_id,
                 field="Sentence",
                 op=OP_BOLD_CLOZE_WORD,
-                old_value=sentence,
+                old_value=raw_sentence,
                 new_value=new_value,
                 default_checked=True,
                 badges=("bold-added-to-surface-form", *noise_rules),
@@ -618,7 +622,7 @@ def _bold_repair_for(
                     note_id=target.note_id,
                     field="Sentence",
                     op=OP_BOLD_CLOZE_WORD,
-                    old_value=sentence,
+                    old_value=raw_sentence,
                     new_value=new_value,
                     default_checked=True,
                     badges=("bold-added-to-reading-form", *noise_rules),
@@ -641,7 +645,7 @@ def _bold_repair_for(
                     note_id=target.note_id,
                     field="Sentence",
                     op=OP_BOLD_CLOZE_WORD,
-                    old_value=sentence,
+                    old_value=raw_sentence,
                     new_value=new_value,
                     default_checked=True,
                     badges=("bold-added-to-kana-mix", *noise_rules),

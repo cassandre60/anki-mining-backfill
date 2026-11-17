@@ -211,6 +211,28 @@ def test_bold_moves_onto_a_half_width_katakana_spelling():
     assert strip_renderable(write.new_value) == strip_renderable(child["Sentence"])
 
 
+def test_a_bold_write_keeps_the_raw_sentence_as_its_old_value():
+    # The bold write also strips a tail arrow. Its old_value must be the field
+    # as it stands at apply time (with the arrow), while new_value is the
+    # cleaned + bolded text. Using the cleaned text as old_value made the
+    # applier reject the row as "changed since preview", so the card was never
+    # bolded and every run retried it (author: 11 cards on the newest 300).
+    cfg = {**CFG, "sentence_repair_rules": ["strip-arrows"]}
+    child = dict(CHILD.fields)
+    child["Expression"] = "診察"
+    child["cloze-body"] = "診察"
+    child["furigana"] = "診察[しんさつ]"
+    child["Sentence"] = "先生は今 診察中ですので➡"
+    c = rec(CHILD.note_id, child, tags=("yomitan",))
+    plan = build_plan([c], cfg, scope_note_ids=[c.note_id])
+    rows = [w for w in plan.writes if w.note_id == c.note_id and w.op == OP_BOLD_CLOZE_WORD]
+    assert rows
+    write = rows[0]
+    assert write.old_value == child["Sentence"]  # the field as it stands (➡ included)
+    assert "➡" not in write.new_value  # the arrow is cleaned in the same write
+    assert "<b>診察</b>" in write.new_value
+
+
 def test_a_foreign_ruby_is_never_copied_onto_a_different_sentence():
     # A parent's ruby annotates the *parent's* line. When the child's own
     # sentence is a different block, the parent's ruby describes text the
