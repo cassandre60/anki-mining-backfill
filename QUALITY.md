@@ -87,8 +87,10 @@ first, with the reason.
   add-on's public entry (which refuses non-empty destinations) is bypassed
   only to reach its MeCab/Kakasi reading, which is the same engine that
   entry uses. Guards: the generator input is the Sentence the plan will
-  leave behind (a queued repair/expansion/bold write feeds its new value —
-  repair precedes furigana, BULK_FIX.md); no other `Sentence (furigana)`
+  actually leave behind — the **checked** Sentence write (a repair/expansion/
+  bold row feeds its `new_value`; a guarded, unchecked expansion never
+  applies and must not feed the generator, or the ruby is built for a
+  sentence the card does not end up with); no other `Sentence (furigana)`
   write may be queued for the note (a scene fill owns the field first); an
   empty engine result or a raised engine error becomes a reported
   `furigana-generation-failed` reason, never a write; and the generated
@@ -149,6 +151,20 @@ first, with the reason.
   (owner requirement, 2026-11-16: "it should run on a card once, fix it").
   `strip_empty_glossary` remains the fallback for a shell with no sibling
   value to fill it with, and leaves the field empty for a later fill.
+- **Q-D15 — A ruby always describes the sentence the card ends up with.** The
+  ruby is *derived* from the sentence, so a `Sentence (furigana)` value that
+  does not carry the final Sentence's characters
+  (`normalize.furigana_base_matches`) is never written **checked** — whether it
+  came from a parent's payload, a moment group, a recovered scene or the
+  reading engine. The scene payload fill is the path this guards: it copies a
+  parent's ruby into an empty child ruby, and when the child's own sentence is
+  a different block the parent's ruby annotates text the card does not show
+  (author's どなた, 日取り). The invariant runs per target *before* the
+  regeneration tier decides, so a dropped ruby is regenerated correctly
+  instead of being blocked by a bad one (a guarded row, already demoted to
+  unchecked, is left for the reason it carries). Verified by
+  `test_a_foreign_ruby_is_never_copied_onto_a_different_sentence` and the
+  scene audit (C class 0 with the reading engine).
 
 ## Correctness of decisions
 

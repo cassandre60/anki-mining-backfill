@@ -326,6 +326,19 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   keys, so a fresh dev install with no overrides follows these defaults.
   Verified by: `tests/test_batch.py` (defaults on, per-key opt-out) and the
   local `meta.json` (no config section).
+- [2026-11-17, OpenCode] A ruby is *derived* from the sentence, so the plan
+  enforces Q-D15: a `Sentence (furigana)` write whose base text is not the
+  final `Sentence` is never checked. The scene payload fill used to copy a
+  parent's ruby onto a child whose own sentence was a different block
+  (author's どなた/日取り). Separately, `_furigana_write_for` used to feed the
+  generator the *first* `Sentence` write in the list, including a guarded
+  (unchecked) expansion that never applies — 高鳴る got a scene block's ruby
+  on its own sentence. It now uses the checked write.
+  Verified by: `test_a_foreign_ruby_is_never_copied_onto_a_different_sentence`
+  and `test_furigana_generation_uses_the_sentence_that_will_be_written` (both
+  fail on the pre-fix code) + the scene audit (class C 29 → 0 with the
+  simulated engine, 0 new violations; without an engine only the pre-existing
+  stale rubies that need the in-Anki engine remain).
 
 ## Lessons Learned
 

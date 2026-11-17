@@ -86,13 +86,23 @@ not have and must never be given.
   engine's spacing quirks, speaker brackets, mangled/unbalanced output
   rejected), `tests/test_plan.py` (checked write with badges, on by
   default, noop when the ruby already matches, generator unreachable →
-  one warning per run, generated from the post-repair sentence, defers to
+  one warning per run, generated from the **checked** (actually-applied)
+  post-repair sentence — never a guarded expansion,
+  `test_furigana_generation_uses_the_sentence_that_will_be_written` — defers to
   a queued scene fill of the field, dropped on a mangled or raising
   engine) and `tests/test_batch.py` (the on-by-default
   `batch_regenerate_furigana` tier with its opt-out key). The engine
   itself is never faked into the suite's core paths: it
   is an injected callable, so a broken MeCab degrades to a skip, not a
   wrong write — **never run it inside Anki from the suite**.
+- **Ruby/sentence coherence** (Q-D15) is pinned in `tests/test_plan.py`
+  (`test_a_foreign_ruby_is_never_copied_onto_a_different_sentence`: a parent
+  ruby that does not describe the child's sentence is never written checked;
+  `test_scene_furigana_filled_when_parent_has_it`: a *matching* scene ruby is
+  still filled byte-identically) and measured over a whole selection by
+  `scripts/scene_audit.py` (class C — the ruby does not match its sentence;
+  0 with the reading engine; without it only the pre-existing stale rubies
+  that need the in-Anki engine remain).
 - **Expression repair** (bulk-fix dimension 4, self-oracled variant, Q-D12)
   is pinned in `tests/test_normalize.py` (`furigana_base` extracts the
   dictionary form from inline ruby, unusable markup yields nothing),

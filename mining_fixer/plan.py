@@ -681,10 +681,18 @@ def _furigana_write_for(
     sentence = target.get("Sentence")
     if is_empty(sentence):
         return None, None, None
-    for w in target_writes:
-        if w.field == "Sentence":
-            sentence = w.new_value
-            break
+    # The generator input must be the sentence that will actually be written,
+    # so a *checked* Sentence write (repair/expansion/bold) feeds its new
+    # value. A guarded (unchecked) expansion never applies: using it would
+    # generate a ruby for a sentence the card does not end up with, and the
+    # ruby would then be applied checked onto a different text (author's
+    # 高鳴る: the scene block's ruby landed on the card's own sentence).
+    pending = next(
+        (w for w in target_writes if w.field == "Sentence" and w.default_checked),
+        None,
+    )
+    if pending is not None:
+        sentence = pending.new_value
     try:
         generated = generator(sentence)
     except Exception as exc:  # the engine subprocess is outside our control
@@ -1852,6 +1860,40 @@ def scope_from_selection(
     return scope, unknown
 
 
+def _drop_rubies_that_do_not_describe_the_sentence(
+    target: NoteRecord, writes: list[PlannedWrite]
+) -> list[PlannedWrite]:
+    """Drop a checked ruby write that does not describe the final Sentence.
+
+    The ruby is *derived* from the sentence, so a value mined from another
+    card's line must never land on a sentence it does not annotate. The
+    generic payload fill copies a parent's ruby into an empty child ruby
+    whenever the parent is the best source — but the parent's ruby belongs to
+    the parent's line, and when this card's own sentence is a different
+    (shorter) block it would annotate text the card does not show (author:
+    どなた, 日取り). Only *checked* rows are dropped; a row already demoted to
+    ``paired-with-expansion`` never applies, and removing the bad value here —
+    before the regeneration tier decides — lets a correct ruby be generated
+    in its place instead of being blocked by the bad one. Pure.
+    """
+    sentence = next(
+        (w.new_value for w in writes if w.field == "Sentence" and w.default_checked),
+        target.get("Sentence") or "",
+    )
+    if not sentence.strip():
+        return writes
+    return [
+        w
+        for w in writes
+        if not (
+            w.field == FURIGANA_FIELD
+            and w.default_checked
+            and w.new_value.strip()
+            and not furigana_base_matches(w.new_value, sentence)
+        )
+    ]
+
+
 def build_plan(
     records: list[NoteRecord],
     cfg: dict,
@@ -2056,6 +2098,11 @@ def build_plan(
                 warnings.append(
                     f"note {target.note_id} ({expr}): sentence repair skipped — {repair_detail}"
                 )
+        # The ruby must describe the Sentence this card ends up with: drop a
+        # checked ruby copied from another card's line *before* the ruby
+        # repair / regeneration steps, so the field is either cleaned or
+        # correctly regenerated rather than carrying the wrong text.
+        target_writes = _drop_rubies_that_do_not_describe_the_sentence(target, target_writes)
         # The ruby field carries the same subtitle arrows (owner report
         # 2026-11-16): clean it too, unless a checked write already targets it
         # (a furigana regeneration or a scene fill replaces the whole value).

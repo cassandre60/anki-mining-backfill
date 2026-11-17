@@ -5,7 +5,7 @@ from __future__ import annotations
 from test_golden_scene import CFG, CHILD, CHILD_ID, PARENT, PARENT_ID
 
 from mining_fixer.matching import NoteRecord
-from mining_fixer.normalize import is_empty_glossary_shell, strip_renderable
+from mining_fixer.normalize import furigana_base_matches, is_empty_glossary_shell, strip_renderable
 from mining_fixer.plan import (
     FURIGANA_FIELD,
     OP_ADD_TAGS,
@@ -18,6 +18,8 @@ from mining_fixer.plan import (
     OP_REPLACE_SOURCE,
     OP_STRIP_EMPTY_GLOSSARY,
     PLAN_VERSION,
+    PlannedWrite,
+    _furigana_write_for,
     _retarget_bold,
     build_plan,
     scope_from_selection,
@@ -141,16 +143,73 @@ def test_stale_furigana_blocks_default_checked():
 
 
 def test_scene_furigana_filled_when_parent_has_it():
-    parent_f = dict(PARENT.fields)
-    parent_f["Sentence (furigana)"] = (
-        "先生[せんせい]は今 診察[しんさつ]中ですので➡代わりに伺[うかが]います"
-    )
-    p = rec(PARENT.note_id, parent_f, tags=("asbplayer", "yomitan"))
-    plan = build_plan([p, CHILD], CFG, scope_note_ids=[CHILD.note_id])
+    # PARENT carries the full-scene ruby (its base text is the parent's
+    # sentence); CHILD's ruby is empty, so it is filled with the parent's —
+    # byte-identical to the user's manual fix (see test_golden_scene). The
+    # ruby must describe the sentence the card ends up with; a value that
+    # does not is never copied (test_a_foreign_ruby_is_never_copied...).
+    plan = build_plan([PARENT, CHILD], CFG, scope_note_ids=[CHILD.note_id])
     fills = [
         w for w in plan.writes if w.note_id == CHILD.note_id and w.field == "Sentence (furigana)"
     ]
     assert fills and fills[0].op == OP_FILL and fills[0].default_checked
+    assert fills[0].new_value == PARENT.get("Sentence (furigana)")
+
+
+def test_furigana_generation_uses_the_sentence_that_will_be_written():
+    # A guarded (unchecked) expansion never applies, so the generator must be
+    # fed the *checked* Sentence write. Feeding it the first Sentence write in
+    # the list (a guarded expansion added earlier) builds the ruby for a
+    # sentence the card does not end up with, and the ruby then lands checked
+    # on a different text (author's 高鳴る: a scene block's ruby on the card's
+    # own sentence).
+    seen: list[str] = []
+
+    def gen(sentence: str) -> str:
+        seen.append(sentence)
+        return sentence
+
+    writes = [
+        PlannedWrite(
+            note_id=CHILD.note_id,
+            field="Sentence",
+            op=OP_EXPAND_SENTENCE,
+            old_value="",
+            new_value="[TEL] 別の場面の 文です。",
+            default_checked=False,
+        ),
+        PlannedWrite(
+            note_id=CHILD.note_id,
+            field="Sentence",
+            op=OP_BOLD_CLOZE_WORD,
+            old_value=CHILD.get("Sentence"),
+            new_value=CHILD.get("Sentence"),
+            default_checked=True,
+        ),
+    ]
+    write, _reason, _detail = _furigana_write_for(CHILD, gen, writes)
+    assert seen == [CHILD.get("Sentence")]
+    assert write is not None and write.default_checked
+
+
+def test_a_foreign_ruby_is_never_copied_onto_a_different_sentence():
+    # A parent's ruby annotates the *parent's* line. When the child's own
+    # sentence is a different block, the parent's ruby describes text the
+    # child does not show — it must never ship checked (author's どなた,
+    # 日取り: a scene fill copied a parent's ruby under another sentence).
+    parent_f = dict(PARENT.fields)
+    parent_f["Sentence (furigana)"] = (
+        "先生[せんせい]は今 診察[しんさつ]中ですので➡代わりに伺[うかが]います"
+    )
+    assert not furigana_base_matches(parent_f["Sentence (furigana)"], PARENT.get("Sentence"))
+    p = rec(PARENT.note_id, parent_f, tags=("asbplayer", "yomitan"))
+    plan = build_plan([p, CHILD], CFG, scope_note_ids=[CHILD.note_id])
+    checked_rubies = [
+        w
+        for w in plan.writes
+        if w.note_id == CHILD.note_id and w.field == "Sentence (furigana)" and w.default_checked
+    ]
+    assert not checked_rubies
 
 
 def test_optout_tag_blocks_target():
