@@ -114,9 +114,15 @@ first, with the reason.
   ruby's base text must carry exactly the sentence's characters
   (`normalize.furigana_base_matches`), else `furigana-base-mismatch` and no
   write. Unreachable engine (headless, add-on missing) is reported once per
-  run. By owner decision (2026-11-16) it runs by default
-  (`batch_regenerate_furigana: true`); the config key remains the escape
-  hatch, and every guard above still applies.
+  run. The engine is the controller at `reading.mecab` inside the add-on
+  package (its `__init__` imports the `reading` submodule; the package has no
+  `mecab` attribute — looking only at the package silently disabled the whole
+  dimension until 2026-11-17). If a sentence completion shipped expecting a
+  rebuilt ruby (`ruby-will-be-regenerated`) and the engine produced nothing,
+  the completion is demoted (`stale-fragment-furigana-risk`) rather than
+  leaving the old ruby under the new text. By owner decision (2026-11-16) it
+  runs by default (`batch_regenerate_furigana: true`); the config key remains
+  the escape hatch, and every guard above still applies.
 - **Q-D12 — Expression repair is self-oracled and opt-in.** The
   `repair_expression` op rewrites a note's own `Expression` to the base text
   of its own `furigana` field: Yomitan records the dictionary form the lookup

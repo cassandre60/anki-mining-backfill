@@ -201,3 +201,40 @@ def test_batch_dialog_imports_with_real_anki():
     assert isinstance(dialog.BatchDialog, type)
     assert callable(dialog.open_batch_dialog)
     _purge("mining_fixer.batch_dialog")
+
+
+def test_japanese_support_lookup_finds_the_reading_engine(loaded_addon, monkeypatch):
+    # The engine is ``reading.mecab`` (a module-level ``MecabController`` in
+    # the add-on's ``reading`` submodule), not an attribute of the package.
+    # Looking only at the package returned None, so the furigana dimension
+    # silently reported itself unavailable and a sentence completion that
+    # needed a rebuilt ruby shipped unchecked (the 正道 card).
+    from mining_fixer import collection_io
+
+    controller = types.SimpleNamespace(reading=lambda sentence: sentence)
+    reading = types.ModuleType("3918629684.reading")
+    reading.mecab = controller
+    package = types.ModuleType("3918629684")
+    package.reading = reading
+    monkeypatch.setitem(sys.modules, "3918629684", package)
+    monkeypatch.setitem(sys.modules, "3918629684.reading", reading)
+    assert collection_io._japanese_support_mecab() is controller
+
+
+def test_japanese_support_lookup_accepts_a_package_level_controller(loaded_addon, monkeypatch):
+    from mining_fixer import collection_io
+
+    controller = types.SimpleNamespace(reading=lambda sentence: sentence)
+    package = types.ModuleType("3918629684")
+    package.mecab = controller
+    monkeypatch.setitem(sys.modules, "3918629684", package)
+    monkeypatch.delitem(sys.modules, "3918629684.reading", raising=False)
+    assert collection_io._japanese_support_mecab() is controller
+
+
+def test_japanese_support_lookup_is_none_without_the_addon(loaded_addon, monkeypatch):
+    from mining_fixer import collection_io
+
+    monkeypatch.delitem(sys.modules, "3918629684", raising=False)
+    monkeypatch.delitem(sys.modules, "3918629684.reading", raising=False)
+    assert collection_io._japanese_support_mecab() is None

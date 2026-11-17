@@ -130,6 +130,35 @@ def _record_for_note(note) -> NoteRecord:
     )
 
 
+def _japanese_support_mecab():
+    """The installed Japanese Support controller, or ``None``.
+
+    The add-on package's ``__init__`` imports ``reading`` as a submodule and
+    the controller lives *there*: ``reading.py`` ends with
+    ``mecab = MecabController()``. The package itself has no ``mecab``
+    attribute, so looking only at the package always returned ``None`` — the
+    furigana dimension silently reported itself unavailable, and a sentence
+    completion that needed a rebuilt ruby shipped unchecked (the 正道 card
+    kept its two-line fragment for exactly this reason). Guarded: any failure
+    means ``None``, so the caller reports the dimension unavailable rather
+    than guessing.
+    """
+    package = sys.modules.get("3918629684")
+    reading = sys.modules.get("3918629684.reading")
+    if reading is None and package is not None:
+        reading = getattr(package, "reading", None)
+    if reading is None:
+        try:
+            reading = __import__("3918629684.reading", fromlist=["mecab"])
+        except Exception:
+            reading = None
+    for module in (reading, package):
+        mecab = getattr(module, "mecab", None) if module is not None else None
+        if mecab is not None and hasattr(mecab, "reading"):
+            return mecab
+    return None
+
+
 def japanese_support_furigana_generator(col):
     """The reading engine of the installed Japanese Support add-on, or None.
 
@@ -143,11 +172,7 @@ def japanese_support_furigana_generator(col):
     the string function `regenerateReading` itself uses; the add-on's own
     public entry refuses non-empty destination fields).
     """
-    try:
-        module = sys.modules.get("3918629684") or __import__("3918629684")
-    except Exception:
-        return None
-    mecab = getattr(module, "mecab", None)
+    mecab = _japanese_support_mecab()
     if mecab is None:
         return None
     media_strip = col.media.strip

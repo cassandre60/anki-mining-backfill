@@ -2018,6 +2018,43 @@ def _drop_rubies_that_do_not_describe_the_sentence(
     ]
 
 
+def _demote_completion_with_stale_ruby(
+    target: NoteRecord, writes: list[PlannedWrite]
+) -> list[PlannedWrite]:
+    """Demote a completion that would keep a ruby describing other text.
+
+    A completion ships checked when the furigana tier *should* rebuild the
+    card's ruby in the same plan (``ruby-will-be-regenerated``). If the engine
+    is present but produces nothing, no ruby write is queued and the card's
+    existing fragment ruby would annotate only part of the new sentence. The
+    completion is demoted (unchecked) instead: the card keeps its own text
+    until a run can rebuild the ruby. A checked ruby write that already
+    describes the new sentence is fine. Pure.
+    """
+    completion = next(
+        (
+            w
+            for w in writes
+            if w.field == "Sentence" and w.op == OP_EXPAND_SENTENCE and w.default_checked
+        ),
+        None,
+    )
+    if completion is None:
+        return writes
+    ruby_write = next((w for w in writes if w.field == FURIGANA_FIELD and w.default_checked), None)
+    if ruby_write is not None and furigana_base_matches(ruby_write.new_value, completion.new_value):
+        return writes
+    current = target.get(FURIGANA_FIELD) or ""
+    if not current.strip() or furigana_base_matches(current, completion.new_value):
+        return writes
+    return [
+        replace(w, default_checked=False, badges=(*w.badges, "stale-fragment-furigana-risk"))
+        if w is completion
+        else w
+        for w in writes
+    ]
+
+
 def build_plan(
     records: list[NoteRecord],
     cfg: dict,
@@ -2266,6 +2303,10 @@ def build_plan(
                         f"note {target.note_id} ({expr}): furigana regeneration"
                         f" skipped — {furigana_detail}"
                     )
+        # A completion must never ship checked under a ruby that still
+        # describes the card's old text (Q-D4/Q-D15): if the regeneration
+        # engine was present but produced nothing, demote it.
+        target_writes = _demote_completion_with_stale_ruby(target, target_writes)
         # Tags: union of the target's tags with every contributing source's.
         tags_write = _tags_write_for(target, target_writes, by_id, cfg)
         if tags_write is not None:

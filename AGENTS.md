@@ -389,6 +389,21 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   `test_a_stale_fragment_ruby_is_regenerated_when_the_engine_is_available`,
   `test_a_completed_sentence_is_never_expanded_again`, and the 正道 replay.
 
+- [2026-11-17, OpenCode] The furigana engine lookup was wrong: the
+  Japanese Support add-on's package `__init__` imports `reading`, and the
+  controller is `reading.mecab` (a module-level `MecabController`); the
+  package itself has no `mecab`, so `getattr(package, "mecab")` always
+  returned None and dimension 3 silently never ran. Because a sentence
+  completion whose scene parent has no ruby depends on that dimension
+  (`ruby-will-be-regenerated`), 正道 kept its two-line fragment while the
+  audio fill landed (run log 2026-11-17 09:41: Picture + Sentence Audio
+  only). The lookup now walks `3918629684.reading` (`collection_io._japanese_support_mecab`),
+  and a completion that expected a rebuilt ruby is demoted
+  (`stale-fragment-furigana-risk`) if the engine returns nothing.
+  Verified by: `test_japanese_support_lookup_finds_the_reading_engine`
+  (plus the package-level and missing-addon cases) and
+  `test_a_completion_is_demoted_when_the_ruby_engine_returns_nothing`.
+
 ## Lessons Learned
 
 - [2026-11-14, OpenCode] `"<b" in sentence` matches `<br>`, and subtitle

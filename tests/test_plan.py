@@ -761,6 +761,43 @@ def test_a_stale_fragment_ruby_is_regenerated_when_the_engine_is_available():
     assert any(w.note_id == 1 and w.op == OP_REGENERATE_FURIGANA for w in plan.writes)
 
 
+def test_a_completion_is_demoted_when_the_ruby_engine_returns_nothing():
+    # The engine is present (so the completion ships expecting a rebuilt
+    # ruby) but produces nothing: the card would keep its fragment ruby under
+    # the full scene text. The post-check demotes the completion instead of
+    # writing a broken pair.
+    child = rec(
+        1,
+        {
+            **_ZHENGDAO_CHILD,
+            "Sentence (furigana)": "兄[あに](オレ)が 正道[せいどう]を 歩[あゆ]んだのなら",
+        },
+    )
+    parent = rec(
+        2,
+        {
+            "Expression": "出来",
+            "reading": "でき",
+            "Sentence": "兄(オレ)が正道を歩んだのなら 弟は 後をついてくればいい",
+            "Sentence Audio": " [sound:asbp_x.webm] ",
+            "Picture": '<img src="asbp_x.jpeg">',
+            "Source": "[Judas] JUJUTSU KAISEN - S03E02",
+            "Sentence (furigana)": "",
+            "cloze-prefix": "",
+            "cloze-body": "出来",
+            "cloze-suffix": "",
+        },
+        tags=("asbplayer",),
+    )
+    regen_cfg = {**CFG, "batch_regenerate_furigana": True}
+    plan = build_plan(
+        [child, parent], regen_cfg, scope_note_ids=[1], furigana_generator=lambda _s: ""
+    )
+    expansion = next(w for w in plan.writes if w.note_id == 1 and w.op == OP_EXPAND_SENTENCE)
+    assert not expansion.default_checked
+    assert "stale-fragment-furigana-risk" in expansion.badges
+
+
 def test_a_completed_sentence_is_never_expanded_again():
     # Convergence: a card that already carries its own Sentence Audio is a
     # scene unit in its own right — its audio matches its own sentence — so no
