@@ -123,21 +123,31 @@ first, with the reason.
   leaving the old ruby under the new text. By owner decision (2026-11-16) it
   runs by default (`batch_regenerate_furigana: true`); the config key remains
   the escape hatch, and every guard above still applies.
-- **Q-D12 — Expression repair is self-oracled and opt-in.** The
-  `repair_expression` op rewrites a note's own `Expression` to the base text
-  of its own `furigana` field: Yomitan records the dictionary form the lookup
-  resolved to (ひと握り mined under furigana `一握[ひとにぎ]り` → 一握り).
-  No dictionary seam and no hand-written kana→kanji table — the note itself
-  is the oracle. Guards, each a reported reason instead of a guess:
-  `reading_from_furigana(furigana)` must equal the note's normalized
-  `reading` field (the furigana must describe *this* word); the base must
-  differ from the Expression, contain kanji (a pure-kana rewrite would be a
-  different word, never a spelling) and be word-like (the Q-D3 gate). The
-  write is deferred when a word-level write is queued for the note — those
-  values come from the old spelling's word group and must not land in the
-  same run as the rewrite (F2 risk 4). By owner decision (2026-11-16,
-  "I want things to be easy") it runs by default like every other
-  dimension — automatic mode, no options to tick;
+- **Q-D12 — Expression repair is self-oracled, completion-only, on by
+  default.** The `repair_expression` op rewrites a note's own `Expression`
+  to the base text of its own `furigana` field: Yomitan records the
+  dictionary form the lookup resolved to (ひと握り mined under furigana
+  `一握[ひとにぎ]り` → 一握り). No dictionary seam and no hand-written
+  kana→kanji table — the note itself is the oracle. Guards, each a reported
+  reason instead of a guess: `reading_from_furigana(furigana)` must equal
+  the note's normalized `reading` field (the furigana must describe *this*
+  word); the base must differ from the Expression, contain kanji and be
+  word-like (the Q-D3 gate); and the rewrite must be a **kanji
+  completion** — the base's kanji set must strictly extend the
+  Expression's (ひと握り → 一握り, とっておき → 取って置き), never a
+  substitution or a drop. That one condition separates the owner's class
+  from the other same-reading spellings: a whole-deck census (2026-11-17)
+  found 705 completions out of 1,832 candidates — the other 1,127
+  (729 inflection → dictionary form such as 決まってる → 決まる, 385
+  kanji → kana preference such as 気付き → 気づき, 13 different-kanji
+  substitutions such as 美味い → 上手い) are refused and reported, never
+  written. `furigana_base` also treats HTML `<ruby>`/`<rt>` markup as an
+  unusable oracle (its `<rt>` text would corrupt the base into
+  `温あたためる`). The write is deferred when a word-level write is queued
+  for the note — those values come from the old spelling's word group and
+  must not land in the same run as the rewrite (F2 risk 4). By owner
+  decision (2026-11-16, "I want things to be easy") it runs by default like
+  every other dimension — automatic mode, no options to tick;
   `batch_repair_expression` remains the escape hatch to switch it off,
   and every rewrite is previewed old → new and undone from the run log
   like every other write.

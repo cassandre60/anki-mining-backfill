@@ -41,7 +41,7 @@ guard that drops what cannot be proven.
 | 1 | Source–child fixes (scene propagation) | **shipped** | `Sentence`, `Sentence (furigana)`, scene audio, picture, `Translation`, timestamped `Source` onto children | source-confidence (`divergent-parents`, `far-from-source`), text-safety (`cloze-anchor-not-unique`, `stale-fragment-furigana-risk`); a child missing its scene audio is completed to the parent's whole block (the fragment is contained in it, Q-D16) |
 | 2 | Sentence repair | **shipped, on by default** | flatten nested `<div>` block wrappers to `<br>` line breaks (`flatten-div-blocks`, owner addition 2026-11-17); remove line-tail continuation arrows (`➡` / `→`); join a short speaker tag to its line (`join-speaker-lines`); `<br>` line breaks stay as mined (owner decision 2026-11-15) | config-driven rule list; the flattening refuses any rewrite that would lose a visible character; `cloze-*` fragment anchor must still be found; old → new diff in the report |
 | 3 | Furigana generation | **shipped, on by default** | rebuild `Sentence (furigana)` from the note's own post-write sentence | runs *after* repair in one plan; `reading.mecab.reading` of Japanese Support (installed, id 3918629684) — never a home-grown generator; base-text guard + engine-failure reasons |
-| 4 | Expression repair | **shipped (self-oracled variant), on by default** | rewrite an Expression kept as the subtitle's surface form (ひと握り) to the dictionary form its own `furigana` records (一握[ひとにぎ]り → 一握り); kana-only Expressions without furigana and inflections stay future | the furigana base is the oracle, cross-checked against the `reading` field (`reading_from_furigana`); base must be a word-like kanji spelling (Q-D3 gate); deferred while word-level writes are queued; old → new in the preview, run-log undo; `batch_repair_expression` escape hatch |
+| 4 | Expression repair | **shipped (self-oracled variant), on by default** | rewrite an Expression kept as the subtitle's surface form (ひと握り) by *completing it with kanji* from the dictionary form its own `furigana` records (一握[ひとにぎ]り → 一握り); kana-only Expressions without furigana, inflections and kana-preference spellings stay future | the furigana base is the oracle, cross-checked against the `reading` field (`reading_from_furigana`); the base's kanji must strictly extend the Expression's — an added-kanji completion, never a substitution or a drop (whole-deck census 2026-11-17: 705 fire; 1,127 refused and reported); base word-like (Q-D3 gate); HTML `<ruby>` furigana unusable; deferred while word-level writes are queued; old → new in the preview, run-log undo; `batch_repair_expression` escape hatch |
 | 5 | Indentation / formatting | **partly shipped** — the `<div>` block flattening (dimension 2, 2026-11-17) | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
 | 6 | Bold from expression | **shipped (verbatim only)**; inflected matching future | on **non-listening** cards whose `Sentence` has no bold term, bold the expression's occurrence (including from a missing/junk `cloze-body`); an inflected surface (読む → 読め) is the open part | expression must look like a word (clause-like expressions such as 漢字は読めるようになりたいかな are rejected, never bolded); occurrence must be unique; ambiguity reported, never guessed; listening predicate mirrors the card template (see below) |
 
@@ -254,6 +254,17 @@ decision 2026-11-16).
   the owner's automatic-mode decision (2026-11-16, "I want things to be
   easy"); `batch_repair_expression` is the escape hatch. No offline
   dictionary needed for this variant.
+- **Narrowed 2026-11-17 (kanji completion only):** the whole-deck census
+  found 1,832 same-reading spellings would fire, including classes the
+  owner never asked for: 729 inflection → dictionary form (決まってる →
+  決まる), 385 kanji → kana preference (気付き → 気づき), 13 different-kanji
+  substitutions (美味い → 上手い — a different word that reads the same),
+  and 3 bases corrupted by HTML `<ruby>` furigana (`<rt>` text leaking
+  into the base: 温あたためる). The rule now requires the base's kanji to
+  strictly extend the Expression's: 705 completions fire; every other
+  shape is refused and reported
+  (`expression-repair-not-a-kanji-completion`), and `furigana_base`
+  treats `<ruby>`/`<rt>` markup as unusable.
 - **Still open.** Kana-only Expressions without a usable `furigana` field
   (いきなり with an empty furigana) need the offline dictionary seam below,
   and inflection repair needs MeCab (B8).

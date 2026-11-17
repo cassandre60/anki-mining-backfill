@@ -305,3 +305,10 @@ def test_furigana_base_is_empty_for_unusable_values():
     assert furigana_base("") == ""
     assert furigana_base("見[") == ""  # unbalanced: the writer mangled it
     assert furigana_base("[ひとにぎり]") == ""  # nothing outside the brackets
+
+
+def test_furigana_base_refuses_html_ruby_markup():
+    # HTML ruby is not the deck's bracket convention: its <rt> payload is a
+    # reading, so leaving it in would corrupt the base (温あたためる).
+    assert furigana_base("<ruby>温<rt>あたた</rt></ruby>める") == ""
+    assert furigana_base("温<rt>あたた</rt>める") == ""

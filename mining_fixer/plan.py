@@ -832,6 +832,21 @@ def _furigana_write_for(
     )
 
 
+def _completes_with_kanji(expression: str, base: str) -> bool:
+    """True when ``base`` spells the same word with kanji the Expression lacks.
+
+    The owner's class (QUALITY Q-D12): the mined spelling writes some kanji
+    in kana (ひと握り, とっておき) and the dictionary headword recorded in the
+    note's own ``furigana`` completes them (一握り, 取って置き). A base that
+    *drops* or *replaces* kanji is a different spelling, not a completion —
+    the dictionary's kana preference (気付き → 気づき), an inflected surface
+    (決まってる → 決まる) or a same-reading homophone (美味い → 上手い) — and
+    is reported, never written.
+    """
+    expression_kanji = set(_KANJI_HINT_RE.findall(expression))
+    return expression_kanji < set(_KANJI_HINT_RE.findall(base))
+
+
 def _expression_repair_for(
     target: NoteRecord,
 ) -> tuple[PlannedWrite | None, str | None, str | None]:
@@ -852,7 +867,11 @@ def _expression_repair_for(
       describe *this* word, not another entry;
     - the base must differ from the Expression (the inert, common case),
       contain kanji (a pure-kana rewrite would be a different word, never a
-      spelling) and be word-like (the Q-D3 gate);
+      spelling), be word-like (the Q-D3 gate) and be a **kanji completion**
+      of the Expression (``_completes_with_kanji``): it may add kanji the
+      mined spelling wrote in kana, never drop or replace them — that is
+      what refuses the inflection (決まってる → 決まる), kana-preference
+      (気付き → 気づき) and homophone (美味い → 上手い) classes;
     - the caller queues it only when no word-level write is queued for the
       note — those values come from the old spelling's word group and must
       not land in the same run as the rewrite (F2 risk 4).
@@ -886,6 +905,12 @@ def _expression_repair_for(
             None,
             "expression-not-word-like",
             f"furigana base '{base}' is not word-like enough to become the Expression",
+        )
+    if not _completes_with_kanji(expression, base):
+        return (
+            None,
+            "expression-repair-not-a-kanji-completion",
+            f"furigana base '{base}' does not add the kanji the Expression is missing",
         )
     return (
         PlannedWrite(

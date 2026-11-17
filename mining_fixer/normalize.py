@@ -228,11 +228,16 @@ def furigana_base(furigana: str) -> str:
 
     Bracket payloads stripped, markup removed, whitespace squeezed —
     ``一握[ひとにぎ]り`` → ``一握り``. Returns ``""`` for an unusable value:
-    empty, unbalanced brackets (the engine mangled it) or nothing left
+    empty, unbalanced brackets (the engine mangled it), HTML ``<ruby>``/
+    ``<rt>`` markup (the ``<rt>`` payload is a reading, not base text; left
+    in it would corrupt the base into ``温あたためる``) or nothing left
     outside the annotations. Pure; the Expression-repair oracle reads the
     dictionary form out of the note's own furigana with this.
     """
     if not (furigana or "").strip():
+        return ""
+    lowered = furigana.lower()
+    if "<ruby" in lowered or "<rt" in lowered:
         return ""
     if furigana.count("[") != furigana.count("]"):
         return ""

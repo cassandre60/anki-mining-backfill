@@ -100,6 +100,7 @@ REPORT_REASONS = frozenset(
         "cloze-word-not-in-sentence",
         "expression-repair-reading-mismatch",
         "expression-repair-no-kanji-form",
+        "expression-repair-not-a-kanji-completion",
         "expression-not-word-like",
     }
 )
@@ -116,6 +117,7 @@ _REASON_TEXT = {
     "cloze-word-not-in-sentence": "bold not found — left alone",
     "expression-repair-reading-mismatch": "furigana does not read as the reading field",
     "expression-repair-no-kanji-form": "no kanji spelling in the furigana — left alone",
+    "expression-repair-not-a-kanji-completion": "not a kanji completion — left alone",
     "expression-not-word-like": "furigana base is not word-like — left alone",
     "repair-anchor-risk": "cleaning would move the tested word — left alone",
     "furigana-generation-failed": "the reading engine produced nothing — left alone",

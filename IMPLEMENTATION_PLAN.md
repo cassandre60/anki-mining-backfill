@@ -146,16 +146,19 @@ below, never as silent scope creep inside a coding session.
   (`plan._expression_repair_for`): rewrite the Expression to the furigana
   base when the furigana is well-formed, `reading_from_furigana` equals
   the normalized `reading` field, the base differs from the Expression,
-  contains kanji and passes the word-like gate; deferred while
+  contains kanji, passes the word-like gate, and its kanji strictly
+  extend the Expression's — a kanji completion, never a substitution or
+  a drop (narrowed 2026-11-17 after the whole-deck census: 705 fire,
+  1,127 same-reading non-completions refused and reported); deferred while
   word-level writes are queued (F2 risk 4: the rewrite must not land in
   the same run as fills sourced from the old spelling's word group). On
   by default under the owner's automatic-mode decision ("I want things
   to be easy", 2026-11-16); `batch_repair_expression` is the escape
   hatch, badge `expression-repaired-from-furigana`, old spelling in the run log
   (Q-D7), reasons `expression-repair-reading-mismatch`,
-  `expression-repair-no-kanji-form`, `expression-not-word-like` in the
-  left-alone report. The dictionary seam for furigana-less kana
-  Expressions stays future (F2).
+  `expression-repair-no-kanji-form`, `expression-not-word-like` and
+  `expression-repair-not-a-kanji-completion` in the left-alone report.
+  The dictionary seam for furigana-less kana Expressions stays future (F2).
 - **T16 — Scene completion from the missing audio (Q-D16).** The owner's
   正道 card (1770544325713) kept its two-line word fragment while a run
   filled the sibling 出来's 14.8 s nine-line scene clip: the completion

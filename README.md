@@ -74,11 +74,13 @@ and covered by tests, not just intended:
      records — the card mined ひと握り while Yomitan resolved the lookup
      to 一握り (`furigana`: `一握[ひとにぎ]り`). The furigana base is the
      oracle: the rewrite happens only when the furigana is well-formed,
-     reads exactly as the note's `reading` field says, and the base is a
-     word-like kanji spelling that differs from the Expression. Anything
-     else is a reported reason, never a guess; the rewrite is deferred while
-     word-level fills are queued for the same card. On by default
-     (`batch_repair_expression` is the escape hatch to switch it off).
+     reads exactly as the note's `reading` field says, and the base adds
+     kanji the Expression is missing (ことば → 言葉) — a spelling that
+     merely swaps or drops kanji (気付き → 気づき) is reported and left
+     alone. Anything else is a reported reason, never a guess; the rewrite
+     is deferred while word-level fills are queued for the same card. On by
+     default (`batch_repair_expression` is the escape hatch to switch it
+     off).
    - Empty definitions (`strip_empty_glossary`): a definition field that
      holds nothing but empty markup (the Yomitan `<ol></ol>` shell) is
      cleared — it renders as nothing either way, so no information is lost.

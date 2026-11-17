@@ -129,8 +129,12 @@ the kanji form.
 furigana `一握[ひとにぎ]り`), the furigana base is the oracle — no
 dictionary needed. `plan._expression_repair_for` rewrites the Expression
 only when the furigana is well-formed, reads exactly as the `reading`
-field says, and the base is a word-like kanji spelling that differs from
-the Expression (QUALITY Q-D12, op `repair_expression`, badge
+field says, the base is a word-like kanji spelling that differs from the
+Expression, and it is a *kanji completion* — the base's kanji strictly
+extend the Expression's (ひと握り → 一握り, とっておき → 取って置き); a
+substitution or a drop (決まってる → 決まる, 気付き → 気づき, 美味い →
+上手い) is reported, never written, and HTML `<ruby>` furigana is not a
+usable oracle (QUALITY Q-D12, op `repair_expression`, badge
 `expression-repaired-from-furigana`). On by default under the owner's
 automatic-mode decision (2026-11-16); `batch_repair_expression` is the
 escape hatch. Verified end to end on the author's ひと握り card

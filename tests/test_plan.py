@@ -1756,6 +1756,133 @@ def test_expression_repair_refuses_a_clause_like_base():
     assert plan.reasons == {6: "expression-not-word-like"}
 
 
+def test_expression_repair_completes_a_kana_only_expression_with_kanji():
+    # The same class as ひと握り with no kanji mined at all: the dictionary
+    # form recorded in the furigana supplies every kanji.
+    target = rec(
+        20,
+        {
+            **BASE,
+            "Expression": "とっておき",
+            "reading": "とっておき",
+            "furigana": "取[と]って 置[お]き",
+            "Sentence": "ほんの<b>とっておき</b>の話",
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[20])
+    rows = expression_rows(plan)
+    assert len(rows) == 1
+    assert rows[0].old_value == "とっておき"
+    assert rows[0].new_value == "取って置き"
+
+
+def test_expression_repair_completes_a_mixed_expression_with_kanji():
+    # A kanji + kana spelling that gains one more kanji (子供のころ → 子供の頃).
+    target = rec(
+        21,
+        {
+            **BASE,
+            "Expression": "子供のころ",
+            "reading": "こどものころ",
+            "furigana": "子供[こども]の 頃[ころ]",
+            "Sentence": "ほんの<b>子供のころ</b>の話",
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[21])
+    rows = expression_rows(plan)
+    assert len(rows) == 1
+    assert rows[0].new_value == "子供の頃"
+
+
+def test_expression_repair_refuses_an_inflected_dictionary_form():
+    # 決まってる → 決まる is the dictionary form, but nothing is being
+    # completed: the kanji set is unchanged. A form change is not a
+    # spelling fix, so the card is reported and left alone (Q-D12).
+    target = rec(
+        22,
+        {
+            **BASE,
+            "Expression": "決まってる",
+            "reading": "きまる",
+            "furigana": "決[き]まる",
+            "Sentence": "運命は<b>決まってる</b>",
+            "Sentence (furigana)": "運命[うんめい]は決[き]まってる",
+            "Sentence Audio": "[sound:b.mp3]",
+            "Picture": '<img src="q.webp">',
+            "Translation": "it is decided",
+            "Source": "show (1m02s)",
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[22])
+    assert expression_rows(plan) == []
+    assert plan.reasons == {22: "expression-repair-not-a-kanji-completion"}
+
+
+def test_expression_repair_refuses_a_kana_preference_spelling():
+    # The dictionary writes 気づき; the mined 気付き is a valid spelling, so
+    # dropping kanji is not a completion — reported, never rewritten.
+    target = rec(
+        23,
+        {
+            **BASE,
+            "Expression": "気付き",
+            "reading": "きづき",
+            "furigana": "気[き]づき",
+            "Sentence": "小さな<b>気付き</b>を大切に",
+            "Sentence (furigana)": "小[ちい]さな気[き]づきを大[たい]切[せつ]に",
+            "Sentence Audio": "[sound:c.mp3]",
+            "Picture": '<img src="r.webp">',
+            "Translation": "a small realization",
+            "Source": "show (1m03s)",
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[23])
+    assert expression_rows(plan) == []
+    assert plan.reasons == {23: "expression-repair-not-a-kanji-completion"}
+
+
+def test_expression_repair_refuses_a_different_kanji_homophone():
+    # 美味い and 上手い both read うまい but mean different things; the
+    # furigana alone cannot decide, so the card is reported (rule 5).
+    target = rec(
+        24,
+        {
+            **BASE,
+            "Expression": "美味い",
+            "reading": "うまい",
+            "furigana": "上手[うま]い",
+            "Sentence": "この店の料理は<b>美味い</b>",
+            "Sentence (furigana)": "この店[みせ]の料理[りょうり]は美[う]味[ま]い",
+            "Sentence Audio": "[sound:d.mp3]",
+            "Picture": '<img src="s.webp">',
+            "Translation": "this restaurant's food is delicious",
+            "Source": "show (1m04s)",
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[24])
+    assert expression_rows(plan) == []
+    assert plan.reasons == {24: "expression-repair-not-a-kanji-completion"}
+
+
+def test_expression_repair_ignores_html_ruby_furigana():
+    # An HTML-ruby furigana is an unusable oracle (its <rt> text would
+    # corrupt the base), so the card is treated like a furigana-less one:
+    # silent, not a reason.
+    target = rec(
+        25,
+        {
+            **BASE,
+            "Expression": "温める",
+            "reading": "あたためる",
+            "furigana": "<ruby>温<rt>あたた</rt></ruby>める",
+            "Sentence": "キンタマを<b>温めたら</b>ダメ",
+        },
+    )
+    plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[25])
+    assert expression_rows(plan) == []
+    assert plan.warnings == []
+
+
 def test_expression_repair_is_deferred_while_word_writes_are_queued():
     # F2 risk 4: a Definition fill is sourced from the old spelling's word
     # group; the rewrite must not land in the same run. The next run, with

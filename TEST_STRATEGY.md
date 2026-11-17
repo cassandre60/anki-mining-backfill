@@ -139,13 +139,18 @@ not have and must never be given.
   that need the in-Anki engine remain).
 - **Expression repair** (bulk-fix dimension 4, self-oracled variant, Q-D12)
   is pinned in `tests/test_normalize.py` (`furigana_base` extracts the
-  dictionary form from inline ruby, unusable markup yields nothing),
-  `tests/test_plan.py` (the ひと握り → 一握り rewrite from the note's own
-  furigana, switchable off via the escape hatch, inert when the furigana
-  base already matches the Expression, silent without furigana, reading
-  mismatch reported, kanji-less and clause-like bases refused, deferred
-  while word-level writes are queued), and `tests/test_batch.py` (the
-  on-by-default `batch_repair_expression` tier with its opt-out key).
+  dictionary form from inline ruby, unusable markup yields nothing,
+  including HTML `<ruby>`/`<rt>` whose `<rt>` text would corrupt the base),
+  `tests/test_plan.py` (the ひと握り → 一握り and とっておき → 取って置き
+  completions from the note's own furigana, switchable off via the escape
+  hatch, inert when the furigana base already matches the Expression,
+  silent without furigana, reading mismatch reported, kanji-less and
+  clause-like bases refused, and every non-completion shape refused and
+  reported — inflection (決まってる → 決まる), kanji → kana preference
+  (気付き → 気づき), different-kanji substitution (美味い → 上手い),
+  HTML-ruby furigana ignored — deferred while word-level writes are
+  queued), and `tests/test_batch.py` (the on-by-default
+  `batch_repair_expression` tier with its opt-out key).
 - **Write timing** is pinned in the same file with fake editors: writes wait
   for `call_after_note_saved`, a doubled editor callback writes once, a lost
   callback is covered by the scheduler safety net, and a raising or missing
