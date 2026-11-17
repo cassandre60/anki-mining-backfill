@@ -48,6 +48,32 @@ from mining_fixer.plan import _source_seconds, build_plan  # noqa: E402
 SOUND_RE = re.compile(r"\[sound:([^\]]+)\]")
 AUDIO_STAMP_RE = re.compile(r"asbp_.*?_(\d{4,})_[^/]+$")
 IMG_RE = re.compile(r"<img[^>]+src=[\"']?([^\"'>]+)", re.IGNORECASE)
+
+
+def _is_kanji(char: str) -> bool:
+    return "\u4e00" <= char <= "\u9fff"
+
+
+def _shares_word_material(span: str, spelling: str) -> bool:
+    """True when a bold span could be the word in another spelling.
+
+    Sharing a kanji (日差し -> 日射し), a common prefix of two or more
+    characters (淀む -> よどん keeps the よど stem), or containing one another
+    (とんでもない> vs とんでもない) is evidence; a single shared kana is not
+    (このたび vs 今回...). Pure.
+    """
+    if not span or not spelling:
+        return False
+    if span in spelling or spelling in span:
+        return True
+    if any(_is_kanji(char) and char in spelling for char in span):
+        return True
+    prefix = 0
+    while prefix < min(len(span), len(spelling)) and span[prefix] == spelling[prefix]:
+        prefix += 1
+    return prefix >= 2
+
+
 BOLD_RE = re.compile(r"<b>(.*?)</b>", re.DOTALL)
 
 
@@ -191,14 +217,27 @@ def main() -> int:
                 )
             }
             spans = BOLD_RE.findall(sentence)
-            if len(spans) > 1 or (
-                spans
-                and not any(_fold(strip_renderable(span).strip()) in spellings for span in spans)
-            ):
-                violations["D bold missing, doubled or on another word"] += 1
-                examples["D bold missing, doubled or on another word"].append(
-                    f"{word}: {spans[:2]}"
+            folded_spans = [_fold(strip_renderable(span).strip()) for span in spans]
+            if len(spans) > 1:
+                violations["D bold doubled"] += 1
+                examples["D bold doubled"].append(f"{word}: {spans[:2]}")
+            elif folded_spans and not any(span in spellings for span in folded_spans):
+                # A bold that shares a character with the word is that word in
+                # a spelling the candidate set cannot enumerate without the
+                # dictionary (淀む -> よどん, 日差し -> 日射し); one that shares
+                # nothing is another card's word (このたび on 自負).
+                partial = any(
+                    _shares_word_material(span, spelling)
+                    for span in folded_spans
+                    for spelling in spellings
                 )
+                name = (
+                    "D bold on another spelling of the word"
+                    if partial
+                    else "D bold on a different word"
+                )
+                violations[name] += 1
+                examples[name].append(f"{word}: {spans[:2]}")
 
         print(f"audited {len(scope)} cards after a run on a copy")
         if not violations:
