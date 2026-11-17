@@ -42,6 +42,7 @@ __all__ = [
     "decide_undo",
     "decision_subset",
     "latest_run_log_in",
+    "merge_run_logs",
     "run_log_records",
     "run_after_editor_saved",
     "verify_writes",
@@ -331,6 +332,51 @@ def _semantic_problems(note_id: int, fields: Mapping[str, str], media_exists) ->
         if missing:
             problems.append(f"note {note_id}: media file(s) missing {missing[:3]}")
     return problems
+
+
+def merge_run_logs(paths: list[Path]) -> None:
+    """Fold the per-pass undo logs of one Apply into a single log.
+
+    Each pass logs that pass's ``prior`` -> ``applied`` per field. Keeping the
+    first pass's ``prior`` and the last pass's ``applied`` restores the whole
+    Apply exactly, and only fields still holding the final value (Q-A3). The
+    earlier pass logs are removed so Undo sees one run, not its fragments.
+    """
+    paths = [path for path in paths if path is not None]
+    if len(paths) <= 1:
+        return
+    merged: dict[int, dict] = {}
+    header: dict = {}
+    for path in paths:
+        try:
+            log = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        header = {k: v for k, v in log.items() if k != "records"}
+        for record in run_log_records(log):
+            note_id = record["note_id"]
+            entry = merged.setdefault(
+                note_id,
+                {"note_id": note_id, "fields": [], "tags_applied": [], "tags_prior": []},
+            )
+            by_field = {change["field"]: change for change in entry["fields"]}
+            for change in record.get("fields", []):
+                if change["field"] in by_field:
+                    by_field[change["field"]]["applied"] = change["applied"]
+                else:
+                    added = dict(change)
+                    entry["fields"].append(added)
+                    by_field[added["field"]] = added
+            if record.get("tags_applied"):
+                entry["tags_applied"] = record["tags_applied"]
+            if record.get("tags_prior") and not entry["tags_prior"]:
+                entry["tags_prior"] = record["tags_prior"]
+    merged_log = {**header, "records": [merged[nid] for nid in sorted(merged)]}
+    target = paths[-1]
+    target.write_text(json.dumps(merged_log, ensure_ascii=False, indent=2), encoding="utf-8")
+    for path in paths[:-1]:
+        with contextlib.suppress(OSError):
+            path.unlink()
 
 
 def build_run_log(decision: ApplyDecision, meta: Mapping[str, object]) -> dict:

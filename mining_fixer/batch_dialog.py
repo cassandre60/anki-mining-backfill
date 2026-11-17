@@ -31,7 +31,7 @@ from .applier import ApplyDecision, run_after_editor_saved
 from .batch import BatchSelection, default_ops, select
 from .collection_io import (
     Preview,
-    apply_batch,
+    apply_plan_to_fixpoint,
     build_batch_decision,
     load_config,
     plan_preview,
@@ -209,7 +209,12 @@ class BatchDialog(QDialog):
         if not decision.row_count():
             showInfo("Nothing to fix: everything already matches.", parent=self)
             return
-        self.pending = (decision, self._meta(selection))
+        self.pending = (
+            decision,
+            self._meta(selection),
+            self.cfg,
+            tuple(self.preview.scope),
+        )
         self.accept()
 
     def _on_view_report(self) -> None:
@@ -260,8 +265,10 @@ class BatchDialog(QDialog):
 
 
 def _finish_batch(col, pending, parent) -> None:
-    decision, meta = pending
-    result = apply_batch(col, decision, meta)
+    decision, meta, cfg, scope = pending
+    # One Apply is the whole fix (QUALITY Q-A2): keep re-planning on the real
+    # post-write state until a pass writes nothing, then report the total.
+    result = apply_plan_to_fixpoint(col, cfg, scope, meta, first_decision=decision)
     if not result.writes:
         lines = ["Nothing was written."]
         if decision.skipped:

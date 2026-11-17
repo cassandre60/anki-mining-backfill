@@ -370,3 +370,51 @@ def test_verification_is_silent_for_a_coherent_card():
         media_exists=lambda name: True,
     )
     assert problems == []
+
+
+def test_merged_run_logs_keep_the_first_prior_and_the_last_applied(tmp_path):
+    # One Apply may take several passes (Q-A2). Each pass logs prior -> applied;
+    # the merged log must restore the whole Apply: earliest prior, latest
+    # applied, union of tags, and only one log file left behind.
+    from mining_fixer.applier import merge_run_logs
+
+    def log(name, records):
+        path = tmp_path / name
+        path.write_text(json.dumps({"kind": "batch", "records": records}), encoding="utf-8")
+        return path
+
+    first = log(
+        "run-1.json",
+        [
+            {
+                "note_id": 1,
+                "fields": [{"field": "Sentence", "prior": "a", "applied": "b"}],
+                "tags_applied": ["t"],
+                "tags_prior": [],
+            }
+        ],
+    )
+    second = log(
+        "run-2.json",
+        [
+            {
+                "note_id": 1,
+                "fields": [
+                    {"field": "Sentence", "prior": "b", "applied": "c"},
+                    {"field": "Picture", "prior": "", "applied": "p"},
+                ],
+                "tags_applied": ["t", "u"],
+                "tags_prior": ["t"],
+            }
+        ],
+    )
+    merge_run_logs([first, second])
+    assert not first.exists()
+    merged = json.loads(second.read_text(encoding="utf-8"))
+    record = merged["records"][0]
+    fields = {change["field"]: change for change in record["fields"]}
+    assert fields["Sentence"]["prior"] == "a"  # the earliest old value
+    assert fields["Sentence"]["applied"] == "c"  # the last applied value
+    assert fields["Picture"]["applied"] == "p"
+    assert record["tags_applied"] == ["t", "u"]
+    assert record["tags_prior"] == ["t"]

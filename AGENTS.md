@@ -68,14 +68,19 @@ enriched siblings. Two halves:
 10. **Import-time safety.** Anything in `__init__.py` that raises is what users
     see as "add-on failed to load". Guard it, print instead of throwing.
 11. **One Apply is the whole fix; a second Apply writes nothing** (owner
-    requirement, QUALITY Q-A2). The plan is a fixpoint, not a first pass:
+    requirement, QUALITY Q-A2). The **Apply** is a fixpoint, not a first
+    pass: after each pass `collection_io.apply_plan_to_fixpoint` re-plans on
+    the *real* post-write state and stops when a pass writes nothing, merging
+    the per-pass undo logs into one (`applier.merge_run_logs`). Two
+    consequences:
     - no cross-run cascade — if fixing card A makes card B fixable, B is
-      fixed in the **same** run;
+      fixed in the **same** Apply;
     - no step ordered after one it depends on (arrow/line cleanup before
       bold, a sentence before its ruby, a completion's audio and its text).
-    The gate is `scripts/scene_audit.py` class **F**: after one applied run,
-    the same scope re-plans to **0 rows**. Never ship a change that leaves a
-    second run with work — that is a defect, not a limitation.
+    The gate is `scripts/scene_audit.py` class **F**: apply the selection to a
+    fixpoint, re-plan it, and the residual must be **0 rows**. Never ship a
+    change that leaves a second run with work — that is a defect, not a
+    limitation.
 
 ## 3. Environment (verified on the author's machine)
 

@@ -89,6 +89,13 @@ def main() -> int:
     parser.add_argument("--work-dir", type=Path, default=Path("/tmp/opencode/mb_audit"))
     parser.add_argument("--last", type=int, default=300)
     parser.add_argument(
+        "--max-passes",
+        type=int,
+        default=4,
+        help="passes one Apply may take to reach a fixpoint (Q-A2); a residual "
+        "after this many is a failure, not a silent extra run",
+    )
+    parser.add_argument(
         "--engine",
         choices=("none", "fake"),
         default="none",
@@ -140,33 +147,40 @@ def main() -> int:
                 + sentence[match.end() :]
             )
 
-        plan = build_plan(
-            records,
-            cfg,
-            scope_note_ids=scope,
-            media_exists=media_exists,
-            furigana_generator=fake_engine if args.engine == "fake" else None,
-        )
-        selection = select(plan, default_ops(cfg))
-
         def state(note_id: int) -> NoteState:
             note = col.get_note(note_id)
             return NoteState(fields=dict(note.items()), tags=frozenset(note.tags))
 
-        decision = decide(
-            plan,
-            [(w.note_id, w.field) for w in selection.rows],
-            state,
-            applied_tag=cfg.get("applied_tag") or None,
-        )
-        for write in decision.field_writes:
-            note = col.get_note(write.note_id)
-            note[write.field] = write.new_value
-            col.update_note(note)
-        for write in decision.tags_writes:
-            note = col.get_note(write.note_id)
-            note.tags = list(write.new_tags)
-            col.update_note(note)
+        # One Apply is the whole fix (QUALITY Q-A2): the add-on re-plans on the
+        # real post-write state until a pass writes nothing. The audit mirrors
+        # that loop here, so class F measures the same thing the user sees.
+        generator = fake_engine if args.engine == "fake" else None
+        for _pass in range(args.max_passes):
+            current = records_from_collection(col, cfg["deck_name"], cfg["note_type_name"])
+            plan = build_plan(
+                current,
+                cfg,
+                scope_note_ids=scope,
+                media_exists=media_exists,
+                furigana_generator=generator,
+            )
+            selection = select(plan, default_ops(cfg))
+            decision = decide(
+                plan,
+                [(w.note_id, w.field) for w in selection.rows],
+                state,
+                applied_tag=cfg.get("applied_tag") or None,
+            )
+            if not decision.field_writes and not decision.tags_writes:
+                break
+            for write in decision.field_writes:
+                note = col.get_note(write.note_id)
+                note[write.field] = write.new_value
+                col.update_note(note)
+            for write in decision.tags_writes:
+                note = col.get_note(write.note_id)
+                note.tags = list(write.new_tags)
+                col.update_note(note)
 
         fields = {note_id: dict(col.get_note(note_id).items()) for note_id in scope}
 

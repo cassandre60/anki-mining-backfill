@@ -303,15 +303,17 @@ first, with the reason.
     completion's audio and its text) happens in this run, never the next.
 
   A row already at its target value is reported as `already applied`, never
-  rewritten. Measured by `scripts/scene_audit.py` (class **F**): one run is
-  applied to a copy, the same scope is re-planned, and **run 2 must be 0**.
-  This is a number, not a description. The 2026-11-17 measurement on the
-  newest 300 cards is **21 rows on 10 cards** (Picture 6, Sentence 4, ruby 4,
-  audio 3, tags 2, translation 1, source 1), down from 33 after the bold
-  `old_value` fix (`59f2db6`). Every row is a cross-run cascade: a card this
-  run completes becomes a source, and its neighbour is only filled on the
-  next Apply. The current code therefore does **not** yet meet this rule; it
-  is tracked and must be driven to 0 before the dimension is called finished.
+  rewritten. **How the fixpoint is reached:** after each pass the applier
+  re-plans on the *real* post-write state and stops when a pass writes
+  nothing (`collection_io.apply_plan_to_fixpoint`); the per-pass undo logs are
+  merged into one (`applier.merge_run_logs`), so one Apply — and one Undo —
+  cover the whole fixpoint. A cross-run cascade (a card completed here
+  becoming a source for a neighbour) is therefore resolved **inside the same
+  Apply**, never deferred. Measured by `scripts/scene_audit.py` (class **F**),
+  which mirrors that loop: apply the selection to a fixpoint, then re-plan it;
+  **the residual must be 0**. The 2026-11-17 measurement on the newest 300
+  cards is **0 rows** (it was 33 before the bold `old_value` fix and 21 before
+  the applier fixpoint).
 - **Q-A3 — Undo is exact and conservative.** It restores only fields still
   holding the applied value, removes only the tags the run added, and reports
   `changed since the run` instead of clobbering a later edit. Undo is itself

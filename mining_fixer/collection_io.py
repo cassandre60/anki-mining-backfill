@@ -26,9 +26,11 @@ from .applier import (
     decide_undo,
     decision_subset,
     latest_run_log_in,
+    merge_run_logs,
     run_log_records,
     verify_writes,
 )
+from .batch import default_ops, select
 from .matching import NoteRecord
 from .plan import Plan, build_plan, scope_from_selection
 
@@ -446,6 +448,51 @@ def apply_batch(col, decision: ApplyDecision, meta: dict) -> BatchResult:
         )
     )
     return result
+
+
+#: One Apply may re-plan this many times to reach a fixpoint (QUALITY Q-A2).
+#: A residual after this bound is a defect the scene audit's class F reports.
+MAX_APPLY_PASSES = 4
+
+
+def apply_plan_to_fixpoint(
+    col, cfg: dict, scope, meta: dict, first_decision: ApplyDecision | None = None
+) -> BatchResult:
+    """One Apply is the whole fix (QUALITY Q-A2).
+
+    A card completed by this pass becomes a scene source; a neighbour that
+    needs its media would otherwise wait for the next Apply. So each pass
+    re-plans on the *current* collection (real post-write state, never a
+    simulation), selects the default rows, decides and writes — and the loop
+    stops when a pass has nothing to write. The per-pass undo logs are merged
+    into one, so Undo reverses the whole Apply.
+    """
+    combined = BatchResult()
+    log_paths: list[Path] = []
+    decision = first_decision
+    for _pass in range(MAX_APPLY_PASSES):
+        if decision is None:
+            preview = plan_preview(col, cfg, scope_note_ids=list(scope))
+            if preview.plan is None or preview.error:
+                combined.problems.append(preview.error or "could not rebuild the plan")
+                break
+            selection = select(preview.plan, default_ops(cfg))
+            decision = build_batch_decision(col, preview.plan, selection.rows, cfg)
+        if not decision.row_count():
+            break
+        result = apply_batch(col, decision, meta)
+        combined.writes += result.writes
+        combined.modified += result.modified
+        combined.problems.extend(result.problems)
+        if result.backup_created:
+            combined.backup_created = True
+        if result.log_path is not None:
+            log_paths.append(result.log_path)
+        if result.problems:
+            break
+        decision = None  # next pass plans again on the state this pass wrote
+    merge_run_logs(log_paths)
+    return combined
 
 
 def dry_run_folder() -> Path:
