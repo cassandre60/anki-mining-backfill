@@ -104,6 +104,49 @@ def test_word_key():
 
 ALL_RULES = REPAIR_RULES
 
+# Real Sentence value (note 1793400721969, 淀む): a styled subtitle source
+# nested the sentence in dozens of empty <div> wrappers that render as the
+# four visible lines. Owner report 2026-11-17.
+_DIV_SENTENCE = (
+    "奥の方に泉を発見しました!<br>残念ながら出口はまだ見つかりません!<br>"
+    "<div><div><div><br><div><div><div><div><div></div></div><div><div></div>"
+    "</div><div><div></div></div><div><div></div></div><div><div></div></div>"
+    "<div><div></div></div><div><div></div></div></div><div><div><div></div>"
+    "</div><div><div></div></div><div><div></div></div><div><div></div></div>"
+    "<div><div>その泉の水...なら泣きいろ紫色なんです</div></div></div></div></div>"
+    "</div></div></div><div><div><div><div><div><div><div><div>それもひどく<b>よどん</b>"
+    "だ</div></div></div></div></div></div></div></div>"
+)
+_DIV_EXPECTED = (
+    "奥の方に泉を発見しました!<br>残念ながら出口はまだ見つかりません!<br><br>"
+    "その泉の水...なら泣きいろ紫色なんです<br>それもひどく<b>よどん</b>だ"
+)
+
+
+def test_repair_flattens_nested_div_blocks():
+    # 39 <div> wrappers, four visible lines: the block structure becomes the
+    # <br> line breaks it stood for; the bold passes through untouched.
+    new, applied = repair_sentence(_DIV_SENTENCE, ALL_RULES)
+    assert applied == ("flatten-div-blocks",)
+    assert new == _DIV_EXPECTED
+    assert "<div" not in new
+    # Second pass is a no-op (one run fixes a card).
+    assert repair_sentence(new, ALL_RULES) == (new, ())
+
+
+def test_repair_flatten_keeps_inline_parts_and_bold():
+    text = "<div><div>一つ目<b>語</b> 二つ目</div></div>"
+    new, applied = repair_sentence(text, ALL_RULES)
+    assert applied == ("flatten-div-blocks",)
+    assert new == "一つ目<b>語</b> 二つ目"
+
+
+def test_repair_flatten_drops_layout_whitespace_between_blocks():
+    text = "<div>\n  <div>前</div>\n  <div>後</div>\n</div>"
+    new, applied = repair_sentence(text, ALL_RULES)
+    assert applied == ("flatten-div-blocks",)
+    assert new == "前<br>後"
+
 
 def test_repair_strips_line_tail_arrows():
     text = "あしたの朝刊の見出しは<br>こうニャ！➡"
@@ -147,6 +190,7 @@ def test_repair_is_idempotent():
     texts = [
         "あしたの朝刊の見出しは<br>こうニャ！➡",
         "「絶」\u3000念オーラを完全に絶つ技<br>自身の気配を消したり<br><b>疲労回復</b>に効果がある➡",
+        _DIV_SENTENCE,
     ]
     for text in texts:
         once, _ = repair_sentence(text, ALL_RULES)

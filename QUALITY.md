@@ -71,14 +71,22 @@ first, with the reason.
 - **Q-D10 — Sentence repair touches only configured noise.** The
   `repair_sentence` op rewrites a note's own `Sentence` and nothing else,
   and only through the rules configured in `sentence_repair_rules`. The
-  shipped rule set is `strip-arrows` (continuation arrows at line tails;
+  shipped rule set is `flatten-div-blocks` (a styled `.vtt`/`.srt` nests the
+  sentence in empty `<div>` wrappers that render as the line breaks they
+  stand for — 淀む: 39 wrappers for four visible lines; a block boundary
+  becomes `<br>`, existing `<br>` are kept, whitespace between block tags is
+  dropped as layout, and a final check refuses the rewrite if it would lose
+  a visible character; owner addition 2026-11-17), `strip-arrows`
+  (continuation arrows at line tails;
   mid-line glyphs such as `f:X→Y` are real notation and stay) and
   `join-speaker-lines` (a short speaker/stage tag alone on a line —
   ``(荒木)``, ``（葉子）`` — loses the line break that follows it; longer
   parenthesised text keeps its break, so a real aside is never joined).
-  `<br>` line breaks and spacing are deliberately NOT rewritten — they are
-  the sentence's pause structure (owner decision 2026-11-15; the recorded
-  future direction is deriving breaks from the audio, BULK_FIX.md). Unknown
+  `<br>` line breaks and spacing are otherwise deliberately NOT rewritten —
+  they are the sentence's pause structure (owner decision 2026-11-15;
+  `flatten-div-blocks` only converts block *tags*, never an existing `<br>`;
+  the recorded future direction is deriving breaks from the audio,
+  BULK_FIX.md). Unknown
   rule names are warned about and ignored. A repair write is never issued
   when another `Sentence` write (expansion or bold) is queued for the same
   note, and it is dropped when it would change how often the tested word

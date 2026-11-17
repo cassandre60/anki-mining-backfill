@@ -339,6 +339,25 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   fail on the pre-fix code) + the scene audit (class C 29 → 0 with the
   simulated engine, 0 new violations; without an engine only the pre-existing
   stale rubies that need the in-Anki engine remain).
+- [2026-11-17, OpenCode] Owner decision — a new sentence-repair rule
+  **`flatten-div-blocks`** leads `sentence_repair_rules`: a styled `.vtt`/
+  `.srt` nests the sentence in empty `<div>` wrappers that render as the line
+  breaks they stand for (308 of 17,665 notes carry `<div>` in `Sentence`; the
+  author's 淀む had 39 wrappers for four visible lines). A block boundary
+  becomes `<br>`, existing `<br>` are kept, whitespace between block tags is
+  dropped as layout, and the rewrite is refused if it would lose a visible
+  character. It runs first so it can expose a line-tail arrow or speaker tag
+  to the other rules. The bold markup is preserved — the author's example
+  omitted it, but the two forms "look exactly the same for a human" only if it
+  stays (a bold word renders differently).
+  Verified by: `tests/test_normalize.py` (`test_repair_flattens_nested_div_blocks`
+  on the real 淀む value + the inline/whitespace cases; all fail pre-fix) and
+  the scene audit class E = 0.
+- [2026-11-17, OpenCode] The 5 remaining bold defects in the newest 300 cards
+  are tracked as issues #1–#4 (inflected/alternate spellings → MeCab;
+  word-plus-punctuation when the word repeats; a word absent from its sentence;
+  a clause-like Expression). They are reported, not guessed.
+  Verified by: `gh issue list` (4 open) and the scene audit classes D.
 
 ## Lessons Learned
 

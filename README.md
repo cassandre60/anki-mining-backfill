@@ -41,11 +41,16 @@ and covered by tests, not just intended:
      reason — never bolded — and audio-only listening cards are skipped
      (their front hides the sentence).
    - Sentence noise repair (`repair_sentence`): a rewrite of the
-     card's own `Sentence` that removes the subtitle's line-tail
-     continuation arrows (`➡`). Line breaks (`<br>`) and spacing are kept
-     exactly as mined — they are the sentence's pause structure (owner
-     decision 2026-11-15; the recorded future direction is deriving breaks
-     from the audio, see `BULK_FIX.md`). Mid-line glyphs like the math
+     card's own `Sentence` that (1) flattens the nested `<div>` block
+     wrappers a styled `.vtt`/`.srt` leaves behind into plain `<br>` line
+     breaks, (2) removes the subtitle's line-tail continuation arrows
+     (`➡`) and (3) joins a short speaker tag like `(荒木)` to its line.
+     Existing line breaks (`<br>`) and spacing are otherwise kept exactly as
+     mined — they are the sentence's pause structure (owner decision
+     2026-11-15, extended 2026-11-17; the recorded future direction is
+     deriving breaks from the audio, see `BULK_FIX.md`). The flattening
+     refuses any rewrite that would lose a visible character. Mid-line glyphs
+     like the math
      arrow in `f:X→Y` are never touched, a card whose `Sentence` is already
      queued for expansion or bold is skipped, and the repair must not
      change how often the tested word occurs. On by default

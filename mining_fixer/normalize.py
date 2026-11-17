@@ -306,7 +306,7 @@ def is_empty_glossary_shell(value: str) -> bool:
 # bold markup, sound tags, images, brackets and every spoken character pass
 # through untouched.
 
-REPAIR_RULES = ("strip-arrows", "join-speaker-lines")
+REPAIR_RULES = ("flatten-div-blocks", "strip-arrows", "join-speaker-lines")
 
 # A continuation arrow only ever marks "the line continues", so it is
 # stripped only at a line tail — immediately before a <br>, a newline or the
@@ -324,24 +324,98 @@ _SPEAKER_LINE_BREAK_RE = re.compile(
 )
 
 
+# A styled subtitle source (.vtt/.srt) nests the sentence in empty <div>
+# wrappers that render as the line breaks they stand for. Whitespace between
+# block tags is HTML's own layout, not content (dropped before the rewrite).
+_DIV_TRAILING_SPACE_RE = re.compile(r"(</?div[^>]*>)\s+", re.IGNORECASE)
+_DIV_LEADING_SPACE_RE = re.compile(r"\s+(</?div[^>]*>)", re.IGNORECASE)
+_TAG_TOKEN_RE = re.compile(r"(<[^>]*>)")
+_VISIBLE_TEXT_RE = re.compile(r"<[^>]*>")
+
+
+def _tag_name(token: str) -> str:
+    """Lower-case element name of a markup token (``<BR/>`` -> ``br``)."""
+    inner = token[1:].lstrip("/").rstrip(">").strip()
+    inner = inner.split()[0] if inner else ""
+    return inner.rstrip("/").lower()
+
+
+def _flatten_div_blocks(text: str) -> str:
+    """Replace nested ``<div>`` wrappers with plain ``<br>`` line breaks.
+
+    A subtitle source (a styled ``.vtt``/``.srt``) can nest the sentence in
+    dozens of empty ``<div>`` wrappers. They render as the line breaks they
+    stand for, but they bloat the field and confuse every later pass (author:
+    淀む — 100+ tags for four visible lines). A block boundary becomes
+    ``<br>``, existing ``<br>`` are kept, and every spoken character and the
+    bold markup pass through untouched. A final check refuses the rewrite if
+    it would drop any visible character. Idempotent. Pure.
+    """
+    if "<div" not in text.lower():
+        return text
+    collapsed = _DIV_TRAILING_SPACE_RE.sub(r"\1", text)
+    collapsed = _DIV_LEADING_SPACE_RE.sub(r"\1", collapsed)
+    out: list[str] = []
+    boundary: list[bool] = []  # True when this entry is a <br> added at a block edge
+    pending = False  # a visible text run is open with no line break yet
+    for token in _TAG_TOKEN_RE.split(collapsed):
+        if not token:
+            continue
+        if token.startswith("<") and token.endswith(">"):
+            name = _tag_name(token)
+            if name == "div":
+                if pending:
+                    out.append("<br>")
+                    boundary.append(True)
+                    pending = False
+                continue
+            out.append(token)
+            boundary.append(False)
+            if name == "br":
+                pending = False
+            continue
+        out.append(token)
+        boundary.append(False)
+        if token.strip():
+            pending = True
+    # A block closing at the very end left a break for no line: drop it.
+    while out and boundary[-1] and out[-1] == "<br>":
+        out.pop()
+        boundary.pop()
+    flattened = "".join(out)
+    if _VISIBLE_TEXT_RE.sub("", flattened) != _VISIBLE_TEXT_RE.sub("", collapsed):
+        return text  # never lose a visible character; keep the original instead
+    return flattened
+
+
 def repair_sentence(text: str, rules: Iterable[str]) -> tuple[str, tuple[str, ...]]:
     """Repair subtitle noise in a ``Sentence`` value (pure).
 
     Config-driven rule list. The shipped rule set is exactly:
 
-    - ``strip-arrows`` — remove continuation arrows only at line tails.
+    - ``flatten-div-blocks`` — replace nested ``<div>`` wrappers with the
+      ``<br>`` line breaks they stand for (runs first: it can expose a
+      line-tail arrow or a speaker tag for the rules below);
+    - ``strip-arrows`` — remove continuation arrows only at line tails;
+    - ``join-speaker-lines`` — join a short speaker tag to its line.
 
-    ``<br>`` line breaks and spacing are deliberately NOT rewritten (owner
-    decision 2026-11-15). Unknown rule names are ignored here and warned
-    about by the planner. Returns ``(new_text, applied_rules)``;
-    ``applied_rules`` is empty when nothing changed. The transformation is
-    idempotent.
+    ``<br>`` line breaks and spacing are otherwise deliberately NOT rewritten
+    (owner decision 2026-11-15; ``flatten-div-blocks`` is the owner's
+    2026-11-17 addition and only converts block *tags*, never a ``<br>``).
+    Unknown rule names are ignored here and warned about by the planner.
+    Returns ``(new_text, applied_rules)``; ``applied_rules`` is empty when
+    nothing changed. The transformation is idempotent.
     """
     if not (text or "").strip():
         return text, ()
     wanted = tuple(rules)
     applied: list[str] = []
     s = text
+    if "flatten-div-blocks" in wanted:
+        flattened = _flatten_div_blocks(s)
+        if flattened != s:
+            applied.append("flatten-div-blocks")
+            s = flattened
     if "strip-arrows" in wanted:
         stripped = _ARROW_TAIL_RE.sub("", s)
         if stripped != s:

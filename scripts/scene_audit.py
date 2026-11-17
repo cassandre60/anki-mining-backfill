@@ -17,7 +17,9 @@ Invariants (a card fails if any is broken):
   C  a non-empty ruby describes the sentence (base text matches);
   D  exactly one bold span, wrapping one of the card's own spellings
      (compared under width folding — a subtitle dump's half-width katakana
-     still counts as the word).
+     still counts as the word);
+  E  no block-level markup survives in the sentence fields (the .vtt/.srt
+     ``<div>`` nesting is rewritten to ``<br>`` by the repair).
 
 Output is a count per class with examples. Zero on every line means the
 corpus is coherent; the author's reported cards would appear under B, C, D.
@@ -238,6 +240,16 @@ def main() -> int:
                 )
                 violations[name] += 1
                 examples[name].append(f"{word}: {spans[:2]}")
+
+            # E: no block-level markup survives in the sentence fields — the
+            # styled .vtt/.srt <div> nesting is rewritten to <br> by the
+            # flatten-div-blocks repair (author's 淀む: 39 wrappers, four
+            # visible lines).
+            for field_name in ("Sentence", "Sentence (furigana)"):
+                if "<div" in (card.get(field_name) or "").lower():
+                    violations["E div markup in a sentence field"] += 1
+                    examples["E div markup in a sentence field"].append(word)
+                    break
 
         print(f"audited {len(scope)} cards after a run on a copy")
         if not violations:
