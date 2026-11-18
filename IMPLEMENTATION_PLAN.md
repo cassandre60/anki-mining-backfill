@@ -119,6 +119,7 @@ below, never as silent scope creep inside a coding session.
 | T17 | `test_matching.py` (Hypothesis property test: `SceneParentIndex` matches linear scan under arbitrary timelines and windows), `test_normalize.py` (Hypothesis test: `kana_fold` translation table matches codepoint spec); benchmark verified |
 | T18 | `tests/test_plan.py` (note 1793112599834 とんでもない: bold delimiter trimming on repeated words, HTML entities &gt;/&lt;, markup-only verification, second-run idempotence) |
 | T19 | `tests/test_plan.py` (Issue #1 notes 淀む, 日差し: inflected and alternate-kanji bold recognition via `morph_tokenizer`, unambiguous inflected bold placement `読む` → `<b>読め</b>`, ambiguity refusal, clause safety, `batch_bold_inflected` config toggle) |
+| T20 | `tests/test_packaging.py` (archive structure, content completeness, dev-artefact exclusion, version consistency) |
 
 - **T13 — Dimension picker in the batch window (B7) — superseded.** Built
   on 2026-11-16 with three checkboxes (scene / arrows / furigana) and pure
@@ -214,6 +215,16 @@ below, never as silent scope creep inside a coding session.
   Ambiguity is refused and reported; listening cards and clause-like expressions
   are skipped. Bridged to Japanese Support's bundled offline MeCab binary in
   `collection_io.japanese_support_morph_tokenizer`.
+- **T20 — Packaging script and release workflow (Backlog B3 partial).**
+  `scripts/build_ankiaddon.py` builds a `.ankiaddon` zip (ZIP_DEFLATED) from
+  `mining_fixer/` with the add-on's flat layout at the zip root (`manifest.json`
+  and `__init__.py` at top level). Excludes `meta.json`, `user_files/`,
+  `__pycache__/`, `*.pyc`, and dotfiles. `.github/workflows/release.yml`
+  triggers on `v*` tag push: runs the full test gate (ruff + pyright + pytest),
+  builds the archive, and creates a GitHub Release with the `.ankiaddon`
+  attached. `tests/test_packaging.py` verifies archive structure, content
+  completeness, dev-artefact exclusion, and version consistency between
+  `manifest.json` and `pyproject.toml`.
 
 ## Backlog
 
@@ -271,9 +282,8 @@ below, never as silent scope creep inside a coding session.
 - **B2 — Rendered card preview.** Render each row's real front/back HTML
   (Anki's card rendering API) in a side pane, so a reviewer sees the card as
   the template shows it rather than as field values.
-- **B3 — AnkiWeb release.** Package script (zip with `manifest.json` +
-  `__init__.py` at the root, dev artefacts excluded), numeric package id so
-  AnkiWeb can deliver updates, release workflow, and a changelog.
+- **B3 — AnkiWeb release.** ~~Package script~~ (shipped as T20),
+  numeric package id so AnkiWeb can deliver updates, and a changelog.
 - **B4 — Multi-note-type configuration.** Today one deck + note type and one
   field-name set; a per-note-type field mapping would let the same install
   serve a second mining setup.

@@ -1,0 +1,53 @@
+# Mining Fixer release — builds and publishes a .ankiaddon on tag push.
+#
+# Usage:
+#   git tag -a v0.3.0 -m "Release v0.3.0"
+#   git push origin v0.3.0
+#
+# The workflow runs the full test gate first, then builds the archive
+# and creates a GitHub Release with the .ankiaddon attached.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: "pyproject.toml"
+
+      - name: Install tools
+        run: python -m pip install --upgrade pip pytest hypothesis ruff pyright
+
+      - name: Lint, format and type check
+        run: |
+          ruff check .
+          ruff format --check .
+          pyright
+
+      - name: Test suite
+        run: python -m pytest
+
+      - name: Build .ankiaddon
+        run: python scripts/build_ankiaddon.py
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/*.ankiaddon \
+            --title "${{ github.ref_name }}" \
+            --generate-notes

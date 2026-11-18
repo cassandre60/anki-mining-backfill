@@ -10,7 +10,7 @@ Before touching any code, verify the environment gates:
 
 ```bash
 ruff check . && ruff format --check . && pyright   # Must be 0 errors, 0 warnings
-pytest -ra                                         # 271 passed locally (269 passed, 2 skipped on CI)
+pytest -ra                                         # 278 passed locally (276 passed, 2 skipped on CI)
 ```
 
 Push and CI gate:
@@ -83,23 +83,34 @@ gh run watch "$RUN_ID" --exit-status
 - Added Tier 5 bold placement for unbolded sentences: when `batch_bold_inflected: true` in `config.json`, tokenizes sentence and bolds unambiguous single matching inflected content tokens (`読む` $\to$ `本を<b>読め</b>。`) with badge `bold-added-to-inflected-form`.
 - Enforced strict ambiguity refusal (`cloze-word-ambiguous`), audio-only front skipping, and second-pass idempotence. Closed GitHub Issue #1.
 
+### Workstream 6 Part C: Packaging Script & Release Workflow
+- Created `scripts/build_ankiaddon.py`: builds a `.ankiaddon` zip (ZIP_DEFLATED) from `mining_fixer/` with flat root layout (`manifest.json` and `__init__.py` at top level). Excludes `meta.json`, `user_files/`, `__pycache__/`, `*.pyc`, and dotfiles.
+- Created `.github/workflows/release.yml`: triggers on `v*` tag push, runs the full test gate (ruff + pyright + pytest), builds the archive via `build_ankiaddon.py`, and creates a GitHub Release with the `.ankiaddon` attached.
+- Created `tests/test_packaging.py` (7 tests): archive validity, root-level structure, dev-artefact exclusion, content completeness, manifest JSON validity, and version consistency between `manifest.json` and `pyproject.toml`.
+
 ---
 
 ## 3. Remaining Workstreams: Step-by-Step Recipes
 
-The remaining work is divided into 2 self-contained workstreams. Any incoming agent can resume effortlessly:
+The remaining work is divided into self-contained workstreams. Any incoming agent can resume effortlessly:
 
 ```mermaid
 flowchart TD
     W3["W3: Perf & Pyright (DONE)"] --> W4["W4: Issue #2 Bold Trim (DONE)"]
     W4 --> W5["W5: Issue #1 MeCab Bolding (DONE)"]
-    W5 --> W6["W6: UX Ergonomics, Subdecks & .ankiaddon Packaging"]
-    W6 --> W7["W7: Release v0.3.0 & Issue Triage"]
+    W5 --> W6C["W6C: Packaging Script (DONE)"]
+    W6C --> W6AB["W6 A+B: UX Ergonomics & Subdecks"]
+    W6AB --> W7["W7: Release v0.3.0 & Issue Triage"]
 ```
 
 ---
 
-### Workstream 6: UX Ergonomics, Subdecks, & `.ankiaddon` Packaging (Next Up!)
+### Workstream 6: UX Ergonomics, Subdecks, & `.ankiaddon` Packaging
+
+#### Part C: Packaging Script (Backlog B3) ✅ DONE
+- `scripts/build_ankiaddon.py` builds `dist/mining_fixer-<version>.ankiaddon`.
+- `.github/workflows/release.yml` creates a GitHub Release on `v*` tag push.
+- `tests/test_packaging.py` enforces archive structural invariants (7 tests).
 
 #### Part A: UX Ergonomics (Backlog B5)
 - In `mining_fixer/report.py`:
@@ -113,16 +124,6 @@ flowchart TD
   - Update `deck_records`: if `col.decks.deck_and_child_ids` exists, load cards from child subdecks as well.
   - In `plan_preview`: if notes are selected across multiple decks in the Browser, load all matching note-type cards from those decks as potential sources.
   - Unit tests in `tests/test_addon_load.py` or `tests/test_notify_collection_changed.py`.
-
-#### Part C: Packaging Script (Backlog B3)
-- Create `scripts/build_ankiaddon.py`:
-  - Reads `manifest.json` and `pyproject.toml` version.
-  - Compiles a zip archive `dist/mining_fixer-<version>.ankiaddon`.
-  - Invariants:
-    - Root of zip contains `manifest.json` and `__init__.py`.
-    - Excludes `meta.json`, `user_files/`, `__pycache__/`, `*.pyc`, `*.git*`.
-- Add `tests/test_packaging.py` to test archive generation and structural invariants.
-- Add release artifact step to `.github/workflows/tests.yml` or a new release workflow on tag push.
 
 ---
 
@@ -159,3 +160,4 @@ flowchart TD
 | `build_plan` | [plan.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/plan.py) | Top-level pure planning entry point |
 | `japanese_support_furigana_generator` | [collection_io.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/collection_io.py) | Bridge to Japanese Support MeCab reading engine |
 | `notify_collection_changed` | [collection_io.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/collection_io.py) | UI / Browser DOM post-write synchronization |
+| `build` | [scripts/build_ankiaddon.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/scripts/build_ankiaddon.py) | Builds .ankiaddon zip archive from mining_fixer/ |
