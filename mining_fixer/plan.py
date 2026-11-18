@@ -287,19 +287,26 @@ def _has_complex_bold_markup(text: str) -> bool:
 #: (QUALITY Q-D3). The honest oracle is MeCab tokenization of the Expression
 #: (BULK_FIX.md dimension 6); until then a clause-like Expression is
 #: reported, never bolded — a false skip loses nothing, a wrong bold hides
-#: the sentence's structure.
-MAX_EXPRESSION_CHARS = 10
+#: An Expression must look like a word, not a clause: whitespace or sentence
+#: punctuation reject it immediately; length is capped to protect
+#: the sentence's structure while allowing legitimate long compound words.
+MAX_EXPRESSION_CHARS = 25
 _CLAUSE_PUNCT_RE = re.compile(r"[。、，．,.!?！？…]")
+_KATAKANA_WORD_RE = re.compile(r"^[ァ-ヴー・]+$")
+_CLAUSE_ENDINGS_RE = re.compile(
+    r"(?:たいかな|ようになりたい|かもしれない|だろう|でしょうか|ですね|ですよ)$"
+)
 
 
-def _expression_is_word_like(expression: str) -> bool:
-    """Could this Expression be a single mined word?
+def _expression_is_word_like(
+    expression: str,
+    morph_tokenizer: Callable[[str], Sequence[MorphToken]] | None = None,
+) -> bool:
+    """Could this Expression be a single mined word or compound?
 
-    Rejects whitespace, sentence punctuation and anything longer than
-    ``MAX_EXPRESSION_CHARS`` (the deck's clause-mined cards, e.g.
-    漢字は読めるようになりたいかな). Long legitimate words (ベーコン
-    チーズバーガー, 11 chars) are skipped too — reported downstream, never
-    guessed.
+    Rejects whitespace, sentence punctuation, obvious clause endings, and
+    anything longer than ``MAX_EXPRESSION_CHARS``. Legitimate long words
+    (such as katakana compounds like ベーコンチーズバーガー) are accepted.
     """
     text = (expression or "").strip()
     if not text:
@@ -308,6 +315,25 @@ def _expression_is_word_like(expression: str) -> bool:
         return False
     if _CLAUSE_PUNCT_RE.search(text):
         return False
+    if _CLAUSE_ENDINGS_RE.search(text):
+        return False
+    if morph_tokenizer is not None:
+        try:
+            tokens = morph_tokenizer(text)
+            if tokens:
+                has_clause_particles = any(
+                    tok.pos in ("助詞", "助動詞")
+                    and tok.surface in ("は", "が", "を", "たい", "かな", "だろう")
+                    for tok in tokens
+                )
+                if has_clause_particles:
+                    return False
+                if all(tok.pos in ("名詞", "接頭詞", "接尾辞", "記号") for tok in tokens):
+                    return len(text) <= MAX_EXPRESSION_CHARS
+        except Exception:
+            pass
+    if _KATAKANA_WORD_RE.match(text):
+        return len(text) <= MAX_EXPRESSION_CHARS
     return len(text) <= MAX_EXPRESSION_CHARS
 
 
@@ -1076,19 +1102,36 @@ def _furigana_write_for(
     )
 
 
-def _completes_with_kanji(expression: str, base: str) -> bool:
-    """True when ``base`` spells the same word with kanji the Expression lacks.
+def _completes_or_normalizes_expression(expression: str, base: str) -> tuple[bool, str]:
+    """Check if base is a valid kanji completion or dictionary lemma normalization.
 
-    The owner's class (QUALITY Q-D12): the mined spelling writes some kanji
-    in kana (ひと握り, とっておき) and the dictionary headword recorded in the
-    note's own ``furigana`` completes them (一握り, 取って置き). A base that
-    *drops* or *replaces* kanji is a different spelling, not a completion —
-    the dictionary's kana preference (気付き → 気づき), an inflected surface
-    (決まってる → 決まる) or a same-reading homophone (美味い → 上手い) — and
-    is reported, never written.
+    Returns (is_valid, kind) where kind is "completion" or "normalization".
+    - "completion": base adds kanji that expression wrote in kana (ひと握り → 一握り).
+    - "normalization": base is the uninflected dictionary headword sharing the same
+      kanji stem in identical order (倍にして → 倍にする, 決まってる → 決まる).
+    Refuses kanji-dropping kana preference (気付き → 気づき), different-kanji
+    substitutions (美味い → 上手い), and reversed kanji order (花火 → 火花).
     """
-    expression_kanji = set(_KANJI_HINT_RE.findall(expression))
-    return expression_kanji < set(_KANJI_HINT_RE.findall(base))
+    expr_kanji = _KANJI_HINT_RE.findall(expression)
+    base_kanji = _KANJI_HINT_RE.findall(base)
+    set_expr = set(expr_kanji)
+    set_base = set(base_kanji)
+
+    # 1. Kanji completion: base strictly extends expression's kanji set
+    if set_expr < set_base:
+        return True, "completion"
+
+    # 2. Inflection normalization: same kanji set in the same order, sharing the initial stem
+    if (
+        set_expr == set_base
+        and expr_kanji == base_kanji
+        and expression
+        and base
+        and expression[0] == base[0]
+    ):
+        return True, "normalization"
+
+    return False, ""
 
 
 def _expression_repair_for(
@@ -1100,8 +1143,11 @@ def _expression_repair_for(
     subtitle's mixed-kana spelling (ひと握り) while the card's own
     ``furigana`` field records the dictionary form the Yomitan lookup
     resolved to (``一握[ひとにぎ]り``). The furigana base IS the oracle —
-    no dictionary seam and no hand-written kana→kanji table. Kana-only
-    Expressions without a usable furigana stay future work.
+    no dictionary seam and no hand-written kana→kanji table.
+
+    Also handles inflected surface forms (倍にして → 倍にする, 決まってる → 決まる):
+    normalizes the Expression to the uninflected dictionary lemma recorded in
+    furigana when the reading matches and the kanji stem is preserved.
 
     Guards (QUALITY Q-D12) — every failure is a reported reason, never a
     guess:
@@ -1110,12 +1156,11 @@ def _expression_repair_for(
       must equal the note's normalized ``reading`` field: the furigana must
       describe *this* word, not another entry;
     - the base must differ from the Expression (the inert, common case),
-      contain kanji (a pure-kana rewrite would be a different word, never a
-      spelling), be word-like (the Q-D3 gate) and be a **kanji completion**
-      of the Expression (``_completes_with_kanji``): it may add kanji the
-      mined spelling wrote in kana, never drop or replace them — that is
-      what refuses the inflection (決まってる → 決まる), kana-preference
-      (気付き → 気づき) and homophone (美味い → 上手い) classes;
+      contain kanji, be word-like (the Q-D3 gate) and be a valid kanji
+      completion or inflection normalization (``_completes_or_normalizes_expression``):
+      it may add missing kanji or normalize inflection endings, never drop
+      or substitute kanji — that is what refuses kana-preference (気付き → 気づき)
+      and homophone (美味い → 上手い) classes;
     - the caller queues it only when no word-level write is queued for the
       note — those values come from the old spelling's word group and must
       not land in the same run as the rewrite (F2 risk 4).
@@ -1150,12 +1195,18 @@ def _expression_repair_for(
             "expression-not-word-like",
             f"furigana base '{base}' is not word-like enough to become the Expression",
         )
-    if not _completes_with_kanji(expression, base):
+    valid, kind = _completes_or_normalizes_expression(expression, base)
+    if not valid:
         return (
             None,
             "expression-repair-not-a-kanji-completion",
-            f"furigana base '{base}' does not add the kanji the Expression is missing",
+            f"furigana base '{base}' does not complete or normalize Expression '{expression}'",
         )
+    badges = (
+        ("expression-repaired-from-furigana", "expression-normalized-to-lemma")
+        if kind == "normalization"
+        else ("expression-repaired-from-furigana",)
+    )
     return (
         PlannedWrite(
             note_id=target.note_id,
@@ -1164,7 +1215,7 @@ def _expression_repair_for(
             old_value=target.get("Expression"),
             new_value=base,
             default_checked=True,
-            badges=("expression-repaired-from-furigana",),
+            badges=badges,
         ),
         None,
         None,

@@ -92,6 +92,9 @@ _BADGE_EXPLANATIONS: dict[str, str] = {
     "word-in-sentence": "Tested word confirmed present in the recovered sentence",
     # Expression repair
     "expression-repaired-from-furigana": "Expression spelling corrected from the furigana base",
+    "expression-normalized-to-lemma": (
+        "Expression normalized to dictionary form from the furigana base"
+    ),
     # Glossary
     "cleared-empty-glossary": "Empty definition shell cleared",
     # Tags

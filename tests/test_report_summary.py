@@ -339,6 +339,7 @@ def test_all_known_badges_have_explanations():
         "word-in-sentence",
         # Expression repair
         "expression-repaired-from-furigana",
+        "expression-normalized-to-lemma",
         # Glossary
         "cleared-empty-glossary",
         # Tags

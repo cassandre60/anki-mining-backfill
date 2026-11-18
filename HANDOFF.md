@@ -143,7 +143,8 @@ flowchart TD
      ```
 4. **Issue Triage Notes**:
    - Issues #1 & #2: Closed by W4 & W5.
-   - Issues #3 (`自負`), #4 (`今回...`), #5 (`倍にして`): Post detailed architectural policy comments explaining the design rationale and resolution roadmap.
+   - Issues #3 & #4: Closed as not planned (mis-mine/stale scene copy artifacts per author confirmation).
+   - Issue #5: Closed by inflection normalization in `_expression_repair_for` (`倍にして` → `倍にする`).
 
 ---
 

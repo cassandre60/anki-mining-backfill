@@ -147,20 +147,20 @@ below, never as silent scope creep inside a coding session.
   slice 4, F2; `PLAN_VERSION` 5).** The owner's ひと握り card
   (1736973220751) was reported "already complete" while its Expression
   kept the subtitle's surface form — its own `furigana` field records the
-  dictionary form (`一握[ひとにぎ]り`). New op `repair_expression`
+  dictionary form (`一握[ひとにぎ]り`). Op `repair_expression`
   (`plan._expression_repair_for`): rewrite the Expression to the furigana
   base when the furigana is well-formed, `reading_from_furigana` equals
   the normalized `reading` field, the base differs from the Expression,
-  contains kanji, passes the word-like gate, and its kanji strictly
-  extend the Expression's — a kanji completion, never a substitution or
-  a drop (narrowed 2026-11-17 after the whole-deck census: 705 fire,
-  1,127 same-reading non-completions refused and reported); deferred while
+  contains kanji, and passes the word-like gate. Supports kanji completions
+  (ひと握り → 一握り) and inflection normalizations to dictionary headword
+  (倍にして → 倍にする, 決まってる → 決まる; owner decision 2026-11-18, closing Issue #5).
+  Substitutions and kanji-dropping kana preferences stay refused; deferred while
   word-level writes are queued (F2 risk 4: the rewrite must not land in
   the same run as fills sourced from the old spelling's word group). On
   by default under the owner's automatic-mode decision ("I want things
   to be easy", 2026-11-16); `batch_repair_expression` is the escape
-  hatch, badge `expression-repaired-from-furigana`, old spelling in the run log
-  (Q-D7), reasons `expression-repair-reading-mismatch`,
+  hatch, badges `expression-repaired-from-furigana` and `expression-normalized-to-lemma`,
+  old spelling in the run log (Q-D7), reasons `expression-repair-reading-mismatch`,
   `expression-repair-no-kanji-form`, `expression-not-word-like` and
   `expression-repair-not-a-kanji-completion` in the left-alone report.
   The dictionary seam for furigana-less kana Expressions stays future (F2).

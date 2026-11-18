@@ -41,11 +41,11 @@ first, with the reason.
   analysis (淀む → <b>よどん</b>, 日差し → <b>日射し</b>, 読む → <b>読め</b>;
   badge `bold-added-to-inflected-form`, config key `batch_bold_inflected`).
   Expression-derived tiers require the Expression to be
-  *word-like* — no whitespace, no sentence punctuation, at most
-  `MAX_EXPRESSION_CHARS` (10) characters; a clause-like value
-  (漢字は読めるようになりたいかな) is reported
-  (`expression-not-word-like`), never bolded, and MeCab tokenization is
-  the recorded oracle (BULK_FIX.md dimension 6). Cards whose
+  *word-like* — no whitespace, no sentence punctuation, clause patterns
+  rejected, and character count capped (`MAX_EXPRESSION_CHARS`, 25) while
+  accepting legitimate long compound words like ベーコンチーズバーガー; a clause-like
+  value (漢字は読めるようになりたいかな) is reported (`expression-not-word-like`),
+  never bolded, and MeCab tokenization is supported as an oracle. Cards whose
   template front is audio-only are skipped entirely — the sentence is not
   displayed: either a `listening` tag with usable audio, or no
   `Definition`/`Extended definition`/`Frequency` with `Sentence Audio`
@@ -134,34 +134,30 @@ first, with the reason.
   leaving the old ruby under the new text. By owner decision (2026-11-16) it
   runs by default (`batch_regenerate_furigana: true`); the config key remains
   the escape hatch, and every guard above still applies.
-- **Q-D12 — Expression repair is self-oracled, completion-only, on by
-  default.** The `repair_expression` op rewrites a note's own `Expression`
+- **Q-D12 — Expression repair is self-oracled, completion and lemma normalization,
+  on by default.** The `repair_expression` op rewrites a note's own `Expression`
   to the base text of its own `furigana` field: Yomitan records the
   dictionary form the lookup resolved to (ひと握り mined under furigana
-  `一握[ひとにぎ]り` → 一握り). No dictionary seam and no hand-written
-  kana→kanji table — the note itself is the oracle. Guards, each a reported
-  reason instead of a guess: `reading_from_furigana(furigana)` must equal
-  the note's normalized `reading` field (the furigana must describe *this*
+  `一握[ひとにぎ]り` → 一握り; 倍にして under `倍[ばい]にする` → 倍にする). No dictionary
+  seam and no hand-written kana→kanji table — the note itself is the oracle.
+  Guards, each a reported reason instead of a guess: `reading_from_furigana(furigana)`
+  must equal the note's normalized `reading` field (the furigana must describe *this*
   word); the base must differ from the Expression, contain kanji and be
-  word-like (the Q-D3 gate); and the rewrite must be a **kanji
-  completion** — the base's kanji set must strictly extend the
-  Expression's (ひと握り → 一握り, とっておき → 取って置き), never a
-  substitution or a drop. That one condition separates the owner's class
-  from the other same-reading spellings: a whole-deck census (2026-11-17)
-  found 705 completions out of 1,832 candidates — the other 1,127
-  (729 inflection → dictionary form such as 決まってる → 決まる, 385
-  kanji → kana preference such as 気付き → 気づき, 13 different-kanji
-  substitutions such as 美味い → 上手い) are refused and reported, never
-  written. `furigana_base` also treats HTML `<ruby>`/`<rt>` markup as an
-  unusable oracle (its `<rt>` text would corrupt the base into
-  `温あたためる`). The write is deferred when a word-level write is queued
-  for the note — those values come from the old spelling's word group and
-  must not land in the same run as the rewrite (F2 risk 4). By owner
-  decision (2026-11-16, "I want things to be easy") it runs by default like
-  every other dimension — automatic mode, no options to tick;
-  `batch_repair_expression` remains the escape hatch to switch it off,
-  and every rewrite is previewed old → new and undone from the run log
-  like every other write.
+  word-like (the Q-D3 gate); and the rewrite must be either a **kanji
+  completion** (the base's kanji set strictly extends the Expression's:
+  ひと握り → 一握り, とっておき → 取って置き) or an **inflection normalization to dictionary
+  lemma** (identical kanji set in identical order sharing the initial stem:
+  倍にして → 倍にする, 決まってる → 決まる). A kanji-dropping kana preference
+  (気付き → 気づき) or different-kanji substitution (美味い → 上手い) remains refused
+  and reported (`expression-repair-not-a-kanji-completion`), never written.
+  `furigana_base` also treats HTML `<ruby>`/`<rt>` markup as an unusable oracle
+  (its `<rt>` text would corrupt the base into `温あたためる`). The write is deferred
+  when a word-level write is queued for the note — those values come from the old
+  spelling's word group and must not land in the same run as the rewrite (F2 risk 4).
+  By owner decision (2026-11-16, "I want things to be easy", confirmed 2026-11-18)
+  it runs by default like every other dimension — automatic mode, no options to tick;
+  `batch_repair_expression` remains the escape hatch to switch it off, and every
+  rewrite is previewed old → new and undone from the run log like every other write.
 
 - **Q-D14 — A mis-mined sentence is recovered by the word, never by the
   episode's mood.** When a card is still missing its `Sentence Audio` (Q-D16)

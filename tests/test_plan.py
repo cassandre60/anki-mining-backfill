@@ -502,9 +502,8 @@ def test_bold_repair_refuses_a_clause_like_expression():
     assert any("not word-like enough" in w for w in plan.warnings)
 
 
-def test_bold_repair_skips_an_over_long_word_expression():
-    # The gate is conservative: a long legitimate word is skipped too, not
-    # guessed (reported only when it occurs verbatim).
+def test_bold_repair_accepts_a_long_katakana_word_expression():
+    # Long legitimate words (e.g. ベーコンチーズバーガー) are accepted and bolded.
     f = dict(CHILD.fields)
     f["Expression"] = "ベーコンチーズバーガー"
     f["reading"] = ""
@@ -515,8 +514,9 @@ def test_bold_repair_skips_an_over_long_word_expression():
     f["Sentence"] = "ベーコンチーズバーガーをください"
     c = rec(CHILD.note_id, f, tags=("yomitan",))
     plan = build_plan([c], CFG, scope_note_ids=[CHILD.note_id])
-    assert not [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
-    assert any("not word-like enough" in w for w in plan.warnings)
+    writes = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(writes) == 1
+    assert writes[0].new_value == "<b>ベーコンチーズバーガー</b>をください"
 
 
 def test_bold_repair_skips_a_listening_tag_card():
@@ -1772,15 +1772,15 @@ def test_expression_repair_refuses_a_kanji_less_base():
 
 
 def test_expression_repair_refuses_a_clause_like_base():
-    # The Q-D3 word-like gate applies to the base too. The base is all
-    # kanji, so the reading cross-check passes and the gate is what refuses.
+    # The Q-D3 word-like gate applies to the base too: an over-long or
+    # clause-like base is refused.
     target = rec(
         6,
         {
             **BASE,
             "Expression": "ひと握り",
             "reading": "ひとにぎり",
-            "furigana": "漢字能力検定試験実施企画[ひとにぎり]",
+            "furigana": "漢字能力検定試験実施企画連合協議会総本部全国大会予選[ひとにぎり]",
             "Sentence": "ほんの<b>ひと握り</b>の怪物たち",
             "Sentence (furigana)": "ほんのひと 握[にぎ]りの怪物たち",
             "Sentence Audio": "[sound:a.mp3]",
@@ -1832,10 +1832,10 @@ def test_expression_repair_completes_a_mixed_expression_with_kanji():
     assert rows[0].new_value == "子供の頃"
 
 
-def test_expression_repair_refuses_an_inflected_dictionary_form():
-    # 決まってる → 決まる is the dictionary form, but nothing is being
-    # completed: the kanji set is unchanged. A form change is not a
-    # spelling fix, so the card is reported and left alone (Q-D12).
+def test_expression_repair_normalizes_an_inflected_dictionary_form():
+    # 決まってる → 決まる and 倍にして → 倍にする: the Expression is updated to
+    # the uninflected dictionary form recorded in furigana when the reading
+    # matches and the kanji stem is preserved.
     target = rec(
         22,
         {
@@ -1852,8 +1852,34 @@ def test_expression_repair_refuses_an_inflected_dictionary_form():
         },
     )
     plan = build_plan([target], EXPR_REPAIR_CFG, scope_note_ids=[22])
-    assert expression_rows(plan) == []
-    assert plan.reasons == {22: "expression-repair-not-a-kanji-completion"}
+    rows = expression_rows(plan)
+    assert len(rows) == 1
+    assert rows[0].old_value == "決まってる"
+    assert rows[0].new_value == "決まる"
+    assert "expression-repaired-from-furigana" in rows[0].badges
+    assert "expression-normalized-to-lemma" in rows[0].badges
+
+    # Real card 1739215432868: 倍にして → 倍にする
+    target_bainishite = rec(
+        1739215432868,
+        {
+            **BASE,
+            "Expression": "倍にして",
+            "reading": "ばいにする",
+            "furigana": "倍[ばい]にする",
+            "Sentence": (
+                "北村先生 僕 いつごろ歩けるようになるんですか？"
+                "じゃあ 今日からリハビリの量を<b>倍にして</b>ください｡"
+            ),
+        },
+    )
+    plan_bai = build_plan([target_bainishite], EXPR_REPAIR_CFG, scope_note_ids=[1739215432868])
+    rows_bai = expression_rows(plan_bai)
+    assert len(rows_bai) == 1
+    assert rows_bai[0].old_value == "倍にして"
+    assert rows_bai[0].new_value == "倍にする"
+    assert "expression-repaired-from-furigana" in rows_bai[0].badges
+    assert "expression-normalized-to-lemma" in rows_bai[0].badges
 
 
 def test_expression_repair_refuses_a_kana_preference_spelling():
