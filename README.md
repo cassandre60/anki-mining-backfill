@@ -7,9 +7,10 @@ workflows where enrichment is interrupted: the card stays without scene
 audio, picture, timestamped source, or the full scene sentence, and fixing
 each one by hand costs minutes per card.
 
-**Status: working add-on, preview-first.** The matching core, the in-Anki
-preview/apply dialog (with undo), and the headless audit-package builder are
-complete and tested. Vocabulary-specific heuristics are tuned for the
+**Status: v0.3.0 — working add-on, preview-first.** The matching core, the in-Anki
+preview/apply dialog (with undo), offline morphological bolding via MeCab, badge
+explanations with tooltips and a filter bar, and the headless audit-package
+builder are complete and tested. Vocabulary-specific heuristics are tuned for the
 author's deck; matching is conservative by design — it reports what it
 cannot fix rather than guessing. See [Roadmap](#roadmap).
 
@@ -277,7 +278,7 @@ After auditing: delete the audit deck and the cloned note type.
 ## Development
 
 ```
-python3 -m pytest         # 264 tests with Anki; 262 + 2 self-skipping without
+python3 -m pytest         # 285 tests with Anki; 283 + 2 self-skipping without
 ruff check . && ruff format --check .
 ```
 
@@ -295,13 +296,17 @@ broken entry point before users see "add-on failed to load".
 - [x] aqt add-on shell: preview dialog, apply with re-assertion, undo log.
 - [x] browser integration: run the plan on the selected notes (right-click in
       the Browse window).
+- [x] offline morphological bolding: inflected and alternate-kanji bold
+      recognition via MeCab (Japanese Support add-on's bundled engine).
+- [x] badge explanations, tooltips, and filter bar in the preview dialog.
+- [x] `.ankiaddon` packaging script and tag-triggered release workflow.
+- [x] CI workflow: `ruff` + `pyright` + the full test suite on every push and
+  pull request (`.github/workflows/tests.yml`).
 - [ ] rendered front/back HTML per row in the preview, instead of field values.
 - [ ] source-first pipeline: strip a source card's line-tail arrows (line
       breaks stay as mined), regenerate its furigana, then fix the
       children — see [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md).
 - [ ] AnkiWeb release (yields a numeric package id and self-updates).
-- [x] CI workflow: `ruff` + the full test suite on every push and pull
-  request (`.github/workflows/tests.yml`).
 
 ## License
 
