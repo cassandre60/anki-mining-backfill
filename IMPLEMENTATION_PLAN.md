@@ -120,6 +120,7 @@ below, never as silent scope creep inside a coding session.
 | T18 | `tests/test_plan.py` (note 1793112599834 とんでもない: bold delimiter trimming on repeated words, HTML entities &gt;/&lt;, markup-only verification, second-run idempotence) |
 | T19 | `tests/test_plan.py` (Issue #1 notes 淀む, 日差し: inflected and alternate-kanji bold recognition via `morph_tokenizer`, unambiguous inflected bold placement `読む` → `<b>読め</b>`, ambiguity refusal, clause safety, `batch_bold_inflected` config toggle) |
 | T20 | `tests/test_packaging.py` (archive structure, content completeness, dev-artefact exclusion, version consistency) |
+| T21 | `tests/test_report_summary.py` (static badge lookup, dynamic badge patterns, unknown-badge fallback, exhaustive badge coverage) |
 
 - **T13 — Dimension picker in the batch window (B7) — superseded.** Built
   on 2026-11-16 with three checkboxes (scene / arrows / furigana) and pure
@@ -225,6 +226,15 @@ below, never as silent scope creep inside a coding session.
   attached. `tests/test_packaging.py` verifies archive structure, content
   completeness, dev-artefact exclusion, and version consistency between
   `manifest.json` and `pyproject.toml`.
+- **T21 — Badge explanations, tooltips, and filter bar (Backlog B5).**
+  `report.badge_explanation` maps every static and dynamic badge to a
+  human-readable sentence (44 static badges across bold, scene, source
+  confidence, furigana, sentence, expression, glossary, tags, and repair
+  rules; four dynamic patterns: `source-note:*`, `N-siblings-agree`,
+  `added-gap:*`, `expanded-*`). The preview dialog gained badge tooltips on
+  the badges column, per-badge explanations in the detail pane, and a
+  `QLineEdit` filter bar above the table (filters rows by expression, field,
+  badge, or change summary, case-insensitive).
 
 ## Backlog
 
@@ -287,9 +297,9 @@ below, never as silent scope creep inside a coding session.
 - **B4 — Multi-note-type configuration.** Today one deck + note type and one
   field-name set; a per-note-type field mapping would let the same install
   serve a second mining setup.
-- **B5 — Review ergonomics for guards.** Surface *why* a row is unchecked in
-  the row itself (the badges already carry it; a short tooltip would make it
-  legible without opening the tabs).
+- **B5 — Review ergonomics for guards.** ~~Surface *why* a row is unchecked~~
+  (shipped as T21: badge tooltips, detail-pane explanations, filter bar).
+  Remaining: a guard-reason tooltip on the check column for unchecked rows.
 
 ## Working agreements (from experience)
 

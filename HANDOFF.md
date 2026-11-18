@@ -10,7 +10,7 @@ Before touching any code, verify the environment gates:
 
 ```bash
 ruff check . && ruff format --check . && pyright   # Must be 0 errors, 0 warnings
-pytest -ra                                         # 278 passed locally (276 passed, 2 skipped on CI)
+pytest -ra                                         # 285 passed locally (283 passed, 2 skipped on CI)
 ```
 
 Push and CI gate:
@@ -112,12 +112,11 @@ flowchart TD
 - `.github/workflows/release.yml` creates a GitHub Release on `v*` tag push.
 - `tests/test_packaging.py` enforces archive structural invariants (7 tests).
 
-#### Part A: UX Ergonomics (Backlog B5)
-- In `mining_fixer/report.py`:
-  Add pure `guard_explanations(badges: Sequence[str]) -> list[str]` mapping badge strings to clear, human-readable explanations (e.g. `divergent-parents` $\to$ "Sibling cards in this scene disagree on audio/sentence; requires manual check", `stale-fragment-furigana-risk` $\to$ "Sentence expansion would leave an outdated ruby annotation").
-- In `mining_fixer/preview_dialog.py`:
-  - Show these explanations in a tooltip or row details panel.
-  - Add a quick filter bar (`QLineEdit`) above the table to search rows by Expression or badge.
+#### Part A: UX Ergonomics (Backlog B5) ✅ DONE
+- `report.badge_explanation()` maps every static and dynamic badge to a human-readable sentence.
+- Preview dialog: badge tooltips on the badges column, per-badge explanations in the detail pane.
+- Filter bar (`QLineEdit`) above the table: filters rows by expression, field, badge, or change summary.
+- `tests/test_report_summary.py`: 8 new tests covering static, dynamic, unknown, and exhaustive badge coverage.
 
 #### Part B: Subdeck & Selection-Deck Sources
 - In `mining_fixer/collection_io.py`:
@@ -161,3 +160,4 @@ flowchart TD
 | `japanese_support_furigana_generator` | [collection_io.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/collection_io.py) | Bridge to Japanese Support MeCab reading engine |
 | `notify_collection_changed` | [collection_io.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/collection_io.py) | UI / Browser DOM post-write synchronization |
 | `build` | [scripts/build_ankiaddon.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/scripts/build_ankiaddon.py) | Builds .ankiaddon zip archive from mining_fixer/ |
+| `badge_explanation` | [report.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/report.py) | Maps badge strings to human-readable explanations |
