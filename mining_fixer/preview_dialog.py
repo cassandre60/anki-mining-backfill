@@ -14,6 +14,7 @@ from aqt.qt import (
     QFont,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPlainTextEdit,
     QPushButton,
     Qt,
@@ -41,7 +42,7 @@ from .collection_io import (
     write_run_log,
 )
 from .plan import PlannedWrite
-from .report import OP_LABELS
+from .report import OP_LABELS, badge_explanation
 
 _HEADERS = ["", "note", "field", "change", "source", "badges"]
 _CHECK_ROLE = int(Qt.ItemDataRole.UserRole) + 1
@@ -141,6 +142,13 @@ class PreviewDialog(QDialog):
     def _changes_page(self, writes) -> QWidget:
         page = QWidget()
         inner = QVBoxLayout(page)
+
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText("Filter by expression, field, or badge…")
+        self.filter_input.setClearButtonEnabled(True)
+        self.filter_input.textChanged.connect(self._apply_filter)
+        inner.addWidget(self.filter_input)
+
         table = QTableWidget(0, len(_HEADERS))
         table.setHorizontalHeaderLabels(_HEADERS)
         vheader = table.verticalHeader()
@@ -183,7 +191,13 @@ class PreviewDialog(QDialog):
             table.setItem(index, 3, QTableWidgetItem(_change_summary(write)))
             source = f"note {write.source_note_id}" if write.source_note_id else ""
             table.setItem(index, 4, QTableWidgetItem(source))
-            table.setItem(index, 5, QTableWidgetItem(", ".join(write.badges)))
+
+            badge_text = ", ".join(write.badges)
+            badge_item = QTableWidgetItem(badge_text)
+            if write.badges:
+                tooltip = "\n".join(f"• {badge_explanation(b)}" for b in write.badges)
+                badge_item.setToolTip(tooltip)
+            table.setItem(index, 5, badge_item)
 
         table.itemChanged.connect(self._on_item_changed)
         table.itemSelectionChanged.connect(lambda: self._show_detail(table))
@@ -234,17 +248,45 @@ class PreviewDialog(QDialog):
         lines = [
             f"note {write.note_id} · {write.field} · {OP_LABELS.get(write.op, write.op)}",
             f"badges: {', '.join(write.badges) or '(none)'}",
-            "",
-            "current:",
-            write.old_value or "(empty)",
-            "",
-            "after:",
-            write.new_value,
         ]
+        if write.badges:
+            lines.append("")
+            for b in write.badges:
+                lines.append(f"  • {b}: {badge_explanation(b)}")
+        lines.extend(
+            [
+                "",
+                "current:",
+                write.old_value or "(empty)",
+                "",
+                "after:",
+                write.new_value,
+            ]
+        )
         self.detail.setPlainText("\n".join(lines))
 
     def _checked_keys(self) -> list[tuple[int, str]]:
         return [key for key, on in self.checks.items() if on]
+
+    def _apply_filter(self, text: str) -> None:
+        """Show only table rows whose expression, field, or badges contain *text*."""
+        needle = text.strip().lower()
+        for row in range(self.table.rowCount()):
+            if not needle:
+                self.table.setRowHidden(row, False)
+                continue
+            visible = False
+            for col in (1, 2, 5):  # note/expression, field, badges
+                item = self.table.item(row, col)
+                if item is not None and needle in (item.text() or "").lower():
+                    visible = True
+                    break
+            if not visible:
+                # Also search the change summary column
+                item = self.table.item(row, 3)
+                if item is not None and needle in (item.text() or "").lower():
+                    visible = True
+            self.table.setRowHidden(row, not visible)
 
     def _refresh_status(self) -> None:
         count = len(self._checked_keys())
