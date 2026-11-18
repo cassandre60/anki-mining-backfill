@@ -116,6 +116,7 @@ below, never as silent scope creep inside a coding session.
 | T14 | `test_plan.py` (expression tier, word-like gate, listening predicate incl. the Frequency exception); Ring 3 battery pending |
 | T15 | `test_normalize.py` (`furigana_base`), `test_plan.py` (rewrite + every Q-D12 guard), `test_batch.py` (on-by-default tier with its opt-out key); real card 1736973220751; Ring 3 pending |
 | T16 | `test_plan.py` (word-mined fragment completed to the scene block; a card that owns its audio is left alone; a stale fragment ruby regenerated or demoted; a dictionary word recording refused); real card 正道; Ring 3 pending |
+| T17 | `test_matching.py` (Hypothesis property test: `SceneParentIndex` matches linear scan under arbitrary timelines and windows), `test_normalize.py` (Hypothesis test: `kana_fold` translation table matches codepoint spec); benchmark verified |
 
 - **T13 — Dimension picker in the batch window (B7) — superseded.** Built
   on 2026-11-16 with three checkboxes (scene / arrows / furigana) and pure
@@ -179,6 +180,17 @@ below, never as silent scope creep inside a coding session.
   and the child has a fragment one, the completion ships checked with
   `ruby-will-be-regenerated` if the furigana tier has an engine, and
   unchecked (`stale-fragment-furigana-risk`) otherwise.
+- **T17 — Scene parent indexing and fast kana normalization.**
+  `matching.SceneParentIndex` pre-sorts the audio-bearing parent timeline once
+  per plan and builds a 3-gram inverted index over normalized parent sentences,
+  intersecting the rarest 3-character posting list with the `[lo, hi)` timestamp
+  bounds via binary search. Mathematically identical to brute-force linear window
+  scans (proven by Hypothesis property tests) while yielding a 275× speedup on
+  dense 4,000-note benchmarks (0.077 s vs 21.15 s). Replaced `normalize.kana_fold`
+  per-character generator with a precomputed `str.maketrans` table (~25× faster),
+  vectorized consensus counting in `matching.best_word_source` with
+  `collections.Counter` ($O(K)$ vs $O(K^2)$), and cached normalized sentence lookups
+  in `plan.build_plan` and `matching.rank_scene_parents`.
 
 ## Backlog
 

@@ -312,3 +312,25 @@ def test_furigana_base_refuses_html_ruby_markup():
     # reading, so leaving it in would corrupt the base (温あたためる).
     assert furigana_base("<ruby>温<rt>あたた</rt></ruby>める") == ""
     assert furigana_base("温<rt>あたた</rt>める") == ""
+
+
+def test_kana_fold_matches_codepoint_spec_across_katakana_boundaries():
+    from hypothesis import given
+    from hypothesis import strategies as st
+
+    alphabet = st.sampled_from(
+        [
+            *(chr(c) for c in range(0x30A0, 0x30FB)),  # katakana block including ゠, ァ..ヶ, ヷ..ー
+            *(chr(c) for c in range(0x3041, 0x3097)),  # hiragana
+            "漢",
+            "A",
+            " ",
+        ]
+    )
+
+    @given(st.text(alphabet=alphabet, max_size=60))
+    def check(text: str) -> None:
+        expected = "".join(chr(ord(c) - 0x60) if 0x30A1 <= ord(c) <= 0x30F6 else c for c in text)
+        assert kana_fold(text) == expected
+
+    check()

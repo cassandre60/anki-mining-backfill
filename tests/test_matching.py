@@ -5,6 +5,7 @@ from __future__ import annotations
 from mining_fixer.matching import (
     DAY_MS,
     NoteRecord,
+    SceneParentIndex,
     best_word_source,
     find_scene_parents,
     rank_scene_parents,
@@ -210,3 +211,60 @@ def test_singleton_kanji_guard():
     # a normal singleton with no kana twin is not flagged
     solo = rec(4, {**BASE, "Expression": "診察", "reading": "しんさつ"})
     assert not singleton_kanji_guard(solo, word_groups([solo]))
+
+
+def test_scene_parent_index_matches_linear_scan_under_hypothesis():
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    fragments = st.sampled_from(
+        [
+            "は",
+            "はい",
+            "診察中",
+            "先生は今 診察中ですので➡",
+            "申し訳ありません 先生は今 診察中ですので 代わりに伺います医師の川上です。",
+            "まったく別の場面の台詞です。",
+            "",
+        ]
+    )
+    parent_spec = st.lists(
+        st.tuples(
+            st.integers(min_value=1_000_000, max_value=10_000_000),
+            fragments,
+        ),
+        max_size=25,
+        unique_by=lambda item: item[0],
+    )
+
+    @settings(max_examples=80)
+    @given(
+        parents_raw=parent_spec,
+        cand_id=st.integers(min_value=1_000_000, max_value=10_000_000),
+        cand_sentence=fragments,
+        window_ms=st.sampled_from([0, 1_000, DAY_MS, 3 * DAY_MS, 14 * DAY_MS]),
+        min_len=st.sampled_from([3, 6, 12]),
+    )
+    def check(
+        parents_raw: list[tuple[int, str]],
+        cand_id: int,
+        cand_sentence: str,
+        window_ms: int,
+        min_len: int,
+    ) -> None:
+        parents_by_id = {pid: parent(pid, sent) for pid, sent in parents_raw}
+        cand = candidate(cand_id, cand_sentence)
+        index = SceneParentIndex.from_parents(parents_by_id)
+        expected = find_scene_parents(cand, parents_by_id, window_ms=window_ms, min_len=min_len)
+        actual = find_scene_parents(
+            cand,
+            parents_by_id,
+            window_ms=window_ms,
+            min_len=min_len,
+            index=index,
+        )
+        assert [
+            (m.parent.note_id, m.tier_gap_ms, m.exact_equal, m.boundary_ok) for m in actual
+        ] == [(m.parent.note_id, m.tier_gap_ms, m.exact_equal, m.boundary_ok) for m in expected]
+
+    check()

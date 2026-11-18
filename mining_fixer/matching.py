@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import bisect
 import re
+from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from .fieldconfig import (
@@ -42,6 +44,7 @@ __all__ = [
     "DEFAULT_SCENE_REPLACE_FIELDS",
     "NoteRecord",
     "SceneMatch",
+    "SceneParentIndex",
     "WordSource",
     "find_scene_parents",
     "is_word_media",
@@ -151,12 +154,128 @@ def is_word_media(value: str) -> bool:
     return False
 
 
+@dataclass
+class SceneParentIndex:
+    """Pre-sorted timeline and 3-gram inverted index over audio-bearing parents.
+
+    Mathematically equivalent to :func:`find_scene_parents`'s linear window
+    scan: since every accepted candidate fragment has length >=
+    :data:`MIN_FRAGMENT_CHARS` (3), any parent containing ``ctext`` must also
+    contain every 3-character substring of ``ctext``. Intersecting the rarest
+    sampled 3-gram posting list with the ``[lo, hi)`` timestamp window yields
+    the exact same matches in ascending ``note_id`` order while avoiding
+    redundant sorting and substring scans across large decks. Pure.
+    """
+
+    parent_ids: tuple[int, ...]
+    parents: tuple[NoteRecord, ...]
+    parent_norms: tuple[str, ...]
+    trigrams: dict[str, list[int]]
+
+    @classmethod
+    def from_parents(
+        cls,
+        parents_by_id: dict[int, NoteRecord],
+        cache: dict[int, str] | None = None,
+    ) -> SceneParentIndex:
+        ids = tuple(sorted(parents_by_id))
+        parents = tuple(parents_by_id[nid] for nid in ids)
+        norms: list[str] = []
+        trigrams: dict[str, list[int]] = {}
+        for idx, parent in enumerate(parents):
+            ptext = (
+                _normalized(parent, cache)
+                if cache is not None
+                else norm_sentence_match(parent.get("Sentence"))
+            )
+            norms.append(ptext)
+            plen = len(ptext)
+            if plen >= MIN_FRAGMENT_CHARS:
+                seen_tris = {ptext[i : i + 3] for i in range(plen - 2)}
+                for tri in seen_tris:
+                    trigrams.setdefault(tri, []).append(idx)
+        return cls(
+            parent_ids=ids,
+            parents=parents,
+            parent_norms=tuple(norms),
+            trigrams=trigrams,
+        )
+
+    def find(
+        self,
+        candidate: NoteRecord,
+        window_ms: int = 3 * DAY_MS,
+        min_len: int = 6,
+        cache: dict[int, str] | None = None,
+    ) -> list[SceneMatch]:
+        ctext = (
+            _normalized(candidate, cache)
+            if cache is not None
+            else norm_sentence_match(candidate.get("Sentence"))
+        )
+        clen = len(ctext)
+        if clen < MIN_FRAGMENT_CHARS or not self.parent_ids:
+            return []
+        lo = bisect.bisect_left(self.parent_ids, candidate.note_id - window_ms)
+        hi = bisect.bisect_right(self.parent_ids, candidate.note_id + window_ms)
+        if lo >= hi:
+            return []
+
+        tri_count = clen - 2
+        offsets: Sequence[int]
+        if tri_count <= 8:
+            offsets = range(tri_count)
+        else:
+            step = max(1, (tri_count - 1) // 7)
+            offsets = (*range(0, tri_count - 1, step)[:7], tri_count - 1)
+
+        best_postings: list[int] | None = None
+        for off in offsets:
+            postings = self.trigrams.get(ctext[off : off + 3])
+            if postings is None:
+                return []
+            if best_postings is None or len(postings) < len(best_postings):
+                best_postings = postings
+        assert best_postings is not None
+
+        indices: Sequence[int]
+        if len(best_postings) < (hi - lo):
+            p_lo = bisect.bisect_left(best_postings, lo)
+            p_hi = bisect.bisect_left(best_postings, hi)
+            indices = best_postings[p_lo:p_hi]
+        else:
+            indices = range(lo, hi)
+
+        matches: list[SceneMatch] = []
+        cand_id = candidate.note_id
+        for idx in indices:
+            ptext = self.parent_norms[idx]
+            if len(ptext) < min_len:
+                continue
+            start = ptext.find(ctext)
+            if start < 0:
+                continue
+            parent = self.parents[idx]
+            matches.append(
+                SceneMatch(
+                    parent=parent,
+                    tier_gap_ms=abs(parent.note_id - cand_id),
+                    exact_equal=ptext == ctext,
+                    boundary_ok=_boundary_ok(ctext, ptext, start),
+                    fillable=0,
+                    fill_payload=(),
+                )
+            )
+        return matches
+
+
 def find_scene_parents(
     candidate: NoteRecord,
     parents_by_id: dict[int, NoteRecord],
     window_ms: int = 3 * DAY_MS,
     min_len: int = 6,
     cache: dict[int, str] | None = None,
+    index: SceneParentIndex | None = None,
 ) -> list[SceneMatch]:
     """Parents within the temporal window whose Sentence contains the candidate's.
 
@@ -167,6 +286,8 @@ def find_scene_parents(
     candidate's note id (creation timestamp) and a hard cap; callers widen
     only by re-running with a larger config value.
     """
+    if index is not None:
+        return index.find(candidate, window_ms=window_ms, min_len=min_len, cache=cache)
     cache = cache if cache is not None else {}
     ctext = _normalized(candidate, cache)
     # A fragment only needs to be non-trivial to identify a scene; the
@@ -213,6 +334,7 @@ def _fillable_and_payload(
     fill_fields: tuple[str, ...] = DEFAULT_SCENE_FILL_FIELDS,
     replace_fields: tuple[str, ...] = DEFAULT_SCENE_REPLACE_FIELDS,
     never_copy: frozenset[str] = FIELD_NEVER_COPY,
+    cache: dict[int, str] | None = None,
 ) -> tuple[int, tuple]:
     """Count gaps this parent can fill and the exact payload it would write."""
     payload: list[tuple[str, str]] = []
@@ -237,13 +359,19 @@ def _fillable_and_payload(
     # shorter than the same-episode block gains the full sentence (and its
     # bold), even when every scene field is already present — the author's
     # 校 card should take the long block from ぜひ's scene.
-    if (
-        "Sentence" in replace_fields
-        and "Sentence" not in never_copy
-        and norm_sentence_match(parent.get("Sentence"))
-        != norm_sentence_match(candidate.get("Sentence"))
-    ):
-        count += 1
+    if "Sentence" in replace_fields and "Sentence" not in never_copy:
+        pnorm = (
+            _normalized(parent, cache)
+            if cache is not None
+            else norm_sentence_match(parent.get("Sentence"))
+        )
+        cnorm = (
+            _normalized(candidate, cache)
+            if cache is not None
+            else norm_sentence_match(candidate.get("Sentence"))
+        )
+        if pnorm != cnorm:
+            count += 1
     return count, tuple(payload)
 
 
@@ -254,6 +382,7 @@ def rank_scene_parents(
     fill_fields: tuple[str, ...] = DEFAULT_SCENE_FILL_FIELDS,
     replace_fields: tuple[str, ...] = DEFAULT_SCENE_REPLACE_FIELDS,
     never_copy: frozenset[str] = FIELD_NEVER_COPY,
+    cache: dict[int, str] | None = None,
 ) -> list[SceneMatch]:
     """Order matches by: exact-equality, fillability, tightness, recency.
 
@@ -271,6 +400,7 @@ def rank_scene_parents(
             fill_fields=fill_fields,
             replace_fields=replace_fields,
             never_copy=never_copy,
+            cache=cache,
         )
         if fillable == 0:
             continue
@@ -280,7 +410,11 @@ def rank_scene_parents(
     scored.sort(
         key=lambda m: (
             0 if m.exact_equal else 1,
-            len(norm_sentence_match(m.parent.get("Sentence"))),
+            len(
+                _normalized(m.parent, cache)
+                if cache is not None
+                else norm_sentence_match(m.parent.get("Sentence"))
+            ),
             m.tier_gap_ms,
             -m.fillable,
             m.parent.note_id,
@@ -437,8 +571,9 @@ def best_word_source(
     from .normalize import strip_renderable  # local import keeps cycle-free
 
     norm_values = [strip_renderable(c.value).strip() for c in candidates]
+    counts = Counter(norm_values)
     for c, norm_val in zip(candidates, norm_values, strict=True):
-        c.consensus = sum(1 for v in norm_values if v == norm_val)
+        c.consensus = counts[norm_val]
     candidates.sort(key=lambda c: (not c.provenance, -c.consensus, c.record.note_id))
     return candidates[0]
 

@@ -31,6 +31,7 @@ from .matching import (
     MAX_WINDOW_MS,
     NoteRecord,
     SceneMatch,
+    SceneParentIndex,
     agreement_groups,
     best_word_source,
     find_scene_parents,
@@ -1022,10 +1023,21 @@ def _episode_key(source: str) -> str | None:
     return None
 
 
+def _cached_norm_sentence_match(record: NoteRecord, cache: dict[int, str] | None) -> str:
+    if cache is None:
+        return norm_sentence_match(record.get("Sentence"))
+    cached = cache.get(record.note_id)
+    if cached is None:
+        cached = norm_sentence_match(record.get("Sentence"))
+        cache[record.note_id] = cached
+    return cached
+
+
 def _word_recovered_scene_writes(
     target: NoteRecord,
     episodes: dict[str, list[NoteRecord]],
     cfg: dict,
+    cache: dict[int, str] | None = None,
 ) -> tuple[list[PlannedWrite], str | None]:
     """Recover a scene by the *word* when the card's own sentence is wrong.
 
@@ -1120,7 +1132,9 @@ def _word_recovered_scene_writes(
     for cand, cand_members in hits.items():
         by_text: dict[str, list[tuple[NoteRecord, str]]] = {}
         for record, sentence in cand_members:
-            by_text.setdefault(norm_sentence_match(sentence), []).append((record, sentence))
+            by_text.setdefault(_cached_norm_sentence_match(record, cache), []).append(
+                (record, sentence)
+            )
         for _text, same in by_text.items():
             if len(same) > len(members):
                 best_cand, members = cand, same
@@ -1129,7 +1143,7 @@ def _word_recovered_scene_writes(
         for cand, cand_members in hits.items():
             if len(cand_members) < 2:
                 continue
-            texts = [norm_sentence_match(sentence) for _, sentence in cand_members]
+            texts = [_cached_norm_sentence_match(record, cache) for record, _ in cand_members]
             if all(left in right or right in left for left in texts for right in texts):
                 best_cand, members = cand, cand_members
                 break
@@ -1390,6 +1404,7 @@ def _scene_writes_for(
     matches: list[SceneMatch],
     cfg: dict,
     ruby_regeneration_available: bool = False,
+    cache: dict[int, str] | None = None,
 ) -> tuple[list[PlannedWrite], str | None]:
     """Emit scene-op writes for one candidate, or a reason string.
 
@@ -1415,6 +1430,7 @@ def _scene_writes_for(
         fill_fields=fill_fields,
         replace_fields=replace_fields,
         never_copy=never_copy,
+        cache=cache,
     )
     if not ranked:
         return [], "no-parent-that-fills"
@@ -1446,12 +1462,12 @@ def _scene_writes_for(
         # every competing group is nested with the chosen one, the tighter
         # (highest-ranked) pick is trusted; genuinely different scenes still
         # demote to unchecked.
-        best_text = norm_sentence_match(parent.get("Sentence"))
+        best_text = _cached_norm_sentence_match(parent, cache)
         nested = True
         for _payload, members in groups.items():
             if members is best_members:
                 continue
-            other_text = norm_sentence_match(members[0].parent.get("Sentence"))
+            other_text = _cached_norm_sentence_match(members[0].parent, cache)
             if not (best_text in other_text or other_text in best_text):
                 nested = False
                 break
@@ -1475,8 +1491,8 @@ def _scene_writes_for(
         context_badges.append("far-from-source")
     if not best_members[0].boundary_ok:
         context_badges.append("interior-span")
-    parent_len = len(norm_sentence_match(parent.get("Sentence")))
-    cand_len = len(norm_sentence_match(candidate.get("Sentence")))
+    parent_len = len(_cached_norm_sentence_match(parent, cache))
+    cand_len = len(_cached_norm_sentence_match(candidate, cache))
     if parent_len > 2 * cand_len:
         context_badges.append("scene-block-parent")
 
@@ -2037,6 +2053,7 @@ def build_plan(
     scene_dimension = bool(cfg.get("batch_scene_propagation", True))
     scene_fill_fields = tuple(cfg.get("scene_fill_fields", DEFAULT_SCENE_FILL_FIELDS))
     scene_replace_fields = tuple(cfg.get("scene_replace_fields", DEFAULT_SCENE_REPLACE_FIELDS))
+    parent_index = SceneParentIndex.from_parents(parents_by_id, cache) if scene_dimension else None
 
     for target in scope:
         if optout in target.tags:
@@ -2053,15 +2070,25 @@ def build_plan(
         # Complete cards already have their own audio/picture/sentence and are
         # anchors/sources: they are NEVER overwritten by another scene.
         if has_scene_gap:
-            matches = find_scene_parents(target, parents_by_id, window_ms, min_len, cache)
+            matches = find_scene_parents(
+                target,
+                parents_by_id,
+                window_ms,
+                min_len,
+                cache,
+                index=parent_index,
+            )
             scene_writes, reason = _scene_writes_for(
                 target,
                 matches,
                 cfg,
                 ruby_regeneration_available=furigana_tier and furigana_generator is not None,
+                cache=cache,
             )
             if not scene_writes and reason == "no-parent-that-fills":
-                recovered, _recovered_reason = _word_recovered_scene_writes(target, episodes, cfg)
+                recovered, _recovered_reason = _word_recovered_scene_writes(
+                    target, episodes, cfg, cache=cache
+                )
                 if recovered:
                     scene_writes, reason = recovered, None
             if reason:

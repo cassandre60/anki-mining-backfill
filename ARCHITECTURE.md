@@ -123,9 +123,12 @@ overwrite content; a test asserts nothing else ever does.
   field). Parent = enriched card (has `Sentence Audio`) whose normalized
   `Sentence` *contains* the candidate's. Searched only within ±`window_days`
   around the note id, hard-capped by `MAX_WINDOW_MS` — never widened
-  silently. Ranked by exact match, then tightest containing parent, then
-  smallest id gap; identical outcomes collapse into agreement groups
-  (`N-siblings-agree`), divergence is left for the user.
+  silently. `matching.SceneParentIndex` pre-sorts the parent timeline once per
+  plan and builds a 3-gram inverted index over normalized parent sentences so
+  large-deck plans intersect the rarest 3-gram posting list with `[lo, hi)`
+  instead of re-scanning every parent per target. Ranked by exact match, then
+  tightest containing parent, then smallest id gap; identical outcomes collapse
+  into agreement groups (`N-siblings-agree`), divergence is left for the user.
 - **Word.** Grouped by a key derived from `(Expression, reading, furigana)`
   (`normalize.word_key`). No reading-only matching: 氏/詩/師/死 all read し.
   `Definition` and `Extended definition` belong to `FIELD_NEVER_COPY` and are

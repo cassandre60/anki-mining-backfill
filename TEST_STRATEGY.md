@@ -175,6 +175,10 @@ not have and must never be given.
   with Hypothesis: every write's precondition holds at decision time,
   applying then undoing restores the exact prior state, re-running a plan
   after apply writes nothing, and editing one field aborts that note.
+  `tests/test_matching.py` and `tests/test_normalize.py` likewise use
+  Hypothesis to prove `SceneParentIndex` matches brute-force
+  `find_scene_parents` identically and `kana_fold`'s translation table matches
+  the Katakana codepoint specification.
 - **Scale proof** (Ring 3): 1000 selected notes on a copy of the real
   collection — plan 2.2 s, apply 1.5 s with a backup, verification clean, the
   793 untouched notes byte-identical, re-run a no-op, undo restoring all 1000
@@ -228,8 +232,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **264 passed** |
-| CI / a venv without Anki | **262 passed, 2 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **266 passed** |
+| CI / a venv without Anki | **264 passed, 2 skipped** |
 
 Both are green; the difference is exactly two self-skipping import checks
 (the dialog modules need a real `aqt`).

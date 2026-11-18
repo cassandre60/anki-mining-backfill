@@ -91,11 +91,14 @@ _LATIN_RE = re.compile(r"[A-Za-z0-9]")
 
 def _strip_markup(text: str) -> str:
     """Remove sound tags, images, HTML tags and invisible characters."""
-    text = _SOUND_RE.sub("", text)
-    text = _ANKI_REF_RE.sub("", text)
-    text = _IMG_RE.sub("", text)
-    text = _TAG_RE.sub("", text)
-    text = html.unescape(text)
+    if "[" in text:
+        text = _SOUND_RE.sub("", text)
+        text = _ANKI_REF_RE.sub("", text)
+    if "<" in text:
+        text = _IMG_RE.sub("", text)
+        text = _TAG_RE.sub("", text)
+    if "&" in text:
+        text = html.unescape(text)
     text = unicodedata.normalize("NFKC", text)
     text = _INVISIBLE_RE.sub("", text)
     return text
@@ -148,13 +151,16 @@ def strip_renderable(text: str) -> str:
     return _collapse_whitespace(_strip_markup(text).translate(_PUNCT_TRANSLATION))
 
 
+_KANA_FOLD_TABLE = str.maketrans({chr(c): chr(c - 0x60) for c in range(0x30A1, 0x30F7)})
+
+
 def kana_fold(text: str) -> str:
     """Katakana (U+30A1-U+30F6) to hiragana by code-point offset.
 
     Does not fold the long-vowel mark (ー) or dakuten: folding those merges
     distinct words (おばさん/おばあさん, か/が).
     """
-    return "".join(chr(ord(c) - 0x60) if 0x30A1 <= ord(c) <= 0x30F6 else c for c in text)
+    return text.translate(_KANA_FOLD_TABLE)
 
 
 def norm_reading(text: str) -> str:
