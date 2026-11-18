@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 
 from .fieldconfig import (
@@ -42,6 +42,7 @@ from .matching import (
 )
 from .normalize import (
     REPAIR_RULES,
+    MorphToken,
     furigana_base,
     furigana_base_matches,
     is_empty_glossary_shell,
@@ -443,6 +444,52 @@ def _trim_bold_punctuation(sentence: str, wanted: set[str]) -> tuple[str, bool]:
     return trimmed, changed
 
 
+def _shares_kanji(a: str, b: str) -> bool:
+    """True when two strings share at least one kanji character."""
+    a_kanji = set(_KANJI_HINT_RE.findall(a or ""))
+    b_kanji = set(_KANJI_HINT_RE.findall(b or ""))
+    return bool(a_kanji and (a_kanji & b_kanji))
+
+
+def _is_morph_match(
+    span_text: str,
+    expr: str,
+    reading: str,
+    morph_tokenizer: Callable[[str], Sequence[MorphToken]],
+    furigana: str | None = None,
+) -> bool:
+    """True when morphological analysis identifies ``span_text`` as the card's word.
+
+    Recognizes inflected forms (淀む -> よどん) and alternate-kanji spellings
+    (日差し -> 日射し) without guessing. Pure.
+    """
+    if not span_text or not expr:
+        return False
+    try:
+        tokens = morph_tokenizer(span_text)
+        if len(tokens) == 1 and tokens[0].pos in ("動詞", "形容詞", "名詞", "副詞", "連体詞"):
+            tok = tokens[0]
+            target_reading = kana_fold(norm_reading(reading or ""))
+            if len(target_reading) < 2 and furigana:
+                target_reading = kana_fold(reading_from_furigana(furigana) or "")
+            tok_lemma_norm = kana_fold(norm_reading(tok.lemma))
+            expr_norm = kana_fold(norm_reading(expr))
+            if tok.lemma == expr or tok_lemma_norm == expr_norm:
+                return True
+            if target_reading and len(target_reading) >= 2 and tok_lemma_norm == target_reading:
+                return True
+            if (
+                target_reading
+                and len(target_reading) >= 2
+                and kana_fold(norm_reading(tok.reading)) == target_reading
+                and _shares_kanji(tok.surface, expr)
+            ):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def _bold_normalized_sentence(
     sentence: str, candidates: list[str], body: str = ""
 ) -> tuple[str, str] | None:
@@ -503,7 +550,10 @@ def _bold_normalized_sentence(
 
 
 def _bold_repair_for(
-    target: NoteRecord, rules: tuple[str, ...] = ()
+    target: NoteRecord,
+    rules: tuple[str, ...] = (),
+    morph_tokenizer: Callable[[str], Sequence[MorphToken]] | None = None,
+    batch_bold_inflected: bool = True,
 ) -> tuple[PlannedWrite | None, str | None, str | None]:
     """Locate the tested word in a bold-less ``Sentence``; markup-only fix.
 
@@ -567,6 +617,17 @@ def _bold_repair_for(
                 recognized.append(reading)
         span_list = _BOLD_RE.findall(sentence)
         wanted = {_fold(strip_renderable(cand).strip()) for cand in recognized if cand}
+        if morph_tokenizer is not None:
+            for span in span_list:
+                clean_span = strip_renderable(span).strip()
+                if _is_morph_match(
+                    clean_span,
+                    expr_raw,
+                    target.get("reading") or "",
+                    morph_tokenizer,
+                    target.get("furigana"),
+                ):
+                    wanted.add(_fold(clean_span))
         if len(span_list) == 1 and _fold(strip_renderable(span_list[0]).strip()) in wanted:
             # Already exactly one bold, and it wraps the tested word: done.
             return None, None, None
@@ -770,6 +831,76 @@ def _bold_repair_for(
                 "cloze-word-ambiguous",
                 f"spelling '{candidate}' occurs {count} times",
             )
+
+    # Tier 5: inflected / alternate-kanji matching via morphological analysis (B10, Issue #1).
+    if (
+        batch_bold_inflected
+        and morph_tokenizer is not None
+        and expr
+        and _expression_is_word_like(expr)
+    ):
+        try:
+            clean_sent = strip_renderable(sentence)
+            tokens = morph_tokenizer(clean_sent)
+            target_reading = kana_fold(norm_reading(target.get("reading") or ""))
+            if len(target_reading) < 2:
+                target_reading = kana_fold(reading_from_furigana(target.get("furigana")) or "")
+            expr_norm = kana_fold(norm_reading(expr))
+            content_matches: list[MorphToken] = []
+            for tok in tokens:
+                if tok.pos not in ("動詞", "形容詞", "名詞", "副詞", "連体詞"):
+                    continue
+                tok_lemma_norm = kana_fold(norm_reading(tok.lemma))
+                matches = (
+                    tok.lemma == expr
+                    or tok_lemma_norm == expr_norm
+                    or (
+                        bool(target_reading)
+                        and len(target_reading) >= 2
+                        and tok_lemma_norm == target_reading
+                    )
+                    or (
+                        bool(target_reading)
+                        and len(target_reading) >= 2
+                        and kana_fold(norm_reading(tok.reading)) == target_reading
+                        and _shares_kanji(tok.surface, expr)
+                    )
+                )
+                if matches:
+                    content_matches.append(tok)
+
+            if len(content_matches) > 1:
+                return (
+                    None,
+                    "cloze-word-ambiguous",
+                    f"multiple inflected tokens for '{expr}' in sentence",
+                )
+            if len(content_matches) == 1:
+                chosen_surface = content_matches[0].surface
+                count = sentence.count(chosen_surface)
+                if count == 1:
+                    new_value = _wrap_first_occurrence(sentence, chosen_surface)
+                    if new_value is not None and strip_renderable(new_value) == strip_renderable(
+                        sentence
+                    ):
+                        write = PlannedWrite(
+                            note_id=target.note_id,
+                            field="Sentence",
+                            op=OP_BOLD_CLOZE_WORD,
+                            old_value=raw_sentence,
+                            new_value=new_value,
+                            default_checked=True,
+                            badges=("bold-added-to-inflected-form", *noise_rules),
+                        )
+                        return write, None, None
+                elif count > 1:
+                    return (
+                        None,
+                        "cloze-word-ambiguous",
+                        f"inflected form '{chosen_surface}' occurs {count} times",
+                    )
+        except Exception:
+            pass
 
     # Expression absent (inflected or a mis-mine): silent when nothing was
     # mined — the expected, documented class-C outcome (BULK_FIX slice 8) —
@@ -1377,7 +1508,12 @@ def _placeable_bold_candidates(target: NoteRecord) -> list[str]:
     return sorted(out, key=len, reverse=True)
 
 
-def _single_bold(value: str, body: str, extras: tuple[str, ...] = ()) -> str:
+def _single_bold(
+    value: str,
+    body: str,
+    extras: tuple[str, ...] = (),
+    morph_tokenizer: Callable[[str], Sequence[MorphToken]] | None = None,
+) -> str:
     """Exactly one bold span — around the tested word — in ``value``.
 
     The deck convention is one bold term. An expanded block can carry the
@@ -1391,6 +1527,12 @@ def _single_bold(value: str, body: str, extras: tuple[str, ...] = ()) -> str:
     names = [c for c in (strip_renderable(body).strip(), *extras) if c]
     known = {_fold(c) for c in names}
     value, _ = _trim_bold_punctuation(value, known)
+    if morph_tokenizer is not None:
+        expr = extras[0] if extras else body
+        for span in _BOLD_RE.findall(value):
+            clean_span = strip_renderable(span).strip()
+            if _is_morph_match(clean_span, expr, "", morph_tokenizer):
+                known.add(_fold(clean_span))
     chosen_span: tuple[int, int] | None = None
     chosen = ""
     for candidate in sorted(dict.fromkeys(names), key=len, reverse=True):
@@ -2012,9 +2154,16 @@ def _append_local_sentence_writes(
     repair_rules: tuple[str, ...],
     reasons: dict[int, str],
     warnings: list[str],
+    morph_tokenizer: Callable[[str], Sequence[MorphToken]] | None = None,
+    batch_bold_inflected: bool = True,
 ) -> None:
     """Append in-place bold and subtitle-noise repairs when Sentence is free."""
-    bold_write, bold_reason, bold_detail = _bold_repair_for(target, repair_rules)
+    bold_write, bold_reason, bold_detail = _bold_repair_for(
+        target,
+        repair_rules,
+        morph_tokenizer=morph_tokenizer,
+        batch_bold_inflected=batch_bold_inflected,
+    )
     queued_expansion = any(
         w.field == "Sentence" and w.op == OP_EXPAND_SENTENCE and w.default_checked
         for w in target_writes
@@ -2033,7 +2182,7 @@ def _append_local_sentence_writes(
             # sentence that does not contain its own word is a mis-mine
             # the author must see (類い希-shaped cards).
             or (
-                bold_reason == "cloze-word-not-in-sentence"
+                bold_reason in ("cloze-word-not-in-sentence", "cloze-word-ambiguous")
                 and reasons.get(target.note_id) == "no-parent-that-fills"
             )
         ):
@@ -2059,6 +2208,7 @@ def build_plan(
     scope_note_ids: list[int] | None = None,
     media_exists=None,
     furigana_generator=None,
+    morph_tokenizer: Callable[[str], Sequence[MorphToken]] | None = None,
 ) -> Plan:
     """Build the full plan.
 
@@ -2115,6 +2265,7 @@ def build_plan(
     # non-furigana tiers headless; the shipped `config.json` sets it to true.
     furigana_tier = bool(cfg.get("batch_regenerate_furigana", False))
     expression_tier = bool(cfg.get("batch_repair_expression", True))
+    bold_inflected = bool(cfg.get("batch_bold_inflected", True))
     # Fields whose queued values come from the old spelling's word group;
     # the Expression rewrite must not land in the same run as them.
     word_fields = frozenset({*cfg.get("word_fill_fields", ()), "Expression"})
@@ -2224,7 +2375,15 @@ def build_plan(
                     reasons[target.note_id] = repair_expr_reason
         # Markup-only bold repair and subtitle-noise repair when no checked
         # scene expansion already owns Sentence.
-        _append_local_sentence_writes(target, target_writes, repair_rules, reasons, warnings)
+        _append_local_sentence_writes(
+            target,
+            target_writes,
+            repair_rules,
+            reasons,
+            warnings,
+            morph_tokenizer=morph_tokenizer,
+            batch_bold_inflected=bold_inflected,
+        )
         # The ruby must describe the Sentence this card ends up with: drop a
         # checked ruby copied from another card's line *before* the ruby
         # repair / regeneration steps, so the field is either cleaned or

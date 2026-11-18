@@ -65,7 +65,11 @@ not have and must never be given.
   bold tags (such as `<b>とんでもない></b>` on repeated words or `<b>芸者&gt;</b>`)
   are trimmed so the outer delimiters move outside `<b>...</b>` without altering
   renderable characters (`strip_renderable` equality) —
-  `test_bold_repair_trims_punctuation_on_repeated_word`.
+  `test_bold_repair_trims_punctuation_on_repeated_word`. Inflected forms
+  (淀む → `<b>よどん</b>だ`, 読む → `<b>読め</b>`) and alternate kanji
+  (日差し → `<b>日射し</b>`) are recognized and placed via `morph_tokenizer`
+  without guessing — `test_bold_repair_recognizes_inflected_span_with_morph_tokenizer`
+  and `test_bold_repair_places_inflected_bold_with_morph_tokenizer`.
 - **The expanded rule set and convergence** are pinned in
   `tests/test_normalize.py` (a speaker tag's line break joins; a long
   parenthetical keeps its break) and `tests/test_plan.py` (bold via the

@@ -33,15 +33,19 @@ first, with the reason.
   or `<b>芸者&gt;</b>`), the outer punctuation is trimmed outside the bold tags
   (`<b>とんでもない</b>>`, `<b>芸者</b>&gt;`), preserving the exact occurrence
   the existing bold already sits on even when the word repeats elsewhere in the
-  sentence (badge `bold-trimmed-punctuation`). The word is found in three
+  sentence (badge `bold-trimmed-punctuation`). The word is found in five
   tiers, each requiring exactly one occurrence: the `cloze-body` (the mined
-  word), the `Expression` verbatim, or a reading-derived mixed-kana surface
-  form (鬱病 → うつ病). Expression-derived tiers require the Expression to be
+  word), the `Expression` verbatim, a reading-derived mixed-kana surface form
+  (鬱病 → うつ病), furigana per-kanji spellings (類い希 → 類いまれ), or an
+  unambiguous inflected / alternate-kanji form identified via morphological
+  analysis (淀む → <b>よどん</b>, 日差し → <b>日射し</b>, 読む → <b>読め</b>;
+  badge `bold-added-to-inflected-form`, config key `batch_bold_inflected`).
+  Expression-derived tiers require the Expression to be
   *word-like* — no whitespace, no sentence punctuation, at most
   `MAX_EXPRESSION_CHARS` (10) characters; a clause-like value
   (漢字は読めるようになりたいかな) is reported
   (`expression-not-word-like`), never bolded, and MeCab tokenization is
-  the recorded future oracle (BULK_FIX.md dimension 6). Cards whose
+  the recorded oracle (BULK_FIX.md dimension 6). Cards whose
   template front is audio-only are skipped entirely — the sentence is not
   displayed: either a `listening` tag with usable audio, or no
   `Definition`/`Extended definition`/`Frequency` with `Sentence Audio`

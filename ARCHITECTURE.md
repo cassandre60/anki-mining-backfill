@@ -136,11 +136,16 @@ overwrite content; a test asserts nothing else ever does.
   fields are cleared by `strip_empty_glossary`.
 - **Bold repair** (`plan._bold_repair_for`). Tier 1: the `cloze-body` occurs
   exactly once in `Sentence` → wrap it. Tier 2 (body absent, i.e. `cloze-*`
-  hold dictionary-entry text): try mixed-kana spellings derived from
-  `(Expression, reading)` (`_mixed_form_candidates`, requires at least one
-  kanji) and accept only a candidate occurring exactly once. Anything
-  ambiguous → warning, no write. Never issued when a `Sentence` expansion is
-  queued for the same note (they would fight over the field).
+  hold dictionary-entry text): try `Expression` verbatim. Tier 3: mixed-kana
+  spellings derived from `(Expression, reading)` (`_mixed_form_candidates`,
+  requires at least one kanji). Tier 4: whole reading (if $\ge 3$ kana).
+  Tier 5: offline morphological tokenization via injected `morph_tokenizer`
+  (recognizes inflected verbs `よどん` $\leftarrow$ `淀む`, alternate kanji `日射し`
+  $\leftarrow$ `日差し`, and bolds unambiguous single content tokens `読む` $\to$
+  `読め` behind config toggle `batch_bold_inflected: true`). Trims outer
+  punctuation from existing bold tags without altering renderable text.
+  Anything ambiguous → warning, no write. Never issued when a `Sentence`
+  expansion is queued for the same note (they would fight over the field).
 
 ## Apply contract
 

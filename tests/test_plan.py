@@ -5,7 +5,7 @@ from __future__ import annotations
 from test_golden_scene import CFG, CHILD, CHILD_ID, PARENT, PARENT_ID
 
 from mining_fixer.matching import NoteRecord
-from mining_fixer.normalize import furigana_base_matches, strip_renderable
+from mining_fixer.normalize import MorphToken, furigana_base_matches, strip_renderable
 from mining_fixer.plan import (
     FURIGANA_FIELD,
     OP_ADD_TAGS,
@@ -2430,3 +2430,88 @@ def test_config_field_and_autocheck_overrides_are_respected():
     assert "Source" not in by_field
     assert by_field["Translation"].default_checked is False
     assert by_field["Notes"].default_checked is True
+
+
+def test_bold_repair_recognizes_inflected_span_with_morph_tokenizer():
+    # Issue #1: 淀む (reading よどむ) with existing bold around よどん
+    target = rec(
+        1793400721969,
+        {
+            "Expression": "淀む",
+            "reading": "よどむ",
+            "Sentence": "それもひどく<b>よどん</b>だ水脈をかきまぜてしまうようなことだった。",
+        },
+    )
+
+    def mock_tok(text: str):
+        return [
+            MorphToken("それ", "名詞", "それ", "ソレ"),
+            MorphToken("も", "助詞", "も", "モ"),
+            MorphToken("ひどく", "形容詞", "ひどい", "ヒドク"),
+            MorphToken("よどん", "動詞", "よどむ", "ヨドン"),
+            MorphToken("だ", "助動詞", "だ", "ダ"),
+        ]
+
+    plan = build_plan([target], CFG, scope_note_ids=[target.note_id], morph_tokenizer=mock_tok)
+    # Recognized as already bolded; no write generated, no missing bold reported
+    assert not [w for w in plan.writes if w.note_id == target.note_id and w.field == "Sentence"]
+    assert not any("no bold in Sentence" in w for w in plan.warnings)
+
+
+def test_bold_repair_places_inflected_bold_with_morph_tokenizer():
+    # 読む (reading よむ) in "本を読め。" -> "本を<b>読め</b>。"
+    target = rec(
+        1,
+        {
+            "Expression": "読む",
+            "reading": "よむ",
+            "Sentence": "本を読め。",
+        },
+    )
+
+    def mock_tok(text: str):
+        return [
+            MorphToken("本", "名詞", "本", "ホン"),
+            MorphToken("を", "助詞", "を", "ヲ"),
+            MorphToken("読め", "動詞", "読む", "ヨメ"),
+            MorphToken("。", "記号", "。", "。"),
+        ]
+
+    plan = build_plan([target], CFG, scope_note_ids=[1], morph_tokenizer=mock_tok)
+    writes = [w for w in plan.writes if w.note_id == 1 and w.field == "Sentence"]
+    assert len(writes) == 1
+    assert writes[0].op == OP_BOLD_CLOZE_WORD
+    assert writes[0].new_value == "本を<b>読め</b>。"
+    assert "bold-added-to-inflected-form" in writes[0].badges
+
+    # Verify idempotence on second pass
+    target_pass2 = rec(1, {**target.fields, "Sentence": writes[0].new_value})
+    plan2 = build_plan([target_pass2], CFG, scope_note_ids=[1], morph_tokenizer=mock_tok)
+    assert not [w for w in plan2.writes if w.note_id == 1 and w.field == "Sentence"]
+
+
+def test_bold_repair_refuses_ambiguous_multiple_inflections():
+    # 行く in "早く行って、行っておいで。" has 2 occurrences of 行って
+    target = rec(
+        1,
+        {
+            "Expression": "行く",
+            "reading": "いく",
+            "Sentence": "早く行って、行っておいで。",
+        },
+    )
+
+    def mock_tok(text: str):
+        return [
+            MorphToken("早く", "副詞", "早く", "ハヤク"),
+            MorphToken("行って", "動詞", "行く", "イッテ"),
+            MorphToken("、", "記号", "、", "、"),
+            MorphToken("行っ", "動詞", "行く", "イッ"),
+            MorphToken("て", "助詞", "て", "テ"),
+            MorphToken("おいで", "動詞", "おいで", "オイデ"),
+            MorphToken("。", "記号", "。", "。"),
+        ]
+
+    plan = build_plan([target], CFG, scope_note_ids=[1], morph_tokenizer=mock_tok)
+    assert not [w for w in plan.writes if w.note_id == 1 and w.field == "Sentence"]
+    assert plan.reasons.get(1) == "cloze-word-ambiguous"

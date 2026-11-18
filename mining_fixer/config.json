@@ -16,6 +16,7 @@
   ],
   "batch_regenerate_furigana": true,
   "batch_repair_expression": true,
+  "batch_bold_inflected": true,
   "min_sentence_len": 6,
   "scene_fill_fields": [
     "Sentence Audio",

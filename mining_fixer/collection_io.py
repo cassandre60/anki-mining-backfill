@@ -10,8 +10,12 @@ read, and :func:`apply_decision` only after the user accepted rows.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -33,6 +37,7 @@ from .applier import (
 )
 from .batch import default_ops, select
 from .matching import NoteRecord
+from .normalize import MorphToken
 from .plan import Plan, build_plan, scope_from_selection
 
 __all__ = [
@@ -196,6 +201,112 @@ def japanese_support_furigana_generator(col):
     return generate
 
 
+def _japanese_support_support_dir() -> str | None:
+    reading = sys.modules.get("3918629684.reading")
+    if reading is not None and hasattr(reading, "supportDir"):
+        return reading.supportDir
+    package = sys.modules.get("3918629684")
+    if package is not None and hasattr(package, "reading"):
+        r = package.reading
+        if hasattr(r, "supportDir"):
+            return r.supportDir
+    try:
+        if mw is not None and hasattr(mw, "addonManager"):
+            cand = os.path.join(mw.addonManager.addonsFolder(), "3918629684", "support")
+            if os.path.isdir(cand):
+                return cand
+    except Exception:
+        pass
+    return None
+
+
+class JapaneseSupportMorphTokenizer:
+    """Offline MeCab tokenizer using Japanese Support's bundled binary & dictionary."""
+
+    def __init__(self, support_dir: str) -> None:
+        self.support_dir = support_dir
+        self.proc: subprocess.Popen | None = None
+
+    def _ensure_proc(self) -> subprocess.Popen | None:
+        if self.proc is not None and self.proc.poll() is None:
+            return self.proc
+        try:
+            exe_name = (
+                "mecab.exe"
+                if sys.platform == "win32"
+                else ("mecab" if sys.platform == "darwin" else "mecab.lin")
+            )
+            exe_path = os.path.join(self.support_dir, exe_name)
+            if not os.path.isfile(exe_path):
+                return None
+            cmd = [
+                exe_path,
+                "--node-format=%m\t%f[0]\t%f[6]\t%f[7]\n",
+                "--unk-format=%m\tUNK\t%m\t\n",
+                "--eos-format=EOS\n",
+                "-d",
+                self.support_dir,
+                "-r",
+                os.path.join(self.support_dir, "mecabrc"),
+                "-u",
+                os.path.join(self.support_dir, "user_dic.dic"),
+            ]
+            env = dict(os.environ)
+            env["LD_LIBRARY_PATH"] = self.support_dir
+            env["DYLD_LIBRARY_PATH"] = self.support_dir
+            if sys.platform != "win32":
+                with contextlib.suppress(Exception):
+                    os.chmod(exe_path, 0o755)
+            self.proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
+            return self.proc
+        except Exception:
+            return None
+
+    def tokenize(self, text: str) -> list[MorphToken]:
+        proc = self._ensure_proc()
+        if proc is None or proc.stdin is None or proc.stdout is None:
+            return []
+        try:
+            clean = text.replace("\n", " ").strip()
+            if not clean:
+                return []
+            proc.stdin.write(clean.encode("utf-8") + b"\n")
+            proc.stdin.flush()
+            tokens: list[MorphToken] = []
+            while True:
+                line = proc.stdout.readline().decode("utf-8", "replace").rstrip("\r\n")
+                if not line or line == "EOS":
+                    break
+                parts = line.split("\t")
+                if len(parts) >= 4:
+                    tokens.append(MorphToken(parts[0], parts[1], parts[2], parts[3]))
+                elif len(parts) >= 2:
+                    tokens.append(MorphToken(parts[0], parts[1], parts[0], ""))
+            return tokens
+        except Exception:
+            return []
+
+
+def japanese_support_morph_tokenizer(col) -> Callable[[str], Sequence[MorphToken]] | None:
+    """Morphological tokenizer backed by Japanese Support's MeCab, or None."""
+    support_dir = _japanese_support_support_dir()
+    if support_dir is None:
+        return None
+    tok = JapaneseSupportMorphTokenizer(support_dir)
+    media_strip = col.media.strip if col is not None and hasattr(col, "media") else (lambda s: s)
+
+    def tokenize(text: str) -> Sequence[MorphToken]:
+        return tok.tokenize(media_strip(text or ""))
+
+    return tokenize
+
+
 def plan_preview(col, cfg: dict, scope_note_ids=None) -> Preview:
     """Build the plan for a Browser selection, or for the newest notes.
 
@@ -259,6 +370,7 @@ def plan_preview(col, cfg: dict, scope_note_ids=None) -> Preview:
         scope_note_ids=scope,
         media_exists=lambda name: _media_exists(col, name),
         furigana_generator=japanese_support_furigana_generator(col),
+        morph_tokenizer=japanese_support_morph_tokenizer(col),
     )
     return Preview(
         plan=plan,

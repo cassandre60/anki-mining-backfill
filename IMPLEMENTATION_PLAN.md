@@ -118,6 +118,7 @@ below, never as silent scope creep inside a coding session.
 | T16 | `test_plan.py` (word-mined fragment completed to the scene block; a card that owns its audio is left alone; a stale fragment ruby regenerated or demoted; a dictionary word recording refused); real card 正道; Ring 3 pending |
 | T17 | `test_matching.py` (Hypothesis property test: `SceneParentIndex` matches linear scan under arbitrary timelines and windows), `test_normalize.py` (Hypothesis test: `kana_fold` translation table matches codepoint spec); benchmark verified |
 | T18 | `tests/test_plan.py` (note 1793112599834 とんでもない: bold delimiter trimming on repeated words, HTML entities &gt;/&lt;, markup-only verification, second-run idempotence) |
+| T19 | `tests/test_plan.py` (Issue #1 notes 淀む, 日差し: inflected and alternate-kanji bold recognition via `morph_tokenizer`, unambiguous inflected bold placement `読む` → `<b>読め</b>`, ambiguity refusal, clause safety, `batch_bold_inflected` config toggle) |
 
 - **T13 — Dimension picker in the batch window (B7) — superseded.** Built
   on 2026-11-16 with three checkboxes (scene / arrows / furigana) and pure
@@ -201,6 +202,18 @@ below, never as silent scope creep inside a coding session.
   → `<b>とんでもない</b>>大物か...`), verified strictly markup-only
   (`strip_renderable(new) == strip_renderable(old)`), badge
   `bold-trimmed-punctuation`, with second-run idempotence.
+- **T19 — Offline morphological bolding via MeCab (Issue #1, Backlog B10).**
+  Pure `MorphToken` dataclass in `normalize.py` and optional injected seam
+  `morph_tokenizer` in `plan.build_plan` (keeping the core pure Python).
+  Recognizes existing inflected and alternate-kanji bold spans (note 1793400721969
+  淀む: `よどん`, note 1792501126791 日差し: `日射し`) as valid bold instead of
+  treating them as foreign or missing. Adds Tier 5 bold placement for unbolded
+  sentences: when `batch_bold_inflected` is true (shipped on by default in
+  `config.json`), tokenizes the sentence and bolds exactly-one matching inflected
+  content token (`読む` → `<b>読め</b>`) with badge `bold-added-to-inflected-form`.
+  Ambiguity is refused and reported; listening cards and clause-like expressions
+  are skipped. Bridged to Japanese Support's bundled offline MeCab binary in
+  `collection_io.japanese_support_morph_tokenizer`.
 
 ## Backlog
 

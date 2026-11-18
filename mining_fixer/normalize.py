@@ -23,9 +23,11 @@ import html
 import re
 import unicodedata
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 __all__ = [
     "REPAIR_RULES",
+    "MorphToken",
     "furigana_base",
     "is_empty_glossary_shell",
     "norm_sentence",
@@ -39,6 +41,17 @@ __all__ = [
     "strip_renderable",
     "kana_fold",
 ]
+
+
+@dataclass(frozen=True)
+class MorphToken:
+    """One morphological token produced by a tokenizer (e.g. MeCab). Pure."""
+
+    surface: str
+    pos: str
+    lemma: str
+    reading: str
+
 
 # --- removals ---------------------------------------------------------------
 
