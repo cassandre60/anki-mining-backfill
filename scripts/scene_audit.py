@@ -151,6 +151,9 @@ def main() -> int:
         # real post-write state until a pass writes nothing. The audit mirrors
         # that loop here, so class F measures the same thing the user sees.
         generator = fake_engine if args.engine == "fake" else None
+        from mining_fixer.collection_io import japanese_support_morph_tokenizer
+
+        morph_tokenizer = japanese_support_morph_tokenizer(col)
         for _pass in range(args.max_passes):
             current = records_from_collection(col, cfg["deck_name"], cfg["note_type_name"])
             plan = build_plan(
@@ -159,6 +162,7 @@ def main() -> int:
                 scope_note_ids=scope,
                 media_exists=media_exists,
                 furigana_generator=generator,
+                morph_tokenizer=morph_tokenizer,
             )
             selection = select(plan, default_ops(cfg))
             decision = decide(
@@ -197,6 +201,7 @@ def main() -> int:
             scope_note_ids=scope,
             media_exists=media_exists,
             furigana_generator=fake_engine if args.engine == "fake" else None,
+            morph_tokenizer=morph_tokenizer,
         )
         second = select(plan2, default_ops(cfg))
         if second.rows:
@@ -231,7 +236,7 @@ def main() -> int:
                     f"{word}: {squeeze(base)[:26]!r} vs {squeeze(plain)[:26]!r}"
                 )
 
-            from mining_fixer.plan import _bold_candidates, _fold
+            from mining_fixer.plan import _bold_candidates, _fold, _is_morph_match
 
             spellings = {
                 _fold(strip_renderable(s).strip())
@@ -249,18 +254,29 @@ def main() -> int:
                 # a spelling the candidate set cannot enumerate without the
                 # dictionary (淀む -> よどん, 日差し -> 日射し); one that shares
                 # nothing is another card's word (このたび on 自負).
-                partial = any(
-                    _shares_word_material(span, spelling)
-                    for span in folded_spans
-                    for spelling in spellings
+                is_morph = morph_tokenizer is not None and any(
+                    _is_morph_match(
+                        span,
+                        card.get("Expression") or "",
+                        card.get("reading") or "",
+                        morph_tokenizer,
+                        card.get("furigana"),
+                    )
+                    for span in spans
                 )
-                name = (
-                    "D bold on another spelling of the word"
-                    if partial
-                    else "D bold on a different word"
-                )
-                violations[name] += 1
-                examples[name].append(f"{word}: {spans[:2]}")
+                if not is_morph:
+                    partial = any(
+                        _shares_word_material(span, spelling)
+                        for span in folded_spans
+                        for spelling in spellings
+                    )
+                    name = (
+                        "D bold on another spelling of the word"
+                        if partial
+                        else "D bold on a different word"
+                    )
+                    violations[name] += 1
+                    examples[name].append(f"{word}: {spans[:2]}")
 
             # E: no block-level markup survives in the sentence fields — the
             # styled .vtt/.srt <div> nesting is rewritten to <br> by the

@@ -240,8 +240,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **268 passed** |
-| CI / a venv without Anki | **266 passed, 2 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **271 passed** |
+| CI / a venv without Anki | **269 passed, 2 skipped** |
 
 Both are green; the difference is exactly two self-skipping import checks
 (the dialog modules need a real `aqt`).

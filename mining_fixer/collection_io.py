@@ -217,6 +217,13 @@ def _japanese_support_support_dir() -> str | None:
                 return cand
     except Exception:
         pass
+    for cand in (
+        os.path.expanduser("~/.local/share/Anki2/addons21/3918629684/support"),
+        os.path.expanduser("~/Library/Application Support/Anki2/addons21/3918629684/support"),
+        os.path.expanduser("~/AppData/Roaming/Anki2/addons21/3918629684/support"),
+    ):
+        if os.path.isdir(cand):
+            return cand
     return None
 
 
