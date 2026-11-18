@@ -300,6 +300,64 @@ Durable, verified facts. Append; do not duplicate. Prune when superseded.
   `notify_collection_changed(browser)` on all apply paths (QUALITY Q-A9).
   Verified by: `tests/test_notify_collection_changed.py`.
 
+### Formal Verification (Lean) — Evaluated and Declined
+
+- [2026-11-18, OpenCode] **Decision: no Lean proof layer for this project.**
+  A thorough assessment mapped every pure-core module against formal
+  verification suitability. Findings:
+
+  **Where Lean would add real value (~365 lines of Python, ~5% of the core):**
+  - `applier.py`: apply→undo round-trip (Q-A1, Q-A3), `merge_run_logs` fold
+    correctness, per-note atomicity — a transactional state machine, Lean's
+    sweet spot.
+  - `batch.py`: source-guard atomicity (a guard kills the whole note),
+    text-unit atomicity (Sentence + ruby are atomic), `SAFE_OPS ∩
+    OPTIONAL_OPS = ∅` — set-theoretic, clean.
+  - Tag union monotonicity (Q-D5), fill preconditions (Q-D1/Q-D2) —
+    essentially refined types, trivially provable.
+  - `SceneParentIndex ≡ linear find_scene_parents` — classic index-
+    equivalence proof.
+
+  **Where Lean would be a money pit (~95% of the core):**
+  - `plan.py` (2,500 lines): the decision engine is a cascade of string
+    heuristics, regex, Unicode NFKC, HTML unescaping, MeCab morphology.
+    Formalizing it means modeling Python's regex engine and stdlib in
+    Lean — a multi-year academic project, not a product investment.
+  - `normalize.py` (450 lines): same problem — core operations are
+    `re.sub`, `unicodedata.normalize`, `html.unescape`.
+  - The fixpoint/convergence property (Q-A2, the hardest and most
+    valuable invariant) depends on the interaction of all tiers through
+    those string operations — unreachable by Lean in practice.
+
+  **Cost of the provable subset:**
+  - ~1,500–2,500 lines of Lean for ~365 lines of Python.
+  - Dual-implementation maintenance: every `applier.py`/`batch.py`
+    change requires updating the Lean model in lockstep.
+  - Lean 4 + Lake in CI, a new dependency chain, and Lean literacy to
+    read broken proofs.
+
+  **Better alternatives for the same assurance, at ~5% of the cost:**
+  - Mutation testing (`mutmut`/`cosmic-ray`) on `applier.py` and
+    `batch.py` — proves existing tests detect every possible single-
+    point mutation. An afternoon, not months.
+  - `crosshair` symbolic execution on `applier.decide` — effectively a
+    proof for all inputs within the type constraints, using Python's
+    actual semantics (no re-specification).
+  - Strengthened Hypothesis: 10,000+ examples, explicit edge-case
+    strategies, mutation-testing validation that strategies don't avoid
+    hard cases.
+
+  The concern that agents can game property tests is valid but already
+  mitigated by structural guards (layer boundary test, golden fixture,
+  scene audit on real cards, byte-exact undo replay). The real gap —
+  sampling vs. exhaustive coverage — is closed more cheaply by mutation
+  testing and symbolic execution than by a parallel proof language.
+
+  Verified by: full-module assessment of `normalize.py`, `fieldconfig.py`,
+  `matching.py`, `plan.py`, `batch.py`, `applier.py`, `report.py` against
+  Lean 4 formalization criteria; cross-referenced with QUALITY.md (29
+  invariants) and TEST_STRATEGY.md (4 rings + property tests).
+
 ## Lessons Learned
 
 - [2026-11-14, OpenCode] `"<b" in sentence` matches `<br>`, and subtitle
