@@ -10,7 +10,7 @@ Before touching any code, verify the environment gates:
 
 ```bash
 ruff check . && ruff format --check . && pyright   # Must be 0 errors, 0 warnings
-pytest -ra                                         # 266 passed locally (or python3 -m pytest)
+pytest -ra                                         # 268 passed locally (or python3 -m pytest)
 ```
 
 Push and CI gate:

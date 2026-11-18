@@ -395,6 +395,49 @@ def test_bold_repair_ambiguous_not_guessed():
     assert any("occurs 2 times" in w for w in plan.warnings)
 
 
+def test_bold_repair_trims_punctuation_on_repeated_word():
+    # Real case from Issue #2 (note 1793112599834 とんでもない):
+    # The subtitle caret '>' was captured inside the bold: <b>とんでもない></b>.
+    # The word occurs twice in the sentence, so placing a new bold would be ambiguous,
+    # but trimming the outer non-word delimiter preserves the existing occurrence
+    # while restoring exact tag boundaries.
+    f = dict(CHILD.fields)
+    f["Expression"] = "とんでもない"
+    f["reading"] = "とんでもない"
+    f["cloze-body"] = "とんでもない"
+    f["Sentence"] = "<b>とんでもない></b>大物か,とんでもないバカかのどちらかだな."
+    c = rec(1_793_112_599_834, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[c.note_id])
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(bold) == 1
+    assert bold[0].new_value == "<b>とんでもない</b>>大物か,とんでもないバカかのどちらかだな."
+    assert "bold-trimmed-punctuation" in bold[0].badges
+    assert strip_renderable(bold[0].new_value) == strip_renderable(bold[0].old_value)
+
+    # Second run is an exact no-op (Q-A2)
+    f2 = dict(f)
+    f2["Sentence"] = bold[0].new_value
+    c2 = rec(c.note_id, f2, tags=("yomitan",))
+    plan2 = build_plan([c2], CFG, scope_note_ids=[c2.note_id])
+    assert not [w for w in plan2.writes if w.op == OP_BOLD_CLOZE_WORD]
+
+
+def test_bold_repair_trims_escaped_html_entities():
+    # Sibling issue case: <b>芸者&gt;</b> with escaped entity delimiter
+    f = dict(CHILD.fields)
+    f["Expression"] = "芸者"
+    f["reading"] = "げいしゃ"
+    f["cloze-body"] = "芸者"
+    f["Sentence"] = "それは<b>芸者&gt;</b>というものだ。"
+    c = rec(2_000_000, f, tags=("yomitan",))
+    plan = build_plan([c], CFG, scope_note_ids=[c.note_id])
+    bold = [w for w in plan.writes if w.op == OP_BOLD_CLOZE_WORD]
+    assert len(bold) == 1
+    assert bold[0].new_value == "それは<b>芸者</b>&gt;というものだ。"
+    assert "bold-trimmed-punctuation" in bold[0].badges
+    assert strip_renderable(bold[0].new_value) == strip_renderable(bold[0].old_value)
+
+
 def test_bold_repair_with_br_markup():
     # Regression: "<b" in sentence matches <br> — the build data is full of
     # <br>, which silently disabled every repair. Bold-tag detection must

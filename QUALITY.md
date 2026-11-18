@@ -28,10 +28,15 @@ first, with the reason.
   truth and a test asserts no other op writes a non-empty value.
 - **Q-D3 — Bold is markup-only, word-like and unique.** A bold write is
   emitted only when `strip_renderable(new) == strip_renderable(old)`;
-  verified per write. The word is found in three tiers, each requiring
-  exactly one occurrence: the `cloze-body` (the mined word), the
-  `Expression` verbatim, or a reading-derived mixed-kana surface form
-  (鬱病 → うつ病). Expression-derived tiers require the Expression to be
+  verified per write. When an existing bold span wraps the tested word plus
+  surrounding non-word punctuation or delimiters (e.g. `<b>とんでもない></b>`
+  or `<b>芸者&gt;</b>`), the outer punctuation is trimmed outside the bold tags
+  (`<b>とんでもない</b>>`, `<b>芸者</b>&gt;`), preserving the exact occurrence
+  the existing bold already sits on even when the word repeats elsewhere in the
+  sentence (badge `bold-trimmed-punctuation`). The word is found in three
+  tiers, each requiring exactly one occurrence: the `cloze-body` (the mined
+  word), the `Expression` verbatim, or a reading-derived mixed-kana surface
+  form (鬱病 → うつ病). Expression-derived tiers require the Expression to be
   *word-like* — no whitespace, no sentence punctuation, at most
   `MAX_EXPRESSION_CHARS` (10) characters; a clause-like value
   (漢字は読めるようになりたいかな) is reported

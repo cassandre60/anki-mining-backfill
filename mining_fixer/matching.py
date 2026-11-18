@@ -249,6 +249,9 @@ class SceneParentIndex:
         matches: list[SceneMatch] = []
         cand_id = candidate.note_id
         for idx in indices:
+            parent = self.parents[idx]
+            if parent.note_id == cand_id:
+                continue
             ptext = self.parent_norms[idx]
             if len(ptext) < min_len:
                 continue
@@ -300,7 +303,10 @@ def find_scene_parents(
     lo = bisect.bisect_left(ids, candidate.note_id - window_ms)
     hi = bisect.bisect_right(ids, candidate.note_id + window_ms)
     matches: list[SceneMatch] = []
+    cand_id = candidate.note_id
     for nid in ids[lo:hi]:
+        if nid == cand_id:
+            continue
         parent = parents_by_id[nid]
         ptext = _normalized(parent, cache)
         if len(ptext) < min_len:

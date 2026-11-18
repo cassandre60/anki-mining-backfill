@@ -252,7 +252,7 @@ def test_scene_parent_index_matches_linear_scan_under_hypothesis():
         window_ms: int,
         min_len: int,
     ) -> None:
-        parents_by_id = {pid: parent(pid, sent) for pid, sent in parents_raw}
+        parents_by_id = {pid: parent(pid, sent) for pid, sent in parents_raw if pid != cand_id}
         cand = candidate(cand_id, cand_sentence)
         index = SceneParentIndex.from_parents(parents_by_id)
         expected = find_scene_parents(cand, parents_by_id, window_ms=window_ms, min_len=min_len)

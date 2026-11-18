@@ -402,6 +402,47 @@ def _word_span(sentence: str, word: str) -> tuple[int, int] | None:
     return spans[first][0], spans[first + len(target) - 1][1]
 
 
+_BOLD_DELIM_CHARS = r"><\"'(),.!?:;~_\\/\-。、！？：；…―〜「」『』（）【】［］・➡⇒→\s"
+_HTML_ENTITIES_LEAD_RE = re.compile(rf"^(?:&gt;|&lt;|&quot;|&amp;|&apos;|[{_BOLD_DELIM_CHARS}])+")
+_HTML_ENTITIES_TRAIL_RE = re.compile(rf"(?:&gt;|&lt;|&quot;|&amp;|&apos;|[{_BOLD_DELIM_CHARS}])+$")
+
+
+def _trim_bold_punctuation(sentence: str, wanted: set[str]) -> tuple[str, bool]:
+    """Trim non-word punctuation and escaped entities out of <b>...</b> spans.
+
+    When a subtitle dump or mining tool wraps the tested word plus a trailing or
+    leading delimiter (e.g. ``<b>とんでもない></b>`` or ``<b>芸者&gt;</b>``),
+    move those delimiters outside the bold tag so the bold wraps exactly the
+    word. Preserves the exact occurrence the existing bold sits on even when
+    the word occurs multiple times in the sentence. Markup-only:
+    ``strip_renderable(new) == strip_renderable(old)``. Pure.
+    """
+    if not _BOLD_TAG_RE.search(sentence):
+        return sentence, False
+    changed = False
+
+    def repl(match: re.Match[str]) -> str:
+        nonlocal changed
+        inner = match.group(1)
+        if _fold(strip_renderable(inner).strip()) in wanted:
+            return match.group(0)
+
+        lead_match = _HTML_ENTITIES_LEAD_RE.match(inner)
+        lead = lead_match.group(0) if lead_match else ""
+        rest = inner[len(lead) :]
+        trail_match = _HTML_ENTITIES_TRAIL_RE.search(rest)
+        trail = trail_match.group(0) if trail_match else ""
+        core = rest[: len(rest) - len(trail)] if trail else rest
+
+        if core and _fold(strip_renderable(core).strip()) in wanted:
+            changed = True
+            return f"{lead}<b>{core}</b>{trail}"
+        return match.group(0)
+
+    trimmed = _BOLD_RE.sub(repl, sentence)
+    return trimmed, changed
+
+
 def _bold_normalized_sentence(
     sentence: str, candidates: list[str], body: str = ""
 ) -> tuple[str, str] | None:
@@ -529,11 +570,36 @@ def _bold_repair_for(
         if len(span_list) == 1 and _fold(strip_renderable(span_list[0]).strip()) in wanted:
             # Already exactly one bold, and it wraps the tested word: done.
             return None, None, None
+        trimmed_sentence, bold_trimmed = _trim_bold_punctuation(sentence, wanted)
+        trimmed_spans = _BOLD_RE.findall(trimmed_sentence)
+        if (
+            bold_trimmed
+            and len(trimmed_spans) == 1
+            and _fold(strip_renderable(trimmed_spans[0]).strip()) in wanted
+        ):
+            work_sentence = trimmed_sentence
+            noise_rules: tuple[str, ...] = ()
+            if rules:
+                cleaned, noise_rules = repair_sentence(trimmed_sentence, rules)
+                if noise_rules:
+                    work_sentence = cleaned
+            if strip_renderable(work_sentence) == strip_renderable(raw_sentence):
+                write = PlannedWrite(
+                    note_id=target.note_id,
+                    field="Sentence",
+                    op=OP_BOLD_CLOZE_WORD,
+                    old_value=raw_sentence,
+                    new_value=work_sentence,
+                    default_checked=True,
+                    badges=("bold-trimmed-punctuation", *noise_rules),
+                )
+                return write, None, None
+
         placeable = _placeable_bold_candidates(target)
-        work_sentence = sentence
+        work_sentence = trimmed_sentence if bold_trimmed else sentence
         noise_rules: tuple[str, ...] = ()
         if rules:
-            cleaned, noise_rules = repair_sentence(sentence, rules)
+            cleaned, noise_rules = repair_sentence(work_sentence, rules)
             if noise_rules:
                 work_sentence = cleaned
         normalised = _bold_normalized_sentence(
@@ -546,6 +612,10 @@ def _bold_repair_for(
         new_value, _chosen = normalised
         if strip_renderable(new_value) != strip_renderable(work_sentence):
             return None, None, None
+        badges = ["bold-normalized-to-one"]
+        if bold_trimmed:
+            badges.append("bold-trimmed-punctuation")
+        badges.extend(noise_rules)
         write = PlannedWrite(
             note_id=target.note_id,
             field="Sentence",
@@ -553,7 +623,7 @@ def _bold_repair_for(
             old_value=raw_sentence,
             new_value=new_value,
             default_checked=True,
-            badges=("bold-normalized-to-one", *noise_rules),
+            badges=tuple(badges),
         )
         return write, None, None
     if _is_listening(target):
@@ -1320,6 +1390,7 @@ def _single_bold(value: str, body: str, extras: tuple[str, ...] = ()) -> str:
         return value
     names = [c for c in (strip_renderable(body).strip(), *extras) if c]
     known = {_fold(c) for c in names}
+    value, _ = _trim_bold_punctuation(value, known)
     chosen_span: tuple[int, int] | None = None
     chosen = ""
     for candidate in sorted(dict.fromkeys(names), key=len, reverse=True):

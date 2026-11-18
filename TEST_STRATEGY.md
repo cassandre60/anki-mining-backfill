@@ -61,7 +61,11 @@ not have and must never be given.
   split comes from the 2026-11-16 census (BULK_FIX slice 8). The word is
   located under width folding, so a subtitle dump's half-width katakana
   (`ｽﾍﾟｸﾄﾗﾑ`) still matches the full-width word (`スペクトラム`) —
-  `test_bold_moves_onto_a_half_width_katakana_spelling`.
+  `test_bold_moves_onto_a_half_width_katakana_spelling`. Punctuation-wrapped
+  bold tags (such as `<b>とんでもない></b>` on repeated words or `<b>芸者&gt;</b>`)
+  are trimmed so the outer delimiters move outside `<b>...</b>` without altering
+  renderable characters (`strip_renderable` equality) —
+  `test_bold_repair_trims_punctuation_on_repeated_word`.
 - **The expanded rule set and convergence** are pinned in
   `tests/test_normalize.py` (a speaker tag's line break joins; a long
   parenthetical keeps its break) and `tests/test_plan.py` (bold via the
@@ -232,8 +236,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **266 passed** |
-| CI / a venv without Anki | **264 passed, 2 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **268 passed** |
+| CI / a venv without Anki | **266 passed, 2 skipped** |
 
 Both are green; the difference is exactly two self-skipping import checks
 (the dialog modules need a real `aqt`).

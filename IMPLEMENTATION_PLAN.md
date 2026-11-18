@@ -117,6 +117,7 @@ below, never as silent scope creep inside a coding session.
 | T15 | `test_normalize.py` (`furigana_base`), `test_plan.py` (rewrite + every Q-D12 guard), `test_batch.py` (on-by-default tier with its opt-out key); real card 1736973220751; Ring 3 pending |
 | T16 | `test_plan.py` (word-mined fragment completed to the scene block; a card that owns its audio is left alone; a stale fragment ruby regenerated or demoted; a dictionary word recording refused); real card 正道; Ring 3 pending |
 | T17 | `test_matching.py` (Hypothesis property test: `SceneParentIndex` matches linear scan under arbitrary timelines and windows), `test_normalize.py` (Hypothesis test: `kana_fold` translation table matches codepoint spec); benchmark verified |
+| T18 | `tests/test_plan.py` (note 1793112599834 とんでもない: bold delimiter trimming on repeated words, HTML entities &gt;/&lt;, markup-only verification, second-run idempotence) |
 
 - **T13 — Dimension picker in the batch window (B7) — superseded.** Built
   on 2026-11-16 with three checkboxes (scene / arrows / furigana) and pure
@@ -191,6 +192,15 @@ below, never as silent scope creep inside a coding session.
   vectorized consensus counting in `matching.best_word_source` with
   `collections.Counter` ($O(K)$ vs $O(K^2)$), and cached normalized sentence lookups
   in `plan.build_plan` and `matching.rank_scene_parents`.
+- **T18 — Punctuation-wrapped bold trimming (Issue #2).**
+  `plan._trim_bold_punctuation` moves outer non-word punctuation and escaped
+  entities (`>`, `<`, `&gt;`, `&lt;`, quotes, brackets, Japanese punctuation)
+  outside existing `<b>...</b>` spans when the trimmed core matches a recognized
+  spelling of the card's word. Preserves the chosen occurrence on repeated-word
+  sentences (note 1793112599834 とんでもない: `<b>とんでもない></b>大物か...`
+  → `<b>とんでもない</b>>大物か...`), verified strictly markup-only
+  (`strip_renderable(new) == strip_renderable(old)`), badge
+  `bold-trimmed-punctuation`, with second-run idempotence.
 
 ## Backlog
 
