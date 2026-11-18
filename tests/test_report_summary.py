@@ -12,10 +12,17 @@ from mining_fixer.plan import (
     OP_FILL,
     OP_REGENERATE_FURIGANA,
     OP_REPAIR_SENTENCE,
+    OP_REPLACE_SOURCE,
     Plan,
     PlannedWrite,
 )
-from mining_fixer.report import GLANCE_LIMIT, badge_explanation, change_lines, render_batch_summary
+from mining_fixer.report import (
+    GLANCE_LIMIT,
+    badge_explanation,
+    change_lines,
+    guard_reason,
+    render_batch_summary,
+)
 
 
 def note(note_id, expression="診察", reading="しんさつ"):
@@ -350,3 +357,132 @@ def test_all_known_badges_have_explanations():
     for badge in known_static_badges:
         explanation = badge_explanation(badge)
         assert explanation != badge, f"Badge {badge!r} has no explanation"
+
+
+# --- guard_reason --------------------------------------------------------
+
+
+def test_guard_reason_checked_by_default():
+    w = PlannedWrite(
+        note_id=1,
+        field="Picture",
+        op=OP_FILL,
+        old_value="",
+        new_value="<img>",
+        default_checked=True,
+    )
+    assert guard_reason(w) == "Checked by default"
+
+
+def test_guard_reason_for_guard_badges():
+    cases = [
+        ("divergent-parents", "Scene siblings disagree on audio/sentence — requires manual review"),
+        ("far-from-source", "Scene parent is far away in time — may be a different scene"),
+        (
+            "fragment-not-recoverable",
+            "The card's original fragment cannot be recovered from the expansion",
+        ),
+        (
+            "cloze-anchor-not-unique",
+            "The tested word appears more than once in the expanded sentence",
+        ),
+        ("stale-fragment-furigana-risk", "Expansion would leave an outdated ruby annotation"),
+        (
+            "paired-with-expansion",
+            "This fill is linked to a guarded expansion — both deferred together",
+        ),
+        ("expansion-guard", "Expansion is guarded — review before applying"),
+    ]
+    for badge, expected_text in cases:
+        w = PlannedWrite(
+            note_id=1,
+            field="Sentence",
+            op=OP_EXPAND_SENTENCE,
+            old_value="frag",
+            new_value="scene",
+            default_checked=False,
+            badges=(badge,),
+        )
+        reason = guard_reason(w)
+        assert reason == f"Unchecked by default: {expected_text}"
+
+
+def test_guard_reason_for_config_disabled_fields():
+    w_notes = PlannedWrite(
+        note_id=1,
+        field="Notes",
+        op=OP_FILL,
+        old_value="",
+        new_value="text",
+        default_checked=False,
+    )
+    assert (
+        guard_reason(w_notes)
+        == "Unchecked by default: Notes auto-check is disabled in configuration"
+    )
+
+    w_trans = PlannedWrite(
+        note_id=1,
+        field="Translation",
+        op=OP_FILL,
+        old_value="",
+        new_value="text",
+        default_checked=False,
+    )
+    assert (
+        guard_reason(w_trans)
+        == "Unchecked by default: Translation auto-check is disabled in configuration"
+    )
+
+    w_source = PlannedWrite(
+        note_id=1,
+        field="Source",
+        op=OP_REPLACE_SOURCE,
+        old_value="blob",
+        new_value="real",
+        default_checked=False,
+    )
+    assert (
+        guard_reason(w_source)
+        == "Unchecked by default: Source replacement is disabled in configuration"
+    )
+
+    w_expand = PlannedWrite(
+        note_id=1,
+        field="Sentence",
+        op=OP_EXPAND_SENTENCE,
+        old_value="frag",
+        new_value="scene",
+        default_checked=False,
+    )
+    assert (
+        guard_reason(w_expand)
+        == "Unchecked by default: Sentence expansion is disabled in configuration"
+    )
+
+
+def test_guard_reason_prefers_specific_guard_over_expansion_guard():
+    w = PlannedWrite(
+        note_id=1,
+        field="Sentence",
+        op=OP_EXPAND_SENTENCE,
+        old_value="frag",
+        new_value="scene",
+        default_checked=False,
+        badges=("expansion-guard", "fragment-not-recoverable"),
+    )
+    assert guard_reason(w) == (
+        "Unchecked by default: The card's original fragment cannot be recovered from the expansion"
+    )
+
+
+def test_guard_reason_fallback():
+    w = PlannedWrite(
+        note_id=1,
+        field="CustomField",
+        op=OP_FILL,
+        old_value="",
+        new_value="val",
+        default_checked=False,
+    )
+    assert guard_reason(w) == "Unchecked by default: guarded change — review before applying"

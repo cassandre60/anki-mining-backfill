@@ -28,6 +28,7 @@ __all__ = [
     "badge_explanation",
     "change_lines",
     "field_label",
+    "guard_reason",
     "render_batch_summary",
     "render_markdown",
 ]
@@ -127,6 +128,39 @@ def badge_explanation(badge: str) -> str:
         rule_text = _BADGE_EXPLANATIONS.get(rule, rule.replace("-", " "))
         return f"Repair rule applied after expansion: {rule_text.lower()}"
     return badge
+
+
+_GUARD_BADGES: tuple[str, ...] = (
+    "divergent-parents",
+    "far-from-source",
+    "fragment-not-recoverable",
+    "cloze-anchor-not-unique",
+    "stale-fragment-furigana-risk",
+    "paired-with-expansion",
+    "expansion-guard",
+)
+
+
+def guard_reason(write: PlannedWrite, cfg: dict | None = None) -> str:
+    """Return a human-readable explanation for why a write is checked or unchecked by default."""
+    if write.default_checked:
+        return "Checked by default"
+
+    for badge in _GUARD_BADGES:
+        if badge in write.badges:
+            return f"Unchecked by default: {badge_explanation(badge)}"
+
+    optin_fields = set(cfg.get("optin_fields", ["Notes"])) if cfg is not None else {"Notes"}
+    if write.field in optin_fields:
+        return f"Unchecked by default: {write.field} auto-check is disabled in configuration"
+    if write.field == "Translation":
+        return "Unchecked by default: Translation auto-check is disabled in configuration"
+    if write.op == OP_REPLACE_SOURCE or write.field == "Source":
+        return "Unchecked by default: Source replacement is disabled in configuration"
+    if write.op == OP_EXPAND_SENTENCE:
+        return "Unchecked by default: Sentence expansion is disabled in configuration"
+
+    return "Unchecked by default: guarded change — review before applying"
 
 
 #: Rows a capped list shows before pointing at the full report — one knob for

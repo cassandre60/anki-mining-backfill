@@ -104,10 +104,10 @@ enriched siblings. Two halves:
 
 ```bash
 ruff check . && ruff format --check . && pyright   # must be clean
-python3 -m pytest                                  # 271 tests with Anki installed
+python3 -m pytest                                  # 290 tests with Anki installed
 ```
 
-Then push and watch CI — it is the gate, and it runs without Anki (269 passed,
+Then push and watch CI — it is the gate, and it runs without Anki (288 passed,
 2 skipped):
 
 ```bash

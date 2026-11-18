@@ -10,7 +10,7 @@ Before touching any code, verify the environment gates:
 
 ```bash
 ruff check . && ruff format --check . && pyright   # Must be 0 errors, 0 warnings
-pytest -ra                                         # 285 passed locally (283 passed, 2 skipped on CI)
+pytest -ra                                         # 290 passed locally (288 passed, 2 skipped on CI)
 ```
 
 Push and CI gate:
@@ -115,9 +115,10 @@ flowchart TD
 
 #### Part A: UX Ergonomics (Backlog B5) ✅ DONE
 - `report.badge_explanation()` maps every static and dynamic badge to a human-readable sentence.
-- Preview dialog: badge tooltips on the badges column, per-badge explanations in the detail pane.
+- `report.guard_reason()` maps every write to a human-readable check-column tooltip explaining default check state or guard held back.
+- Preview dialog: badge tooltips on the badges column, check-column guard tooltips with dynamic manual-override tracking, per-badge explanations in the detail pane.
 - Filter bar (`QLineEdit`) above the table: filters rows by expression, field, badge, or change summary.
-- `tests/test_report_summary.py`: 8 new tests covering static, dynamic, unknown, and exhaustive badge coverage.
+- `tests/test_report_summary.py`: 13 tests covering static, dynamic, unknown, exhaustive badge coverage, and all guard reason branches.
 
 #### Part B: Subdeck & Selection-Deck Sources — **dropped**
 - Not needed: the browser-selection workflow uses the whole configured deck as the source pool, and the owner's cards are in one deck.

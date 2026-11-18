@@ -231,10 +231,14 @@ below, never as silent scope creep inside a coding session.
   human-readable sentence (44 static badges across bold, scene, source
   confidence, furigana, sentence, expression, glossary, tags, and repair
   rules; four dynamic patterns: `source-note:*`, `N-siblings-agree`,
-  `added-gap:*`, `expanded-*`). The preview dialog gained badge tooltips on
-  the badges column, per-badge explanations in the detail pane, and a
-  `QLineEdit` filter bar above the table (filters rows by expression, field,
-  badge, or change summary, case-insensitive).
+  `added-gap:*`, `expanded-*`). `report.guard_reason` provides plain-language
+  tooltips on the preview table's check column explaining why a row is
+  checked by default or which safety guard / configuration held it back.
+  The preview dialog features badge tooltips on the badges column,
+  guard-reason tooltips on the check column with dynamic manual-override
+  tracking, per-badge explanations in the detail pane, and a `QLineEdit`
+  filter bar above the table (filters rows by expression, field, badge, or
+  change summary, case-insensitive).
 
 ## Backlog
 
@@ -297,9 +301,9 @@ below, never as silent scope creep inside a coding session.
 - **B4 — Multi-note-type configuration.** Today one deck + note type and one
   field-name set; a per-note-type field mapping would let the same install
   serve a second mining setup.
-- **B5 — Review ergonomics for guards.** ~~Surface *why* a row is unchecked~~
-  (shipped as T21: badge tooltips, detail-pane explanations, filter bar).
-  Remaining: a guard-reason tooltip on the check column for unchecked rows.
+- **B5 — Review ergonomics for guards.** Shipped as T21 (badge tooltips,
+  detail-pane explanations, filter bar, check-column guard-reason tooltips with
+  manual override tracking).
 
 ## Working agreements (from experience)
 

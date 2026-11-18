@@ -42,7 +42,7 @@ from .collection_io import (
     write_run_log,
 )
 from .plan import PlannedWrite
-from .report import OP_LABELS, badge_explanation
+from .report import OP_LABELS, badge_explanation, guard_reason
 
 _HEADERS = ["", "note", "field", "change", "source", "badges"]
 _CHECK_ROLE = int(Qt.ItemDataRole.UserRole) + 1
@@ -180,6 +180,7 @@ class PreviewDialog(QDialog):
                 Qt.CheckState.Checked if write.default_checked else Qt.CheckState.Unchecked
             )
             check_item.setData(_KEY_ROLE, f"{key[0]}|{key[1]}")
+            check_item.setToolTip(guard_reason(write, self.cfg))
             table.setItem(index, 0, check_item)
 
             record = records.get(write.note_id)
@@ -234,7 +235,29 @@ class PreviewDialog(QDialog):
         if not raw:
             return
         note_id, field = str(raw).split("|", 1)
-        self.checks[(int(note_id), field)] = item.checkState() == Qt.CheckState.Checked
+        is_checked = item.checkState() == Qt.CheckState.Checked
+        self.checks[(int(note_id), field)] = is_checked
+
+        plan = self.preview.plan
+        if plan is not None and 0 <= item.row() < len(plan.writes):
+            write = plan.writes[item.row()]
+            default_checked = bool(write.default_checked)
+            reason = guard_reason(write, self.cfg)
+            if is_checked:
+                new_tip = (
+                    "Checked by default"
+                    if default_checked
+                    else f"Checked manually (originally: {reason})"
+                )
+            else:
+                new_tip = reason if not default_checked else "Unchecked manually"
+            if item.toolTip() != new_tip:
+                self.table.blockSignals(True)
+                try:
+                    item.setToolTip(new_tip)
+                finally:
+                    self.table.blockSignals(False)
+
         self._refresh_status()
 
     def _show_detail(self, table: QTableWidget) -> None:
