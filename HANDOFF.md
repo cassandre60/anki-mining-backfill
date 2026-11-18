@@ -119,11 +119,8 @@ flowchart TD
 - Filter bar (`QLineEdit`) above the table: filters rows by expression, field, badge, or change summary.
 - `tests/test_report_summary.py`: 8 new tests covering static, dynamic, unknown, and exhaustive badge coverage.
 
-#### Part B: Subdeck & Selection-Deck Sources
-- In `mining_fixer/collection_io.py`:
-  - Update `deck_records`: if `col.decks.deck_and_child_ids` exists, load cards from child subdecks as well.
-  - In `plan_preview`: if notes are selected across multiple decks in the Browser, load all matching note-type cards from those decks as potential sources.
-  - Unit tests in `tests/test_addon_load.py` or `tests/test_notify_collection_changed.py`.
+#### Part B: Subdeck & Selection-Deck Sources — **dropped**
+- Not needed: the browser-selection workflow uses the whole configured deck as the source pool, and the owner's cards are in one deck.
 
 ---
 
