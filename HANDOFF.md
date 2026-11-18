@@ -10,7 +10,7 @@ Before touching any code, verify the environment gates:
 
 ```bash
 ruff check . && ruff format --check . && pyright   # Must be 0 errors, 0 warnings
-pytest -ra                                         # 268 passed locally (or python3 -m pytest)
+pytest -ra                                         # 271 passed locally (269 passed, 2 skipped on CI)
 ```
 
 Push and CI gate:
@@ -70,94 +70,36 @@ gh run watch "$RUN_ID" --exit-status
 - Cached normalized sentence lookups in `plan.build_plan` and `matching.rank_scene_parents`.
 - Added Hypothesis property-based tests proving `SceneParentIndex` is mathematically 100% identical to linear scanning under arbitrary timelines, and proving `kana_fold` matches the codepoint specification.
 
+### Workstream 4: Punctuation-Wrapped Bold Trim (`5179762`, Issue #2)
+- Fixed trailing/leading punctuation inside bold tags on repeated-word sentences (e.g. note `1793112599834` `とんでもない`: `<b>とんでもない></b>` $\to$ `<b>とんでもない</b>>`).
+- Implemented `_trim_bold_punctuation` in `mining_fixer/plan.py`, preserving the exact chosen occurrence with strictly markup-only verification (`strip_renderable(new) == strip_renderable(old)`).
+- Assigned badge `bold-trimmed-punctuation`, verified second-run idempotence, closed GitHub Issue #2.
+
+### Workstream 5: Offline MeCab Morphological Bolding (`79a585f`, Issue #1, Backlog B10)
+- Pure `@dataclass(frozen=True) class MorphToken: surface, pos, lemma, reading` in `mining_fixer/normalize.py`.
+- Added pure `morph_tokenizer` injection seam to `plan.build_plan` and `_bold_repair_for`, keeping the pure core 100% independent of Anki/Qt.
+- Bridged `collection_io.japanese_support_morph_tokenizer` to Japanese Support's bundled offline MeCab binary and IPADIC dictionary (`supportDir/mecab.lin`).
+- Recognized inflected and alternate-kanji bold spans (notes `淀む` $\to$ `よどん`, `日差し` $\to$ `日射し`) as valid bold without foreign-bold stripping or missing-bold flags.
+- Added Tier 5 bold placement for unbolded sentences: when `batch_bold_inflected: true` in `config.json`, tokenizes sentence and bolds unambiguous single matching inflected content tokens (`読む` $\to$ `本を<b>読め</b>。`) with badge `bold-added-to-inflected-form`.
+- Enforced strict ambiguity refusal (`cloze-word-ambiguous`), audio-only front skipping, and second-pass idempotence. Closed GitHub Issue #1.
+
 ---
 
 ## 3. Remaining Workstreams: Step-by-Step Recipes
 
-The remaining work is divided into 4 self-contained workstreams. Any agent can take them sequentially.
+The remaining work is divided into 2 self-contained workstreams. Any incoming agent can resume effortlessly:
 
 ```mermaid
 flowchart TD
-    W3["W3: Perf & Pyright (DONE)"] --> W4["W4: Issue #2 Punctuation Bold Trim"]
-    W4 --> W5["W5: Issue #1 / B10 MeCab Morph Bolding"]
-    W5 --> W6["W6: B5 UX Ergonomics & .ankiaddon Packaging"]
+    W3["W3: Perf & Pyright (DONE)"] --> W4["W4: Issue #2 Bold Trim (DONE)"]
+    W4 --> W5["W5: Issue #1 MeCab Bolding (DONE)"]
+    W5 --> W6["W6: UX Ergonomics, Subdecks & .ankiaddon Packaging"]
     W6 --> W7["W7: Release v0.3.0 & Issue Triage"]
 ```
 
 ---
 
-### Workstream 4: Punctuation-Wrapped Bold Trim (GitHub Issue #2)
-
-#### Problem
-In note `1793112599834` (`とんでもない`), the sentence is:
-`とんでもない>大物か,とんでもないバカかのどちらかだな.`
-The existing bold wraps `<b>とんでもない></b>` (the word plus a trailing subtitle delimiter `>`). Because `とんでもない` occurs twice in the sentence, `_word_span` refuses to place a new bold due to ambiguity, leaving the ugly `>` inside the bold tags.
-
-#### Implementation Recipe
-1. **Document invariant in `QUALITY.md` (`Q-D3`) & `IMPLEMENTATION_PLAN.md` (`T18`)**:
-   - State that when an existing `<b>...</b>` span contains leading or trailing non-word punctuation or escaped entities (`>`, `<`, `&gt;`, `&lt;`, commas, quotes, periods), those outer non-word characters are trimmed out of the bold tag:
-     `<b>とんでもない></b>` $\to$ `<b>とんでもない</b>>`.
-   - Invariant: `strip_renderable(new) == strip_renderable(old)` (strictly markup-only).
-   - This applies even when the word occurs multiple times in the sentence, because it preserves the author's existing chosen occurrence while fixing only the tag boundary.
-2. **Implement in `mining_fixer/plan.py`**:
-   - In `_bold_repair_for(target, rules)`:
-     Add a helper `_trim_bold_punctuation(sentence: str, recognized_words: set[str]) -> tuple[str, bool]`:
-     ```python
-     _BOLD_TRIM_RE = re.compile(r"<b>([^<>]*)</b>")
-     # Matches non-word trailing/leading delimiters: [> < . , ! ? : ; 。 、 … ➡] and &gt; &lt;
-     ```
-     When an existing bold inner string has outer punctuation stripped such that `inner.strip(PUNCT)` is in `recognized_words`, rewrite to `prefix + <b>{core}</b> + suffix`.
-   - Return badge `"bold-trimmed-punctuation"`.
-3. **Tests**:
-   - In `tests/test_plan.py`, add unit test for note `1793112599834` (`とんでもない>大物か,とんでもないバカかのどちらかだな.` $\to$ `とんでもない</b>>`).
-   - Verify second run is a no-op (idempotence).
-4. **Git & Issue**:
-   - Commit: `fix(plan): trim punctuation from existing bold spans on repeated words (fixes #2)`.
-   - Push and verify CI.
-   - Close issue #2 via `gh issue close 2 --comment "Resolved in commit <sha>"`.
-
----
-
-### Workstream 5: Offline MeCab Morphological Bolding (GitHub Issue #1 & Backlog B10)
-
-#### Problem
-Issue #1 notes that bold repair fails on inflected forms:
-- `淀む` (note `1793400721969`): sentence bolds `<b>よどん</b>だ` (inflected verb `よどん` from lemma `淀む`).
-- `日差し` (note `1792501126791`): sentence bolds `<b>日射し</b>` (alternate kanji for reading `ひざし`).
-
-#### Pure Architecture & Engine Seam
-1. **Pure Token Protocol in `mining_fixer/normalize.py`**:
-   ```python
-   @dataclass(frozen=True)
-   class MorphToken:
-       surface: str
-       pos: str
-       lemma: str
-       reading: str
-   ```
-2. **Injected seam in `plan.build_plan`**:
-   Add `morph_tokenizer: Callable[[str], Sequence[MorphToken]] | None = None` to `build_plan`.
-   `plan.py` stays 100% pure Python!
-3. **Japanese Support Engine Bridge in `mining_fixer/collection_io.py`**:
-   - Japanese Support (`addons21/3918629684`) bundles a complete offline MeCab binary and IPADIC dictionary in `supportDir` (`support/mecab.lin`, `mecab.exe`, `mecab.osx`, `mecabrc`, `dicrc`).
-   - Implement `japanese_support_morph_tokenizer()`:
-     Spawns a persistent or cached `Popen` with:
-     `--node-format=%m\t%f[0]\t%f[6]\t%f[7]\n --unk-format=%m\tUNK\t%m\t\n --eos-format=EOS\n`
-     yielding `MorphToken(surface, pos, lemma, reading)`.
-4. **Logic in `mining_fixer/plan.py`**:
-   - **Recognition**: If a sentence already has `<b>...</b>` (e.g. `<b>よどん</b>`), and `morph_tokenizer` confirms the bolded span has lemma matching `target.get("Expression")` (or reading matching `target.get("reading")`), recognize it as valid bold! Do not flag as foreign or missing.
-   - **Placement (Tier 5 / Config key `batch_bold_inflected`)**:
-     For unbolded sentences without Tier 1–4 matches, if `batch_bold_inflected` is true (in `config.json`), analyze sentence tokens with `morph_tokenizer`. If **exactly one** content token (`動詞`, `形容詞`, `名詞`) has lemma matching `Expression` (or reading matching when kana-only), wrap that unique surface span in `<b>...</b>` with badge `"bold-added-to-inflected-form"`.
-   - Ambiguity rule: If 2+ tokens have the same lemma, emit warning `cloze-word-ambiguous` and refuse to guess.
-5. **Tests**:
-   - In `tests/test_plan.py`, test with mock `morph_tokenizer` verifying `淀む` $\to$ `<b>よどん</b>` and `日差し` $\to$ `<b>日射し</b>`.
-6. **Git & Issue**:
-   - Commit: `feat(plan): add offline morphological bolding via Japanese Support MeCab (fixes #1)`.
-   - Push, verify CI, and close issue #1.
-
----
-
-### Workstream 6: UX Ergonomics, Subdecks, & `.ankiaddon` Packaging
+### Workstream 6: UX Ergonomics, Subdecks, & `.ankiaddon` Packaging (Next Up!)
 
 #### Part A: UX Ergonomics (Backlog B5)
 - In `mining_fixer/report.py`:
@@ -190,7 +132,7 @@ Issue #1 notes that bold repair fails on inflected forms:
    - Bump version to `0.3.0` in `mining_fixer/manifest.json` and `pyproject.toml`.
 2. **Docs Synchronization**:
    - Update `PRODUCT.md`, `MVP.md`, `ARCHITECTURE.md`, `QUALITY.md`, `TEST_STRATEGY.md`, `IMPLEMENTATION_PLAN.md`, `README.md`.
-   - Ensure test counts (`pytest` passed count) match reality.
+   - Ensure test counts (`pytest` passed count: 271) match reality.
 3. **Release & Tagging**:
    - Run `python3 scripts/build_ankiaddon.py`.
    - Commit: `chore(release): bump version to 0.3.0`.
