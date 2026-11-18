@@ -261,14 +261,13 @@ below, never as silent scope creep inside a coding session.
   "source changed since this card was filled" check for already-filled
   children.
 - **B8 — Bold from expression** (owner ask 2026-11-16; design in
-  [`BULK_FIX.md`](BULK_FIX.md) dimension 6 / slice 8). **Shipped portion
-  (T14):** the bold repair gained a verbatim-Expression tier (前人未到
-  shaped cards), the word-like gate that refuses clause-like Expressions
-  (漢字は読めるようになりたいかな) for every expression-derived tier, and
-  the template's own listening predicate (tag + usable audio, or no
-  glosses/no Frequency with `Sentence Audio`). Still open: inflected
-  matching (278 census cards, e.g. 読む → 読め) and the MeCab
-  token-count oracle for word-vs-clause.
+  [`BULK_FIX.md`](BULK_FIX.md) dimension 6 / slice 8). **Shipped portions:**
+  the bold repair gained a verbatim-Expression tier (前人未到 shaped cards; T14),
+  the word-like gate that refuses clause-like Expressions
+  (漢字は読めるようになりたいかな), the template's own listening predicate (tag +
+  usable audio, or no glosses/no Frequency with `Sentence Audio`), and offline
+  morphological bolding via MeCab (T19). Still open: the MeCab token-count
+  oracle for word-vs-clause.
 - **B9 — Dictionary spelling for kana expressions** (owner ask 2026-11-16;
   text in [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) §F2, design in
   [`BULK_FIX.md`](BULK_FIX.md) dimension 4 / slice 4). Rewrite a kana-only
@@ -281,18 +280,10 @@ below, never as silent scope creep inside a coding session.
   also supplies bold-match candidates in the other spelling direction.
   Blocked on: dictionary source decision, QUALITY amendment, Ring 3 sample
   review. Not started.
-- **B10 — Bold when the sentence spells the word differently** (owner ask
-  2026-11-16, deferred the same day: "No, leave them"; text in
-  [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) §F3, design in
-  [`BULK_FIX.md`](BULK_FIX.md) dimension 6 / slice 8). The easy half is
-  shipped (T14); the changed-form half (word 読む, sentence 読め) stays
-  unfixed. The okurigana-stem rule was rejected on evidence (2026-11-16
-  read-only sample: 82 of 272 matched, many over-long bolds because kana
-  runs cross word boundaries). The honest path is MeCab segmentation
-  through Japanese Support — the same engine T12 calls — with an
-  exactly-one-token requirement and the T14 guards unchanged. Blocked on
-  nothing technical beyond that engine pass; the owner chose to wait. Not
-  started.
+- **B10 — Bold when the sentence spells the word differently.** Shipped as T19
+  via offline MeCab morphological analysis (`normalize.MorphToken`,
+  `plan._is_morph_match`, `plan._bold_repair_for` Tier 5 with
+  `batch_bold_inflected: true`). Closed Issue #1.
 - **B2 — Rendered card preview.** Render each row's real front/back HTML
   (Anki's card rendering API) in a side pane, so a reviewer sees the card as
   the template shows it rather than as field values.

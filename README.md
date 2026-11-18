@@ -278,7 +278,7 @@ After auditing: delete the audit deck and the cloned note type.
 ## Development
 
 ```
-python3 -m pytest         # 285 tests with Anki; 283 + 2 self-skipping without
+python3 -m pytest         # 290 tests with Anki; 288 + 2 self-skipping without
 ruff check . && ruff format --check .
 ```
 
@@ -298,7 +298,7 @@ broken entry point before users see "add-on failed to load".
       the Browse window).
 - [x] offline morphological bolding: inflected and alternate-kanji bold
       recognition via MeCab (Japanese Support add-on's bundled engine).
-- [x] badge explanations, tooltips, and filter bar in the preview dialog.
+- [x] badge explanations, tooltips (badge and check-column guard reasons), and filter bar in the preview dialog.
 - [x] `.ankiaddon` packaging script and tag-triggered release workflow.
 - [x] CI workflow: `ruff` + `pyright` + the full test suite on every push and
   pull request (`.github/workflows/tests.yml`).
