@@ -49,6 +49,7 @@ gh run watch "$RUN_ID" --exit-status
 - Added `.github/dependabot.yml` for automated GitHub Actions version updates.
 - Redacted legacy profile path in `PROJECT_NOTES.md`.
 - GitHub release `v0.2.0` tagged and published at commit `641ea3c`.
+- GitHub release `v0.3.0` tagged and published at commit `2a6c032` with `.ankiaddon` artifact.
 - Issue labels created (`bug`, `enhancement`, `mecab`, `policy`, `performance`, `packaging`) and applied to open issues `#1`–`#5`.
 
 ### Workstream 2: Static Type Safety & Pyright Gate (`e07c856`)
