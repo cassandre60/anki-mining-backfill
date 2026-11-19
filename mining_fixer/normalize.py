@@ -93,6 +93,11 @@ _TRAILING_MARKS_RE = re.compile(r"(?:[\u27a1\u21d2\u2192\u2026\uff5e~\ufe0f\s])+
 
 _WHITESPACE_RE = re.compile(r"\s+")
 _LATIN_RE = re.compile(r"[A-Za-z0-9]")
+#: A space that separates two alphanumeric tokens. Japanese typography puts
+#: spaces next to CJK words for readability (``OK 少年``); those spaces are
+#: presentation, not identity, so the matching key drops them. A Latin word
+#: boundary (``a b`` vs ``ab``) stays, as does a digit boundary.
+_LEXICAL_SPACE_RE = re.compile(r"(?<![A-Za-z0-9]) | (?![A-Za-z0-9])")
 
 # Sentence-internal brackets that are load-bearing for scene identity:
 # stage directions and speaker tags. Kept verbatim (after NFKC, which
@@ -121,18 +126,19 @@ _BRACKET_MASK_RE = re.compile(r"\[[^\[\]]*\]|\([^()]*\)|【[^【】]*】")
 
 
 def _collapse_whitespace(text: str) -> str:
-    """Conditional whitespace rule.
+    """Keep only lexical spaces; drop typographic ones.
 
-    Lines containing Latin letters or digits keep a single space between
-    runs (so ``a b`` never matches ``ab``); pure CJK lines drop whitespace
-    entirely (Japanese has no inter-word spaces). Bracket payloads
-    (``[TEL]``, ``(受付)``) are masked before the Latin test so speaker
-    tags on Japanese lines do not flip the rule.
+    Japanese typography puts spaces around CJK runs for readability
+    (``OK 少年``, ``お願い しかと``); those spaces carry no meaning and must
+    not decide whether two scene sentences match. A space between two Latin
+    or digit tokens *is* lexical (``a b`` never matches ``ab``), so it is
+    kept. Bracket payloads (``[TEL]``, ``(受付)``) are masked before the
+    Latin test so speaker tags on Japanese lines do not flip the rule.
     """
     probe = _BRACKET_MASK_RE.sub("", text)
-    if _LATIN_RE.search(probe):
-        return _WHITESPACE_RE.sub(" ", text).strip()
-    return _WHITESPACE_RE.sub("", text)
+    if not _LATIN_RE.search(probe):
+        return _WHITESPACE_RE.sub("", text)
+    return _LEXICAL_SPACE_RE.sub("", _WHITESPACE_RE.sub(" ", text)).strip()
 
 
 def norm_sentence(text: str) -> str:

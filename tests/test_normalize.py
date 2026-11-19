@@ -34,6 +34,18 @@ def test_latin_whitespace_collapsed_not_removed():
     assert norm_sentence("a  b") == "a b"
 
 
+def test_cjk_spaces_dropped_even_when_the_line_has_latin():
+    # A scene line with a Latin token (OK, SNS, …) used to keep every space,
+    # while a pure-CJK fragment dropped them; the two keys then disagreed on
+    # the same Japanese text and scene matching failed (author's 引き受ける
+    # card, S03E10). Spaces beside CJK are typographic, not lexical.
+    assert norm_sentence("ＯＫ 少年 君のお願い しかと引き受けた") == (
+        "OK少年君のお願いしかと引き受けた"
+    )
+    assert norm_sentence("ａ ｂ") == "a b"
+    assert norm_sentence("OK a") == "OK a"
+
+
 def test_nfkc_halfwidth_katakana():
     assert norm_sentence("[ｲﾔﾎﾝ] たとえ") == "[イヤホン]たとえ"
 

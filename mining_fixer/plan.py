@@ -64,7 +64,7 @@ __all__ = [
     "scope_from_selection",
 ]
 
-PLAN_VERSION = 5
+PLAN_VERSION = 6
 
 OP_FILL = "fill"
 OP_REPLACE_SOURCE = "replace_source"

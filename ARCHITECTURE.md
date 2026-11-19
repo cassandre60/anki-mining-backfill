@@ -97,7 +97,7 @@ the first write, chunked apply, post-write verification.
 - `NoteState`, `ApplyDecision` (`applier.py`) — the live values read back at
   apply time and the resulting writes/skips.
 
-`PLAN_VERSION` (currently **5**) is bumped whenever the plan's meaning changes;
+`PLAN_VERSION` (currently **6**) is bumped whenever the plan's meaning changes;
 it is recorded in every audit log so old and new plans are distinguishable.
 
 ## The nine ops

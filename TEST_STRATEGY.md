@@ -96,14 +96,20 @@ not have and must never be given.
 - **Real-card regression suite** (`tests/test_real_cards.py`, owner
   requirement 2026-11-16: "we need a robust regression testing suite").
   Frozen field values captured read-only from the author's collection
-  (`tests/fixtures/real_cards.json.gz`; 13 cards, five labelled classes:
-  arrows-in-ruby, divergent fragments, empty definition shells, enriched
-  parents, clause expressions). It asserts the properties the author
+  (`tests/fixtures/real_cards.json.gz`; 19 distinct cards across nine
+  labelled classes: arrows-in-ruby, divergent fragments, empty definition
+  shells, enriched parents, clause expressions, stray angle brackets,
+  mis-mined sentence recovery, two-bolds/stale ruby, and a Latin-bearing
+  scene parent). It asserts the properties the author
   actually cares about — a second run is a no-op, no subtitle arrow
   survives in either sentence field, a definition never keeps a junk shell,
   a clause is never bolded, junk data is reported not guessed. It exists
   because synthetic fixtures passed while real cards stayed broken; it
-  caught the ruby-arrow and copied-ruby bugs the day it was written.
+  caught the ruby-arrow and copied-ruby bugs the day it was written. The
+  newest pair is the author's 引き受ける card (S03E10): its parent scene
+  carries `ＯＫ`, and the test asserts one run fills the scene audio and
+  picture, expands the sentence with the bold on the card's word, and
+  regenerates the ruby.
 - **One-run convergence** (QUALITY Q-A2; owner requirement 2026-11-17: "it
   should fix everything in 1 run"). The mechanism is
   `collection_io.apply_plan_to_fixpoint`: each pass plans on the *real*
@@ -179,6 +185,13 @@ not have and must never be given.
 - **Source confidence** is pinned in `tests/test_plan.py`: disagreeing parents
   are never auto-checked, a far containment match ships unchecked, and a
   byte-identical sentence stays trusted at any distance.
+- **Matching-key whitespace** is pinned in `tests/test_normalize.py` and
+  `tests/test_matching.py`: a space beside CJK is typographic and dropped
+  even on a line that contains Latin (`ＯＫ 少年` → `OK少年`), while a space
+  between two Latin/digit tokens is lexical and kept (`a b` ≠ `ab`). The
+  author's 引き受ける card (S03E10) is the containment oracle; the captured
+  pair lives in the real-card fixture and is replayed by
+  `test_a_cjk_fragment_completes_from_a_latin_bearing_scene_parent`.
 - **Engine invariants** live in `tests/test_invariants.py` and are generated
   with Hypothesis: every write's precondition holds at decision time,
   applying then undoing restores the exact prior state, re-running a plan

@@ -72,6 +72,21 @@ def parent(
     return rec(pid, f, tags=("asbplayer", "yomitan"))
 
 
+def test_containment_ignores_typographic_spaces_in_a_latin_bearing_scene():
+    # The parent line carries ``OK``, so the old whitespace rule kept every
+    # space on it; the pure-CJK fragment's key dropped them, containment
+    # failed, and the card stayed without its scene audio/picture (author's
+    # 引き受ける card from [Judas] JUJUTSU KAISEN - S03E10).
+    cand = candidate(1_778_943_779_269, "君のお願い しかと引き受けた")
+    par = parent(
+        1_778_943_771_977,
+        "（髙羽）髙羽よ♡ んー<br>（髙羽）ＯＫ 少年<br>"
+        "君のお願い しかと引き受けた<br>だが 俺は芸人だ",
+    )
+    hits = find_scene_parents(cand, {par.note_id: par}, window_ms=DAY_MS)
+    assert [hit.parent.note_id for hit in hits] == [par.note_id]
+
+
 def test_containment_basic():
     cand = candidate(2_000_000, "先生は今 診察中ですので➡")
     par = parent(

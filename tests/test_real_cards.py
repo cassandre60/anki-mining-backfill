@@ -40,7 +40,14 @@ from mining_fixer.normalize import (
     kana_fold,
     strip_renderable,
 )
-from mining_fixer.plan import OP_BOLD_CLOZE_WORD, OP_STRIP_EMPTY_GLOSSARY, build_plan
+from mining_fixer.plan import (
+    OP_BOLD_CLOZE_WORD,
+    OP_EXPAND_SENTENCE,
+    OP_FILL,
+    OP_REGENERATE_FURIGANA,
+    OP_STRIP_EMPTY_GLOSSARY,
+    build_plan,
+)
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "real_cards.json.gz"
 ARROW_TAIL = re.compile(r"[\u2192\u21d2\u27a1]+\ufe0f?[ \t]*(?:<br\s*/?>|\n|$)")
@@ -101,8 +108,19 @@ ALL = [note for notes in CARDS.values() for note in notes]
 BY_ID = {note.note_id: note for note in ALL}
 
 
-def plan_for(records: list[NoteRecord], scope: list[int]):
-    return build_plan(records, CFG, scope_note_ids=scope, media_exists=lambda _name: True)
+def plan_for(records: list[NoteRecord], scope: list[int], furigana_generator=None):
+    return build_plan(
+        records,
+        CFG,
+        scope_note_ids=scope,
+        media_exists=lambda _name: True,
+        furigana_generator=furigana_generator,
+    )
+
+
+def _fake_reading_engine(sentence: str) -> str:
+    """Annotate every kanji run with itself; the base text stays intact."""
+    return re.sub(r"([\u4e00-\u9fff]+)", r"\1[\1]", sentence)
 
 
 def applied_fields(note: NoteRecord, plan) -> dict[str, str]:
@@ -112,6 +130,38 @@ def applied_fields(note: NoteRecord, plan) -> dict[str, str]:
         if write.note_id == note.note_id and write.default_checked:
             fields[write.field] = write.new_value
     return fields
+
+
+def test_a_cjk_fragment_completes_from_a_latin_bearing_scene_parent():
+    # Author's 引き受ける card ([Judas] JUJUTSU KAISEN - S03E10): the parent
+    # scene contains ``ＯＫ``, so the old whitespace rule kept its spaces
+    # while the pure-CJK fragment dropped them — containment failed and the
+    # card was silently reported "no other card contains this sentence".
+    # The captured values are the oracle: same scene, same audio, same text.
+    target = next(
+        note for note in CARDS["latin_parent_whitespace"] if note.get("Expression") == "引き受ける"
+    )
+    source = next(
+        note for note in CARDS["latin_parent_whitespace"] if note.note_id != target.note_id
+    )
+    plan = plan_for(list(ALL), [target.note_id], furigana_generator=_fake_reading_engine)
+    checked = {
+        write.field: write
+        for write in plan.writes
+        if write.note_id == target.note_id and write.default_checked
+    }
+    assert checked["Sentence Audio"].op == OP_FILL
+    assert checked["Sentence Audio"].new_value == source.get("Sentence Audio")
+    assert checked["Picture"].op == OP_FILL
+    assert checked["Picture"].new_value == source.get("Picture")
+    assert checked["Sentence"].op == OP_EXPAND_SENTENCE
+    assert strip_renderable(checked["Sentence"].new_value) == strip_renderable(
+        source.get("Sentence")
+    )
+    assert "<b>引き受けた</b>" in checked["Sentence"].new_value
+    ruby = checked["Sentence (furigana)"]
+    assert ruby.op == OP_REGENERATE_FURIGANA
+    assert furigana_base_matches(ruby.new_value, checked["Sentence"].new_value)
 
 
 def test_every_captured_card_has_a_sentence_and_an_expression():

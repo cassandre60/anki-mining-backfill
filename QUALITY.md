@@ -212,7 +212,14 @@ first, with the reason.
   preserved because the scene matcher requires the card's sentence to be
   **contained** in the parent's, so the completion can never lose it
   (`fragment-kept-in-scene`; `fragment-kept-in-cloze` when `cloze-*`
-  reconstructs it). Two pairing rules keep the card whole:
+  reconstructs it). Containment is judged on matching keys only: a space
+  beside CJK is typographic and ignored even when the line carries a Latin
+  token (`ＯＫ 少年`), while a space between two Latin/digit tokens is
+  lexical and kept (`a b` never matches `ab`). Without that symmetry a
+  pure-CJK fragment failed to match an `ＯＫ`-bearing scene (author's
+  引き受ける card, S03E10) and was wrongly reported `no-parent-that-fills`;
+  the captured pair is in the real-card fixture.
+  Two pairing rules keep the card whole:
   - a completion that would strand a fragment ruby ships checked only when
     the parent carries a matching ruby **or** the furigana tier will rebuild
     it in the same plan (`ruby-will-be-regenerated`, Q-D11/Q-D15); otherwise
