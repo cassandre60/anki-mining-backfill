@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from test_golden_scene import CFG, CHILD, CHILD_ID, PARENT, PARENT_ID
 
 from mining_fixer.matching import NoteRecord
@@ -1232,6 +1235,7 @@ def test_an_identical_sentence_is_trusted_even_when_far():
 # --- subtitle-noise repair (bulk-fix dimension 2, QUALITY Q-D10) ------------
 
 REPAIR_CFG = {**CFG, "sentence_repair_rules": ["strip-arrows"]}
+STRIP_DASH_CFG = {**CFG, "sentence_repair_rules": ["strip-dash"]}
 
 
 def test_a_configured_repair_emits_a_checked_write_with_rule_badges():
@@ -1349,6 +1353,47 @@ def test_unknown_repair_rules_warn_and_the_rest_still_runs():
     assert [w.op for w in plan.writes if w.op == OP_REPAIR_SENTENCE] == [OP_REPAIR_SENTENCE]
     write = next(w for w in plan.writes if w.op == OP_REPAIR_SENTENCE)
     assert write.new_value == "前<br>後"
+
+
+def test_a_stray_dash_is_stripped_from_the_sentence_field_only():
+    # Owner report 2026-11-20: the Mining cards' Sentences carried the stray
+    # horizontal bar (U+2015) — the extension strips it in the Sentence field
+    # only: the ruby ("Sentence (furigana)") and the Definition are untouched
+    # ("only inside the sentence field, not everywhere").
+    sentence = "をつくった\u2015<br>チームを組んだ"
+    target = rec(
+        1,
+        {
+            "Expression": "",
+            "reading": "",
+            "furigana": "",
+            "cloze-body": "",
+            "Sentence": sentence,
+            "Sentence (furigana)": "その 組み従った\u2015はち",
+            "Definition": "組んだ\u2015 — the Definition keeps its bar",
+        },
+    )
+    plan = build_plan([target], STRIP_DASH_CFG, scope_note_ids=[1])
+    writes = [w for w in plan.writes if w.op == OP_REPAIR_SENTENCE]
+    assert len(writes) == 1
+    write = writes[0]
+    assert write.field == "Sentence"
+    assert write.default_checked is True
+    assert write.badges == ("strip-dash",)
+    assert write.old_value == sentence
+    assert write.new_value == "をつくった<br>チームを組んだ"
+    assert not any(w.field == FURIGANA_FIELD for w in plan.writes)
+    assert not any(w.field == "Definition" for w in plan.writes)
+    assert not any(w.op == OP_BOLD_CLOZE_WORD for w in plan.writes)
+
+
+def test_strip_dash_is_on_by_default_in_the_shipped_config():
+    # The extension handles the owner's report on its own: the shipped
+    # config.json ships the rule (automatic mode — every dimension on).
+    cfg = json.loads(
+        (Path(__file__).resolve().parent.parent / "mining_fixer" / "config.json").read_text()
+    )
+    assert "strip-dash" in cfg["sentence_repair_rules"]
 
 
 # --- furigana regeneration (bulk-fix dimension 3, QUALITY Q-D11) -------------

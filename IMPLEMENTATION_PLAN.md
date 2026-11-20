@@ -121,6 +121,7 @@ below, never as silent scope creep inside a coding session.
 | T19 | `tests/test_plan.py` (Issue #1 notes 淀む, 日差し: inflected and alternate-kanji bold recognition via `morph_tokenizer`, unambiguous inflected bold placement `読む` → `<b>読め</b>`, ambiguity refusal, clause safety, `batch_bold_inflected` config toggle) |
 | T20 | `tests/test_packaging.py` (archive structure, content completeness, dev-artefact exclusion, version consistency) |
 | T21 | `tests/test_report_summary.py` (static badge lookup, dynamic badge patterns, unknown-badge fallback, exhaustive badge coverage) |
+| T22 | `test_normalize.py` (`test_repair_strips_stray_horizontal_bars`), `test_plan.py` (Sentence-field-only strip, shipped default) |
 
 - **T13 — Dimension picker in the batch window (B7) — superseded.** Built
   on 2026-11-16 with three checkboxes (scene / arrows / furigana) and pure
@@ -239,6 +240,22 @@ below, never as silent scope creep inside a coding session.
   tracking, per-badge explanations in the detail pane, and a `QLineEdit`
   filter bar above the table (filters rows by expression, field, badge, or
   change summary, case-insensitive).
+- **T22 — Stray-dash strip in Sentences (owner report 2026-11-20).** The
+  Mining cards' Sentences carried the stray horizontal bar (U+2015) — the
+  owner's report of the character being present. `normalize.repair_sentence`
+  gained the `strip-dash` rule (added to `REPAIR_RULES`; the shipped
+  `config.json` ships it — automatic mode), and the write is the existing
+  `repair_sentence` op (`OP_REPAIR_SENTENCE`): checked, badge
+  `strip-dash`, guarded by the tested-word occurrence guard (Q-D10). The
+  strip is **Sentence-field-only**: `plan._ruby_repair_rules` (with
+  `normalize.RUBY_EXCLUDED_RULES`) filters the rule out of the ruby
+  ("Sentence (furigana)") repairs — the owner asked for the strip "only
+  inside the sentence field, not everywhere" — so the ruby, the Definition
+  and every other field keep the bar. Pinned in `test_normalize.py`
+  (`test_repair_strips_stray_horizontal_bars`) and `test_plan.py`
+  (`test_a_stray_dash_is_stripped_from_the_sentence_field_only`,
+  `test_strip_dash_is_on_by_default_in_the_shipped_config`);
+  `test_real_cards.py`'s CFG mirrors the new shipped default.
 
 ## Backlog
 

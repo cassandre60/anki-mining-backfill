@@ -109,6 +109,7 @@ _BADGE_EXPLANATIONS: dict[str, str] = {
     "strip-arrows": "Continuation arrows stripped from line tails",
     "flatten-div-blocks": "HTML div blocks flattened to line breaks",
     "join-speaker-lines": "Speaker-prefixed lines joined",
+    "strip-dash": "Stray horizontal bars stripped from the Sentence field",
 }
 
 

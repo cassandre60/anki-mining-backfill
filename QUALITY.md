@@ -93,7 +93,13 @@ first, with the reason.
   mid-line glyphs such as `f:X→Y` are real notation and stay) and
   `join-speaker-lines` (a short speaker/stage tag alone on a line —
   ``(荒木)``, ``（葉子）`` — loses the line break that follows it; longer
-  parenthesised text keeps its break, so a real aside is never joined).
+  parenthesised text keeps its break, so a real aside is never joined) and
+  `strip-dash` (the stray horizontal bar — U+2015, the "―" — the Mining
+  cards' Sentences carried; owner report 2026-11-20). The strip is
+  **Sentence-field-only**: `plan._ruby_repair_rules` excludes `strip-dash`
+  from every ruby ("Sentence (furigana)") call site, so the ruby and every
+  other field keep the bar — "only inside the sentence field, not
+  everywhere".
   `<br>` line breaks and spacing are otherwise deliberately NOT rewritten —
   they are the sentence's pause structure (owner decision 2026-11-15;
   `flatten-div-blocks` only converts block *tags*, never an existing `<br>`;
@@ -105,7 +111,7 @@ first, with the reason.
   (`cloze-body`) occurs. The transformation is idempotent. By owner
   decision (2026-11-16) the dimension runs by default: the tool fixes on
   its own (`batch_repair_sentence: true`, rules `flatten-div-blocks`,
-  `strip-arrows`, `join-speaker-lines`); the
+  `strip-arrows`, `join-speaker-lines`, `strip-dash`); the
   config key remains the escape hatch to switch it off, and every guard
   above still applies.
 - **Q-D11 — Furigana regeneration uses Japanese Support as the only

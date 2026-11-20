@@ -182,6 +182,27 @@ def test_repair_keeps_midline_arrows():
     assert new == text
 
 
+def test_repair_strips_stray_horizontal_bars():
+    # Owner report 2026-11-20: the Mining cards' Sentences carried the stray
+    # horizontal bar (U+2015) — `strip-dash` removes it; idempotent; other
+    # rule classes do not fire on the bar alone.
+    text = "あ\u2015い\u2015<br>う"
+    new, applied = repair_sentence(text, ("strip-dash",))
+    assert applied == ("strip-dash",)
+    assert new == "あい<br>う"
+    assert repair_sentence(new, ("strip-dash",)) == (new, ())
+    # A run of bars and a bar mid-line are the same character to the rule.
+    assert repair_sentence("a\u2015b\u2015\u2015c", ("strip-dash",)) == ("abc", ("strip-dash",))
+    # With the rule off or unlisted, the bar stays.
+    assert repair_sentence("あ\u2015い", ()) == ("あ\u2015い", ())
+    assert repair_sentence("あ\u2015い", ("strip-arrows", "join-speaker-lines")) == (
+        "あ\u2015い",
+        (),
+    )
+    # A bar in other text classes the rule does not run on is not touched.
+    assert repair_sentence("あ\u2015い", ("flatten-div-blocks",)) == ("あ\u2015い", ())
+
+
 def test_repair_keeps_bold_markup_around_a_tail_arrow():
     text = "俺は弱くて 誰も助けらんなかった<br>それどころか 伏黒を殺し<b>かけた</b>➡"
     new, applied = repair_sentence(text, ALL_RULES)

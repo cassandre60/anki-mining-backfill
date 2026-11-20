@@ -336,7 +336,17 @@ def is_empty_glossary_shell(value: str) -> bool:
 # bold markup, sound tags, images, brackets and every spoken character pass
 # through untouched.
 
-REPAIR_RULES = ("flatten-div-blocks", "strip-arrows", "join-speaker-lines")
+REPAIR_RULES = ("flatten-div-blocks", "strip-arrows", "join-speaker-lines", "strip-dash")
+
+#: The stray horizontal bar (U+2015) the Mining cards' Sentences carry — the
+#: owner's 2026-11-20 report: the character is present in the cards and is
+#: unwanted. `strip-dash` removes it in the Sentence field; `RUBY_EXCLUDED_RULES`
+#: carries that scope so every caller that rewrites the ruby
+#: ("Sentence (furigana)") leaves it alone (the ruby is the sentence's
+#: furigana layer and must describe the sentence the card ends up with —
+#: Q-D15).
+_DASH_RE = re.compile("\u2015+")
+RUBY_EXCLUDED_RULES = frozenset({"strip-dash"})
 
 # A continuation arrow only ever marks "the line continues", so it is
 # stripped only at a line tail — immediately before a <br>, a newline or the
@@ -429,7 +439,11 @@ def repair_sentence(text: str, rules: Iterable[str]) -> tuple[str, tuple[str, ..
       ``<br>`` line breaks they stand for (runs first: it can expose a
       line-tail arrow or a speaker tag for the rules below);
     - ``strip-arrows`` — remove continuation arrows only at line tails;
-    - ``join-speaker-lines`` — join a short speaker tag to its line.
+    - ``join-speaker-lines`` — join a short speaker tag to its line;
+    - ``strip-dash`` — remove the stray horizontal bars (U+2015) the Mining
+      cards' Sentences carry (owner report 2026-11-20); the strip is
+      Sentence-field scoped — callers that repair the ruby exclude it
+      (``RUBY_EXCLUDED_RULES``).
 
     ``<br>`` line breaks and spacing are otherwise deliberately NOT rewritten
     (owner decision 2026-11-15; ``flatten-div-blocks`` is the owner's
@@ -458,6 +472,11 @@ def repair_sentence(text: str, rules: Iterable[str]) -> tuple[str, tuple[str, ..
         if joined != s:
             applied.append("join-speaker-lines")
             s = joined
+    if "strip-dash" in wanted:
+        stripped = _DASH_RE.sub("", s)
+        if stripped != s:
+            applied.append("strip-dash")
+            s = stripped
     if not applied:
         return text, ()
     return s, tuple(applied)

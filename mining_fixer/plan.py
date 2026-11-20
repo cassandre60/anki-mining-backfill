@@ -42,6 +42,7 @@ from .matching import (
 )
 from .normalize import (
     REPAIR_RULES,
+    RUBY_EXCLUDED_RULES,
     MorphToken,
     furigana_base,
     furigana_base_matches,
@@ -987,6 +988,18 @@ def _sentence_repair_write(
     )
 
 
+def _ruby_repair_rules(rules: tuple[str, ...]) -> tuple[str, ...]:
+    """The rules that may rewrite the ruby ("Sentence (furigana)").
+
+    Every call site that repairs the ruby passes this instead of ``rules``:
+    ``strip-dash`` is Sentence-field-only — the owner asked that the stray
+    bars be removed "only inside the sentence field, not everywhere", so the
+    ruby keeps them (it is derived from the sentence and must describe the
+    text the card ends up with — Q-D15).
+    """
+    return tuple(rule for rule in rules if rule not in RUBY_EXCLUDED_RULES)
+
+
 def _ruby_repair_write(
     target: NoteRecord, rules: tuple[str, ...]
 ) -> tuple[PlannedWrite | None, str | None, str | None]:
@@ -995,7 +1008,8 @@ def _ruby_repair_write(
     Owner bug report 2026-11-16: the arrows also sit in the ruby field — the
     card shows them even after the Sentence is cleaned. Same rule set, same
     determinism; the ruby's annotations pass through untouched (the arrow
-    rule only removes line-tail arrows).
+    rule only removes line-tail arrows). The ``strip-dash`` rule is excluded
+    — it is Sentence-field-only (``RUBY_EXCLUDED_RULES``).
 
     Guards: the field must be non-empty and actually change; a queued
     furigana regeneration or scene fill of the field wins (it replaces the
@@ -1004,7 +1018,7 @@ def _ruby_repair_write(
     value = target.get(FURIGANA_FIELD)
     if is_empty(value):
         return None, None, None
-    new_value, applied = repair_sentence(value, rules)
+    new_value, applied = repair_sentence(value, _ruby_repair_rules(rules))
     if new_value == value:
         return None, None, None
     return (
@@ -1793,7 +1807,10 @@ def _scene_writes_for(
             if any(w.field == fname for w in writes):
                 continue
             if repair_rules:
-                fill_value, _applied = repair_sentence(value, repair_rules)
+                field_rules = (
+                    _ruby_repair_rules(repair_rules) if fname == FURIGANA_FIELD else repair_rules
+                )
+                fill_value, _applied = repair_sentence(value, field_rules)
         writes.append(
             PlannedWrite(
                 note_id=candidate.note_id,
@@ -1921,7 +1938,9 @@ def _scene_writes_for(
             # card). The arrow rule is deterministic and annotation-safe.
             parent_ruby = parent_furigana
             if repair_rules:
-                parent_ruby, _applied_ruby = repair_sentence(parent_furigana, repair_rules)
+                parent_ruby, _applied_ruby = repair_sentence(
+                    parent_furigana, _ruby_repair_rules(repair_rules)
+                )
             # The ruby must describe the sentence this card ends up with — the
             # parent's ruby belongs to the parent's line and is only usable
             # when its base text matches (author's どなた: a parent's ruby was

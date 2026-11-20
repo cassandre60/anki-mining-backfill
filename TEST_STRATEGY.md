@@ -41,12 +41,20 @@ not have and must never be given.
 - **The repair pipeline** (bulk-fix dimension 2) is pinned in
   `tests/test_normalize.py` (real deck values, tail arrows stripped while
   line breaks, spacing and bold markup stay untouched, idempotence,
-  mid-line arrows kept; `flatten-div-blocks` turns the real 淀む value's 39
+  mid-line arrows kept; the stray horizontal bars (U+2015) the Mining
+  cards' Sentences carry are stripped by the owner's 2026-11-20
+  `strip-dash` rule — `test_repair_strips_stray_horizontal_bars`;
+  `flatten-div-blocks` turns the real 淀む value's 39
   `<div>` wrappers into the four `<br>` lines with the bold intact, keeps
   inline parts and spacing, drops whitespace between block tags),
   `tests/test_plan.py` (checked write
   with rule badges, off without rules, exclusivity with expansion/bold,
-  tested-word occurrence guard, unknown-rule warning) and
+  tested-word occurrence guard, unknown-rule warning; the strip is
+  Sentence-field-only — the ruby ("Sentence (furigana)") and the
+  Definition are untouched — and shipped on by default in
+  `config.json` —
+  `test_a_stray_dash_is_stripped_from_the_sentence_field_only`,
+  `test_strip_dash_is_on_by_default_in_the_shipped_config`) and
   `tests/test_batch.py` (the on-by-default `batch_repair_sentence` tier
   with its opt-out key). The audit's class **E** (no block markup in a
   sentence field) is the whole-selection gate.
