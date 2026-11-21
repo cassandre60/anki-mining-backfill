@@ -26,11 +26,15 @@ enriched siblings. Two halves:
 
 ## 2. Hard rules
 
-1. **Never write to a live Anki profile from development tooling.** Copy the
-   collection first (the builder does this via `--profile-dir` → `--work-dir`),
-   or point Anki itself at a scratch base (`ANKI_BASE`). The only code allowed
-   to modify someone's collection is the add-on itself, after the user pressed
-   Apply — and it must leave an undo log.
+1. **Work through the extension; never edit the collection directly.** The
+   live profile is not a workspace: no SQL writes, raw database edits, or
+   ad-hoc scripts against it. The normal path is the extension itself
+   (preview → Apply, with its undo log). A direct edit requires explicit
+   permission for that specific write; without it, stop and ask. For code
+   work, copy the collection first (the builder does this via `--profile-dir`
+   → `--work-dir`) or point Anki at a scratch base (`ANKI_BASE`). Only the
+   add-on may modify a real collection, after Apply, and it must leave an undo
+   log.
 2. **Never start Anki, Qt or a web engine on the author's machine.** Booting
    Anki — including `QT_QPA_PLATFORM=offscreen` or importing `aqt`/Qt in a
    long-running probe — has crashed the author's session (2026-11-14, after
