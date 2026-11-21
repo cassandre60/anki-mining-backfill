@@ -78,6 +78,17 @@ not have and must never be given.
   (日差し → `<b>日射し</b>`) are recognized and placed via `morph_tokenizer`
   without guessing — `test_bold_repair_recognizes_inflected_span_with_morph_tokenizer`
   and `test_bold_repair_places_inflected_bold_with_morph_tokenizer`.
+  The word-vs-clause gate is decided by the token-count oracle when the
+  tokenizer is present: a short clause the heuristic alone would bold
+  (空が青い) is refused, an inflected word (決まってる) and a compound noun
+  (ベーコンチーズバーガー) are accepted, a noun on a case particle (ときに)
+  is refused, and an empty/partial/failed analysis falls back to the
+  heuristic —
+  `test_bold_repair_refuses_a_short_clause_with_a_morph_tokenizer`,
+  `test_bold_repair_accepts_an_inflected_expression_with_a_morph_tokenizer`,
+  `test_bold_repair_accepts_a_compound_noun_with_a_morph_tokenizer`,
+  `test_bold_repair_refuses_a_noun_on_a_case_particle_with_a_morph_tokenizer`,
+  `test_bold_repair_falls_back_when_the_tokenizer_cannot_cover_the_expression`.
 - **The expanded rule set and convergence** are pinned in
   `tests/test_normalize.py` (a speaker tag's line break joins; a long
   parenthetical keeps its break) and `tests/test_plan.py` (bold via the
@@ -261,8 +272,8 @@ expected counts are:
 
 | Environment | Result |
 |---|---|
-| Author's machine (`python3 -m pytest`, Anki present) | **290 passed** |
-| CI / a venv without Anki | **288 passed, 2 skipped** |
+| Author's machine (`python3 -m pytest`, Anki present) | **301 passed** |
+| CI / a venv without Anki | **299 passed, 2 skipped** |
 
 Both are green; the difference is exactly two self-skipping import checks
 (the dialog modules need a real `aqt`).

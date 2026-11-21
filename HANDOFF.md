@@ -10,7 +10,7 @@ Before touching any code, verify the environment gates:
 
 ```bash
 ruff check . && ruff format --check . && pyright   # Must be 0 errors, 0 warnings
-pytest -ra                                         # 290 passed locally (288 passed, 2 skipped on CI)
+pytest -ra                                         # 301 passed locally (299 passed, 2 skipped on CI)
 ```
 
 Push and CI gate:
@@ -89,62 +89,32 @@ gh run watch "$RUN_ID" --exit-status
 - Created `.github/workflows/release.yml`: triggers on `v*` tag push, runs the full test gate (ruff + pyright + pytest), builds the archive via `build_ankiaddon.py`, and creates a GitHub Release with the `.ankiaddon` attached.
 - Created `tests/test_packaging.py` (7 tests): archive validity, root-level structure, dev-artefact exclusion, content completeness, manifest JSON validity, and version consistency between `manifest.json` and `pyproject.toml`.
 
----
+### Workstream 7: Release `v0.3.0`, Docs Sync, & Issue Triage (`2a6c032`)
+- Version bumped to `0.3.0` in `manifest.json` and `pyproject.toml`; GitHub release `v0.3.0` published with the `.ankiaddon` artifact.
+- Docs reconciled (PRODUCT/MVP/ARCHITECTURE/QUALITY/TEST_STRATEGY/IMPLEMENTATION_PLAN/README).
+- Issues #1–#5 closed (fixed or not planned).
 
-## 3. Remaining Workstreams: Step-by-Step Recipes
-
-The remaining work is divided into self-contained workstreams. Any incoming agent can resume effortlessly:
-
-```mermaid
-flowchart TD
-    W3["W3: Perf & Pyright (DONE)"] --> W4["W4: Issue #2 Bold Trim (DONE)"]
-    W4 --> W5["W5: Issue #1 MeCab Bolding (DONE)"]
-    W5 --> W6C["W6C: Packaging Script (DONE)"]
-    W6C --> W6AB["W6 A+B: UX Ergonomics & Subdecks"]
-    W6AB --> W7["W7: Release v0.3.0 & Issue Triage"]
-```
+### Workstream 8: MeCab Word-vs-Clause Oracle (T23, Backlog B8 close-out)
+- `plan._tokens_are_word_like`: the token-count oracle for the Q-D3 word-like gate, wired into the bold tiers that place a new bold (Tier 2 verbatim, Tier 5 inflected).
+- `plan._expression_is_word_like`'s MeCab branch was dead — no caller passed a tokenizer — so the gate accepted every short, punctuation-free string. It now decides by token structure only when the tokens cover the Expression exactly, and falls back to the heuristic otherwise (no engine, empty/partial result, raised error).
+- Pinned by the short-clause refusal (the heuristic alone bolds it — the test fails pre-fix), inflected/compound-noun acceptance, the ときに refusal, and the partial/failed-tokenizer fallback battery in `test_plan.py`.
 
 ---
 
-### Workstream 6: UX Ergonomics, Subdecks, & `.ankiaddon` Packaging
+## 3. Current Backlog
 
-#### Part C: Packaging Script (Backlog B3) ✅ DONE
-- `scripts/build_ankiaddon.py` builds `dist/mining_fixer-<version>.ankiaddon`.
-- `.github/workflows/release.yml` creates a GitHub Release on `v*` tag push.
-- `tests/test_packaging.py` enforces archive structural invariants (7 tests).
+W3–W7 are done; the shipped slices and the remaining backlog are kept in
+[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) (source of truth). As of
+2026-11-21 the open items are:
 
-#### Part A: UX Ergonomics (Backlog B5) ✅ DONE
-- `report.badge_explanation()` maps every static and dynamic badge to a human-readable sentence.
-- `report.guard_reason()` maps every write to a human-readable check-column tooltip explaining default check state or guard held back.
-- Preview dialog: badge tooltips on the badges column, check-column guard tooltips with dynamic manual-override tracking, per-badge explanations in the detail pane.
-- Filter bar (`QLineEdit`) above the table: filters rows by expression, field, badge, or change summary.
-- `tests/test_report_summary.py`: 13 tests covering static, dynamic, unknown, exhaustive badge coverage, and all guard reason branches.
-
-#### Part B: Subdeck & Selection-Deck Sources — **dropped**
-- Not needed: the browser-selection workflow uses the whole configured deck as the source pool, and the owner's cards are in one deck.
-
----
-
-### Workstream 7: Release `v0.3.0`, Docs Sync, & Issue Triage
-
-1. **Version Bump**:
-   - Bump version to `0.3.0` in `mining_fixer/manifest.json` and `pyproject.toml`.
-2. **Docs Synchronization**:
-   - Update `PRODUCT.md`, `MVP.md`, `ARCHITECTURE.md`, `QUALITY.md`, `TEST_STRATEGY.md`, `IMPLEMENTATION_PLAN.md`, `README.md`.
-   - Ensure test counts (`pytest` passed count: 271) match reality.
-3. **Release & Tagging**:
-   - Run `python3 scripts/build_ankiaddon.py`.
-   - Commit: `chore(release): bump version to 0.3.0`.
-   - Push to `origin/main`.
-   - Tag `v0.3.0`: `git tag -a v0.3.0 -m "Release v0.3.0" && git push origin v0.3.0`.
-   - Create GitHub Release:
-     ```bash
-     gh release create v0.3.0 dist/mining_fixer-0.3.0.ankiaddon --title "v0.3.0" --notes "..."
-     ```
-4. **Issue Triage Notes**:
-   - Issues #1 & #2: Closed by W4 & W5.
-   - Issues #3 & #4: Closed as not planned (mis-mine/stale scene copy artifacts per author confirmation).
-   - Issue #5: Closed by inflection normalization in `_expression_repair_for` (`倍にして` → `倍にする`).
+| Item | State | Notes |
+|---|---|---|
+| B2 — Rendered card preview | not started | side pane rendering the real front/back HTML; needs Ring 3 visual validation |
+| B3 — AnkiWeb release | partial | `.ankiaddon` build + tag-triggered release ship (T20); a numeric AnkiWeb package id and a changelog remain |
+| B4 — Multi-note-type configuration | not started | profile abstraction; the largest refactor, only worth it once a second setup exists |
+| B6 — Source-first pipeline | not started | needs a new opt-in policy tier (it rewrites a non-empty source field) |
+| B7 — Repair→propagate DAG sequencing | partial | copied text is repaired and its ruby regenerated in the same plan; the remaining piece is source-changed-since-filled reconciliation (BULK_FIX slice 3) |
+| B9 — Dictionary spelling for kana expressions | blocked | dictionary source decision + a QUALITY amendment (a seventh approved write exists since Q-D2, but the seam does not) + Ring 3 review |
 
 ---
 
@@ -155,6 +125,7 @@ flowchart TD
 | `SceneParentIndex` | [matching.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/matching.py) | 3-gram index and fast window intersection |
 | `find_scene_parents` | [matching.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/matching.py) | Windowed parent containment lookup |
 | `_bold_repair_for` | [plan.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/plan.py) | Bold cloze candidate matching & repair |
+| `_tokens_are_word_like` | [plan.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/plan.py) | MeCab token-count word-vs-clause oracle for the Q-D3 gate |
 | `_single_bold` | [plan.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/plan.py) | Wraps exactly one bold span around target |
 | `build_plan` | [plan.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/plan.py) | Top-level pure planning entry point |
 | `japanese_support_furigana_generator` | [collection_io.py](file:///home/mohamed/Desktop/Github/anki-mining-fixer/mining_fixer/collection_io.py) | Bridge to Japanese Support MeCab reading engine |

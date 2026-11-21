@@ -43,14 +43,12 @@ guard that drops what cannot be proven.
 | 3 | Furigana generation | **shipped, on by default** | rebuild `Sentence (furigana)` from the note's own post-write sentence | runs *after* repair in one plan; `reading.mecab.reading` of Japanese Support (installed, id 3918629684) — never a home-grown generator; base-text guard + engine-failure reasons |
 | 4 | Expression repair | **shipped (self-oracled variant), on by default** | rewrite an Expression kept as the subtitle's surface form (ひと握り) by *completing it with kanji* from the dictionary form its own `furigana` records (一握[ひとにぎ]り → 一握り); kana-only Expressions without furigana, inflections and kana-preference spellings stay future | the furigana base is the oracle, cross-checked against the `reading` field (`reading_from_furigana`); the base's kanji must strictly extend the Expression's — an added-kanji completion, never a substitution or a drop (whole-deck census 2026-11-17: 705 fire; 1,127 refused and reported); base word-like (Q-D3 gate); HTML `<ruby>` furigana unusable; deferred while word-level writes are queued; old → new in the preview, run-log undo; `batch_repair_expression` escape hatch |
 | 5 | Indentation / formatting | **partly shipped** — the `<div>` block flattening (dimension 2, 2026-11-17) | normalise leading/trailing whitespace, line indentation in formatted fields | markup-only or explicitly opt-in; rendered-text equality checked per write |
-| 6 | Bold from expression | **shipped (verbatim only)**; inflected matching future | on **non-listening** cards whose `Sentence` has no bold term, bold the expression's occurrence (including from a missing/junk `cloze-body`); an inflected surface (読む → 読め) is the open part | expression must look like a word (clause-like expressions such as 漢字は読めるようになりたいかな are rejected, never bolded); occurrence must be unique; ambiguity reported, never guessed; listening predicate mirrors the card template (see below) |
+| 6 | Bold from expression | **shipped** | on **non-listening** cards whose `Sentence` has no bold term, bold the expression's occurrence (including from a missing/junk `cloze-body`) or its unambiguous inflected surface (読む → 読め, via the MeCab pass) | expression must look like a word — with MeCab the token-count oracle decides (one content token, a compound noun, or prefix + predicate; case particles and several predicates are clauses), without it the punctuation/ending/length heuristic; occurrence must be unique; ambiguity reported, never guessed; listening predicate mirrors the card template (see below) |
 
-Dimensions 1–4 and the verbatim half of dimension 6 ship enabled **by
-default** in `mining_fixer/config.json` (owner decision 2026-11-16); the
-`batch_*` config keys remain the escape hatch to switch individual dimensions
-off. The remaining dimensions (B6 source-first pipeline, B9 dictionary kana
-lookup, B10 inflected bolding via MeCab) are on the backlog and have no code
-yet.
+Dimensions 1–6 ship enabled **by default** in `mining_fixer/config.json`
+(owner decision 2026-11-16); the `batch_*` config keys remain the escape
+hatch to switch individual dimensions off. The remaining backlog items
+(B6 source-first pipeline, B9 dictionary kana lookup) have no code yet.
 
 ## Listening cards (template-defined)
 
@@ -344,33 +342,34 @@ window).
   markup-only (`strip_renderable` equality); the Ring 3 battery adds two
   class cards (expression-verbatim, listening-shape).
 - **Risks.**
-  - **Inflection matching has no shipped oracle.** The conservative
-    okurigana-stem rule was tried on the real class-C cards on 2026-11-16
-    and **rejected**: of 272 candidates it matched 82, but 32 of those sit
-    in the risky "kana run followed by kanji" shape and many over-bold —
-    Japanese kana runs do not respect word boundaries, so 甘い became
+  - **Inflection matching (resolved).** The conservative okurigana-stem
+    rule was tried on the real class-C cards on 2026-11-16 and **rejected**:
+    of 272 candidates it matched 82, but 32 of those sit in the risky
+    "kana run followed by kanji" shape and many over-bold — Japanese kana
+    runs do not respect word boundaries, so 甘い became
     `<b>甘くておいしい</b>`, 好く became `<b>好いてくれてるって</b>`, and
     取り留める swallowed `取り留めたしかしその`. A wrong bold changes the
     tested word, which is exactly what this project refuses to guess.
-    Remaining options: (a) MeCab segmentation through Japanese Support's
-    engine (a lemma/token pass — the honest oracle), or (b) leave class C
-    alone and report it. The rule must not ship as-is.
-  - **Clause detection is heuristic.** Length/space checks reject the
-    known clause card but could reject long legitimate words
-    (ベーコンチーズバーガー); a MeCab token-count check is the honest
-    oracle once the engine is wired in. Skips are reported, never
+    MeCab segmentation through Japanese Support's engine was the chosen
+    honest path and shipped as T19 (Tier 5: exactly one matching token,
+    ambiguity refused, `batch_bold_inflected`).
+  - **Clause detection (resolved).** Length/space checks reject the known
+    clause card but could reject long legitimate words
+    (ベーコンチーズバーガー). The MeCab token-count oracle shipped as T23
+    (`plan._tokens_are_word_like`); it gates the tiers that place a new
+    bold and falls back to the heuristic when no engine is available or
+    the analysis does not cover the Expression. Skips are reported, never
     guessed.
   - Does the listening exclusion also apply to the shipped bold repair
     and the arrow repair? Recorded as an open question below.
 
-  **Shipped so far (T14):** the verbatim-Expression tier, the word-like
-  gate on both expression-derived tiers (over-long words are skipped too —
-  conservative, reported when verbatim), and the listening predicate on
-  the bold repair (both paths; Frequency-without-glosses stays repaired).
-  **Deferred by the owner (2026-11-16):** class C —
-  [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) §F3, backlog B10. The stem
-  rule was rejected on evidence; MeCab segmentation is the honest path.
-  Class-C cards stay silent when nothing was mined (no warning flood).
+  **Shipped (T14 + T19 + T23):** the verbatim-Expression tier, the
+  word-like gate on both expression-derived tiers (over-long words are
+  skipped too — conservative, reported when verbatim), the listening
+  predicate on the bold repair (both paths; Frequency-without-glosses stays
+  repaired), Tier 5 inflected/alternate-kanji bolding via MeCab, and the
+  token-count word-vs-clause oracle. Class-C cards stay silent when nothing
+  was mined (no warning flood).
 
 ## Open questions (answer before each slice)
 
@@ -387,15 +386,17 @@ window).
   without dominating the design.
 - Does Japanese Support's reading beat what Yomitan already stored? Run it
   on a sample and compare.
-- Word vs clause: what oracle makes the expression gate honest — a
-  length/space heuristic now, a MeCab token-count later (BULK_FIX dim 6)?
+- Word vs clause: **answered 2026-11-21** — the MeCab token-count oracle
+  (T23) decides when the engine is present; the length/space heuristic is
+  the headless fallback.
 - Inflection matching (dimension 6): **answered 2026-11-16** — the
   okurigana-stem rule was tried on the 272 real class-C cards and rejected
   (82 matches, 32 in the risky kana+kanji shape, many over-long bolds:
   甘い → 甘くておいしい, 好く → 好いてくれてるって, 取り留める →
   取り留めたしかしその). Kana runs do not respect word boundaries; only
-  MeCab segmentation (a token/lemma pass) can. Class C stays unfixed
-  until that oracle exists.
+  MeCab segmentation (a token/lemma pass) can. It shipped as T19: class C
+  is fixed through Tier 5 when the engine is present and stays silent
+  otherwise.
 - Kana → kanji spelling (dimension 4, F2): which offline dictionary, and
   does a rare attested form qualify (いきなり → 行き成り) or only the
   dictionary's common spelling? Does the rewrite run before scene planning

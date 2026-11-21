@@ -122,6 +122,7 @@ below, never as silent scope creep inside a coding session.
 | T20 | `tests/test_packaging.py` (archive structure, content completeness, dev-artefact exclusion, version consistency) |
 | T21 | `tests/test_report_summary.py` (static badge lookup, dynamic badge patterns, unknown-badge fallback, exhaustive badge coverage) |
 | T22 | `test_normalize.py` (`test_repair_strips_stray_horizontal_bars`), `test_plan.py` (Sentence-field-only strip, shipped default) |
+| T23 | `test_plan.py` (short-clause refusal — the heuristic alone bolds it; inflected and compound-noun acceptance; ときに refusal; partial/failed-tokenizer fallback) |
 
 - **T13 — Dimension picker in the batch window (B7) — superseded.** Built
   on 2026-11-16 with three checkboxes (scene / arrows / furigana) and pure
@@ -256,6 +257,27 @@ below, never as silent scope creep inside a coding session.
   (`test_a_stray_dash_is_stripped_from_the_sentence_field_only`,
   `test_strip_dash_is_on_by_default_in_the_shipped_config`);
   `test_real_cards.py`'s CFG mirrors the new shipped default.
+- **T23 — MeCab word-vs-clause oracle (B8 close-out).**
+  `plan._expression_is_word_like` accepted an optional `morph_tokenizer`,
+  but no caller passed one, so its MeCab branch was dead and the gate
+  accepted every short, punctuation-free string (空が青い would be bolded).
+  The new pure `plan._tokens_are_word_like` decides by token structure: one
+  content token — an inflected word's trailing particles and auxiliaries
+  stay attached (決まってる = 決まっ + て + る; 食べて) — or a compound noun
+  sequence (ベーコンチーズバーガー), or a prefix + predicate compound
+  (取り留める); a case particle between content words (空が青い), a noun
+  hanging on a case particle (ときに = 時 + に), or several predicates
+  (甘くておいしい) is a clause. The oracle gates the tiers that place a new
+  bold (Tier 2 verbatim, Tier 5 inflected) and is trusted only when its
+  tokens cover the Expression exactly; no engine, an empty/partial result
+  or a raised error falls back to the heuristic. The dictionary-headword
+  gate (`_expression_repair_for`, Q-D12) keeps the heuristic: a recorded
+  furigana base may legitimately be a phrase (倍にする, 子供の頃,
+  取って置き). Pinned by
+  `test_bold_repair_refuses_a_short_clause_with_a_morph_tokenizer` (the
+  same card is bolded without the tokenizer — the test fails on the pre-fix
+  code), the inflected and compound-noun acceptance tests, the ときに
+  refusal, and the partial/failed-tokenizer fallback battery.
 
 ## Backlog
 
@@ -283,8 +305,8 @@ below, never as silent scope creep inside a coding session.
   the word-like gate that refuses clause-like Expressions
   (漢字は読めるようになりたいかな), the template's own listening predicate (tag +
   usable audio, or no glosses/no Frequency with `Sentence Audio`), and offline
-  morphological bolding via MeCab (T19). Still open: the MeCab token-count
-  oracle for word-vs-clause.
+  morphological bolding via MeCab (T19). Closed 2026-11-21: the MeCab
+  token-count word-vs-clause oracle (T23).
 - **B9 — Dictionary spelling for kana expressions** (owner ask 2026-11-16;
   text in [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) §F2, design in
   [`BULK_FIX.md`](BULK_FIX.md) dimension 4 / slice 4). Rewrite a kana-only
