@@ -43,19 +43,13 @@ first, with the reason.
   Expression-derived tiers require the Expression to be
   *word-like* — no whitespace, no sentence punctuation, clause patterns
   rejected, and character count capped (`MAX_EXPRESSION_CHARS`, 25) while
-  accepting legitimate long compound words like ベーコンチーズバーガー. When a
-  MeCab tokenizer is available, the gate is decided by its token structure
-  (`plan._tokens_are_word_like`): one content token — an inflected word's
-  trailing particles and auxiliaries stay attached (決まってる, 食べて) — or a
-  compound noun sequence (ベーコンチーズバーガー), or a prefix + predicate
-  compound (取り留める); a case particle between content words (空が青い), a
-  noun hanging on a case particle (ときに = 時 + に), or several predicates
-  (甘くておいしい) is a clause. A clause-like value
-  (漢字は読めるようになりたいかな) is reported (`expression-not-word-like`),
-  never bolded. The oracle is trusted only when its tokens cover the
-  Expression exactly; no engine, an empty/partial result or a raised error
-  falls back to the punctuation/ending/length heuristic, and a partial
-  analysis is never judged on half a word. Cards whose
+  accepting legitimate long compound words like ベーコンチーズバーガー; a clause-like
+  value (漢字は読めるようになりたいかな) is reported (`expression-not-word-like`),
+  never bolded. A MeCab token-count oracle was tried on 2026-11-21 and
+  rejected on deck evidence: it refused legitimate compound verbs and
+  dictionary expressions (響き渡る, いろいろあって) while the deck's
+  full-sentence Expressions are listening placeholders (B11), so the
+  heuristic stays. Cards whose
   template front is audio-only are skipped entirely — the sentence is not
   displayed: either a `listening` tag with usable audio, or no
   `Definition`/`Extended definition`/`Frequency` with `Sentence Audio`
@@ -159,10 +153,7 @@ first, with the reason.
   Guards, each a reported reason instead of a guess: `reading_from_furigana(furigana)`
   must equal the note's normalized `reading` field (the furigana must describe *this*
   word); the base must differ from the Expression, contain kanji and be
-  word-like (the Q-D3 heuristic gate: a recorded furigana base may
-  legitimately be a phrase — 倍にする, 子供の頃, 取って置き — so the
-  token-count oracle is reserved for the bold-placement tiers); and the
-  rewrite must be either a **kanji
+  word-like (the Q-D3 gate); and the rewrite must be either a **kanji
   completion** (the base's kanji set strictly extends the Expression's:
   ひと握り → 一握り, とっておき → 取って置き) or an **inflection normalization to dictionary
   lemma** (identical kanji set in identical order sharing the initial stem:

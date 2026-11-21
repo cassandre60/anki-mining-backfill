@@ -220,10 +220,9 @@ run log/undo as every other write.
 
 Owner ask 2026-11-16, deferred by the owner the same day ("no, leave them"),
 then opened up by the offline MeCab engine: **shipped as T19** (Tier 5 of the
-bold repair, `batch_bold_inflected`). The word-vs-clause gate that guards the
-Expression-derived tiers is now the MeCab token-count oracle (**T23**,
-`plan._tokens_are_word_like`), with the punctuation/ending/length heuristic as
-the engine-less fallback.
+bold repair, `batch_bold_inflected`). The word-vs-clause gate stays the
+punctuation/ending/length heuristic; a MeCab token-count oracle was tried and
+rejected on deck evidence (see `BULK_FIX.md` slice 8).
 
 In plain terms: a card's word is 読む but the sentence says 読め; the word is
 寒い but the sentence says 寒くなかった. Those cards get **no** bold — the
@@ -242,19 +241,13 @@ bold changes which word the card tests, so the rule must not ship.
 
 ### What made it honest (shipped)
 
-- **Segmentation (T19).** The installed Japanese Support add-on's MeCab
-  engine splits a sentence into words and gives each word's dictionary form;
-  a match means "exactly one token whose base form is this card's word".
+- **Segmentation (T19).** The installed Japanese Support add-on's MeCab engine
+  splits a sentence into words and gives each word's dictionary form; a
+  match then means "exactly one token whose base form is this card's word".
   That is the same engine the furigana regeneration already calls (T12) —
   a second use of it, not a new dependency — and it only exists inside
   Anki.
-- **A word-vs-clause oracle (T23).** The same engine also decides whether an
-  `Expression` is a word at all: one content token (an inflected word's
-  trailing particles and auxiliaries stay attached), a compound noun, or a
-  prefix + predicate is a word; a case particle between content words, a
-  noun hanging on a case particle (ときに = 時 + に), or several predicates
-  is a clause, reported, never bolded.
-- **The guards stayed unchanged**: exactly one matching token, markup-only
+- **The guards stay unchanged**: exactly one matching token, markup-only
   write, word-like Expression, listening cards skipped, every miss
   reported.
 - **Still out of reach, and reported as such**: cards whose data is simply
@@ -281,7 +274,7 @@ later. Status is one of *shipped*, *documented* (no code yet).
 | Generate furigana **after** the sentence is fixed, through the installed Japanese Support add-on | `BULK_FIX.md` dimension 3, this file §F1 | documented (slice 2) |
 | Fix the expression itself: inflections, expressions written partly in kana where the kanji form exists | `BULK_FIX.md` dimension 4 | documented (slice 4) |
 | Rewrite a kana expression to its kanji spelling (いきなり → 行き成り, ときに → 時に) | this file §F2, `BULK_FIX.md` dimension 4 / slice 4, `IMPLEMENTATION_PLAN.md` B9 | documented (no code yet) |
-| Cards with no bold term in `Sentence` (non-listening): bold the expression's inflected occurrence — 前人未到 is a valid target, 漢字は読めるようになりたいかな is not | `BULK_FIX.md` dimension 6 + slice 8 (census 2026-11-16) | shipped (T14 verbatim, T19 inflected, T23 oracle) |
+| Cards with no bold term in `Sentence` (non-listening): bold the expression's inflected occurrence — 前人未到 is a valid target, 漢字は読めるようになりたいかな is not | `BULK_FIX.md` dimension 6 + slice 8 (census 2026-11-16) | shipped (T14 verbatim, T19 inflected) |
 | Bold when the sentence spells the word differently (読む → 読め) | this file §F3, `BULK_FIX.md` dimension 6 / slice 8, `IMPLEMENTATION_PLAN.md` B10 | shipped (T19 via offline MeCab) |
 | Indentation / formatting | `BULK_FIX.md` dimension 5 | documented (slice 5) |
 | Apply to other decks when they are selected | `BULK_FIX.md` §Scope and profiles | targets shipped; sources still limited to the configured deck |

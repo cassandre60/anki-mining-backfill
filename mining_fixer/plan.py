@@ -285,73 +285,18 @@ def _has_complex_bold_markup(text: str) -> bool:
 
 
 #: Conservative word-vs-clause gate for expression-derived bold repair
-#: (QUALITY Q-D3). Whitespace, sentence punctuation, clause endings and
-#: length are the cheap pre-checks; when a MeCab tokenizer is available the
-#: final decision is the token-count oracle below (BULK_FIX.md dimension 6).
-#: A clause-like Expression is reported, never bolded — a false skip loses
-#: nothing, a wrong bold hides the sentence.
+#: (QUALITY Q-D3). The honest oracle is MeCab tokenization of the Expression
+#: (BULK_FIX.md dimension 6); until then a clause-like Expression is
+#: reported, never bolded — a false skip loses nothing, a wrong bold hides
+#: An Expression must look like a word, not a clause: whitespace or sentence
+#: punctuation reject it immediately; length is capped to protect
+#: the sentence's structure while allowing legitimate long compound words.
 MAX_EXPRESSION_CHARS = 25
 _CLAUSE_PUNCT_RE = re.compile(r"[。、，．,.!?！？…]")
+_KATAKANA_WORD_RE = re.compile(r"^[ァ-ヴー・]+$")
 _CLAUSE_ENDINGS_RE = re.compile(
     r"(?:たいかな|ようになりたい|かもしれない|だろう|でしょうか|ですね|ですよ)$"
 )
-
-#: Content parts of speech for the token-count oracle. Function words
-#: (particles, auxiliaries, symbols) are excluded: they carry clause glue,
-#: not a word's content.
-_CONTENT_POS = frozenset(
-    {
-        "名詞",
-        "動詞",
-        "形容詞",
-        "副詞",
-        "連体詞",
-        "接頭詞",
-        "接尾辞",
-        "感動詞",
-        "フィラー",
-        "接続詞",
-        "UNK",
-    }
-)
-_NOUN_POS = frozenset({"名詞", "接頭詞", "接尾辞", "UNK"})
-_PREDICATE_POS = frozenset({"動詞", "形容詞"})
-#: Case particles turn a bare noun into a phrase (ときに = 時 + に). An
-#: inflectional particle (食べて) does not: the word's predicate owns it.
-_CASE_PARTICLES = frozenset(
-    {"が", "を", "に", "へ", "と", "で", "の", "は", "も", "から", "まで", "より"}
-)
-
-
-def _tokens_are_word_like(tokens: Sequence[MorphToken]) -> bool:
-    """Decide word vs clause from a MeCab token sequence (B8).
-
-    A word is one content token — an inflected word's trailing particles and
-    auxiliaries stay attached (決まってる = 決まっ + て + る; 食べて) — or a
-    compound noun sequence (ベーコンチーズバーガー), or a prefix plus one
-    predicate (取り留める). A clause has a case particle between content
-    words (空が青い), a bare noun left hanging on a case particle (ときに =
-    時 + に), or several predicates (甘くておいしい). Pure: the caller
-    supplies the tokenizer.
-    """
-    content = [tok for tok in tokens if tok.pos in _CONTENT_POS]
-    if not content:
-        return False
-    if len(content) == 1:
-        only = content[0]
-        return not (
-            only.pos in _NOUN_POS
-            and tokens[-1].pos == "助詞"
-            and tokens[-1].surface in _CASE_PARTICLES
-            and not any(tok.pos in _PREDICATE_POS for tok in tokens)
-        )
-    if all(tok.pos in _NOUN_POS for tok in content):
-        return True
-    return (
-        len(content) == 2
-        and content[0].pos in ("接頭詞", "接尾辞")
-        and content[1].pos in _PREDICATE_POS
-    )
 
 
 def _expression_is_word_like(
@@ -361,13 +306,8 @@ def _expression_is_word_like(
     """Could this Expression be a single mined word or compound?
 
     Rejects whitespace, sentence punctuation, obvious clause endings, and
-    anything longer than ``MAX_EXPRESSION_CHARS``. When ``morph_tokenizer``
-    is available, the remaining question is answered by the token-count
-    oracle (:func:`_tokens_are_word_like`) instead of accepting every
-    short, punctuation-free string. The oracle is trusted only when its
-    tokens cover the text exactly; a partial or failed analysis falls back
-    to the heuristic. Legitimate long words (such as katakana compounds like
-    ベーコンチーズバーガー) are accepted by the cap.
+    anything longer than ``MAX_EXPRESSION_CHARS``. Legitimate long words
+    (such as katakana compounds like ベーコンチーズバーガー) are accepted.
     """
     text = (expression or "").strip()
     if not text:
@@ -378,16 +318,24 @@ def _expression_is_word_like(
         return False
     if _CLAUSE_ENDINGS_RE.search(text):
         return False
-    if len(text) > MAX_EXPRESSION_CHARS:
-        return False
     if morph_tokenizer is not None:
         try:
-            tokens = list(morph_tokenizer(text))
+            tokens = morph_tokenizer(text)
+            if tokens:
+                has_clause_particles = any(
+                    tok.pos in ("助詞", "助動詞")
+                    and tok.surface in ("は", "が", "を", "たい", "かな", "だろう")
+                    for tok in tokens
+                )
+                if has_clause_particles:
+                    return False
+                if all(tok.pos in ("名詞", "接頭詞", "接尾辞", "記号") for tok in tokens):
+                    return len(text) <= MAX_EXPRESSION_CHARS
         except Exception:
-            tokens = []
-        if tokens and "".join(tok.surface for tok in tokens) == text:
-            return _tokens_are_word_like(tokens)
-    return True
+            pass
+    if _KATAKANA_WORD_RE.match(text):
+        return len(text) <= MAX_EXPRESSION_CHARS
+    return len(text) <= MAX_EXPRESSION_CHARS
 
 
 def _is_listening(target: NoteRecord) -> bool:
@@ -803,7 +751,7 @@ def _bold_repair_for(
     # Tiers 2–3 speak for the Expression and must never bold a clause.
     if not expr:
         return None, None, None
-    if not _expression_is_word_like(expr, morph_tokenizer):
+    if not _expression_is_word_like(expr):
         if sentence.count(expr) == 1:
             return (
                 None,
@@ -916,7 +864,7 @@ def _bold_repair_for(
         batch_bold_inflected
         and morph_tokenizer is not None
         and expr
-        and _expression_is_word_like(expr, morph_tokenizer)
+        and _expression_is_word_like(expr)
     ):
         try:
             clean_sent = strip_renderable(sentence)

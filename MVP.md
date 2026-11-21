@@ -17,7 +17,7 @@ the collection never touched by anything the dialog did not show.
 |---|---|---|
 | Scene completion (full sentence, furigana, audio, picture, timestamped source) | `matching.find_scene_parents`, `plan._scene_writes_for` | golden fixture, byte-exact |
 | Word backfill (`Pitch Accent`, `Frequency`, `Word Audio`, `furigana`, `reading`; definitions are never copied) | `matching.word_groups`, `plan._word_writes_for` | unit tests + real-collection run |
-| Bold repair when `Sentence` has no bold term (cloze-body → Expression verbatim → surface form → MeCab inflected; clause-like Expressions refused — the token-count oracle decides when MeCab is present — listening cards skipped) | `plan._bold_repair_for`, `plan._expression_is_word_like`, `plan._tokens_are_word_like`, `plan._is_listening` | 鬱病 verified end to end; 2026-11-16 census classified 2,136 no-bold cards; oracle tests in `test_plan.py` |
+| Bold repair when `Sentence` has no bold term (cloze-body → Expression verbatim → surface form; clause-like Expressions refused, listening cards skipped) | `plan._bold_repair_for`, `plan._expression_is_word_like`, `plan._is_listening` | 鬱病 verified end to end; 2026-11-16 census classified 2,136 no-bold cards |
 | Subtitle-noise repair (`flatten-div-blocks`, `strip-arrows`, `join-speaker-lines`; `<br>`/padding kept as mined) — on by default | `normalize.repair_sentence`, `plan._sentence_repair_write`, `batch.py` tier | `tests/test_normalize.py`, `test_plan.py`, `test_batch.py` |
 | Furigana regeneration through Japanese Support — on by default | `normalize.furigana_base_matches`, `plan._furigana_write_for`, `collection_io.japanese_support_furigana_generator`, `batch.py` tier | `tests/test_normalize.py`, `test_plan.py`, `test_batch.py`; Ring 3 battery pending |
 | Expression spelling repair from the note's own furigana (ひと握り → 一握り) — on by default | `normalize.furigana_base`, `plan._expression_repair_for`, `batch.py` tier | `tests/test_normalize.py`, `test_plan.py`, `test_batch.py`; real card 1736973220751; Ring 3 pending |
@@ -38,9 +38,10 @@ the collection never touched by anything the dialog did not show.
 
 - **Rendered front/back HTML per row.** Rows show field values, not the card
   as the template renders it (B2).
-- **AnkiWeb release.** The `.ankiaddon` build ships (T20), but publishing
-  needs a numeric package id so AnkiWeb can deliver updates; today it is a
-  dev install or a manual `.ankiaddon` install (B3).
+- **AnkiWeb release.** Today it is a dev install: symlink into `addons21/`
+  plus a hand-written `meta.json`. Publishing gives a numeric package id,
+  self-updates and one-click install (B3).
+
 - **Config dialog.** Defaults ship in `mining_fixer/config.json`; Anki's
   built-in config editor (Tools → Add-ons → Config) shows the merged config
   and stores edits in `meta.json`. No custom config UI (not planned).
@@ -64,7 +65,7 @@ the collection never touched by anything the dialog did not show.
 ## Acceptance criteria (every release)
 
 - `ruff check .` and `ruff format --check .` clean; `python3 -m pytest` green
-  (301 tests with Anki installed).
+  (264 tests with Anki installed).
 - CI (`tests` workflow) green on the released commit.
 - The golden fixture test still reproduces the author's manual fix
   byte-for-byte on all five fields.
